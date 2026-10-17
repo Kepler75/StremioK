@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://stremiok.tizen/StremioKTizen" version="2.0.0" viewmodes="maximized">
+    <tizen:application id="StremioK01.StremioK" package="StremioK01" required_version="3.0"/>
+    <content src="index.html"/>
+    <feature name="http://tizen.org/feature/screen.size.all"/>
+    <!-- Node service (the YouTube resolver) -->
+    <feature name="http://tizen.org/feature/web.service"/>
+    <icon src="icon.png"/>
+    <name>StremioK</name>
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+    <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
+    <!-- Local media probe: reading USB drives -->
+    <tizen:privilege name="http://tizen.org/privilege/filesystem.read"/>
+    <!-- Cross-origin XHR to any addon host, and to the local YouTube service -->
+    <access origin="*" subdomains="true"/>
+    <tizen:allow-navigation href="*"/>
+    <tizen:profile name="tv"/>
+    <!-- Bundled YouTube service (see service/index.js): resolves YouTube pages to HLS on
+         127.0.0.1:8099. Launched on demand by js/ytplay.js. -->
+    <tizen:service id="StremioK01.StremioKProxy">
+        <tizen:content src="service/index.js"/>
+        <tizen:name>StremioKProxy</tizen:name>
+        <tizen:description>StremioK YouTube service</tizen:description>
+    </tizen:service>
+    <!-- Continue Watching on the TV's home bar (Smart Hub preview): see service/preview.js and
+         js/hubpreview.js. A picked tile reaches the running app without reloading it. -->
+    <tizen:metadata key="http://samsung.com/tv/metadata/use.preview" value="bg_service"/>
+    <tizen:app-control>
+        <tizen:src name="index.html" reload="disable"/>
+        <tizen:operation name="http://samsung.com/appcontrol/operation/eden_resume"/>
+    </tizen:app-control>
+    <tizen:service id="StremioK01.service" auto-restart="false">
+        <tizen:content src="service/preview.js"/>
+        <tizen:name>StremioKPreview</tizen:name>
+        <tizen:icon src="icon.png"/>
+        <tizen:description>StremioK home bar preview</tizen:description>
+        <tizen:category name="http://tizen.org/category/service"/>
+    </tizen:service>
+    <tizen:setting screen-orientation="landscape" context-menu="disable"
+                   background-support="disable" encryption="disable"
+                   install-location="auto" hwkey-event="enable"/>
+</widget>

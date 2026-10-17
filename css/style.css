@@ -1,0 +1,507 @@
+/* StremioK for Tizen 3.0 — conservative CSS (no CSS grid gap edge cases, flexbox is fine on Chromium 47) */
+/* Sentinel: app.js checks this element's width to confirm the stylesheet applied. */
+#css-sentinel { width: 11px; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    background: #0e1117;
+    color: #e6e9ef;
+    font-family: Arial, "Tizen Sans", sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* --- Video planes --- */
+#av-player, #html5-player {
+    position: absolute;
+    top: 0; left: 0;
+    width: 1920px; height: 1080px;
+    background: #000;
+    display: none;
+    z-index: 1;
+}
+#av-player.active, #html5-player.active { display: block; }
+
+#app { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; z-index: 10; }
+.screen { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; }
+.hidden { display: none !important; }
+
+/* --- Header --- */
+.header { height: 96px; padding: 30px 60px 0 60px; display: flex; align-items: center; }
+.brand { font-size: 40px; font-weight: bold; color: #818cf8; letter-spacing: 1px; }
+.brand .dot { color: #e6e9ef; }
+/* private viewing on: StremioK as an outline (the fill hidden; the outline takes each letter's
+   own color, so it follows the accent color and a light background) */
+.brand.private, .brand.private .dot { -webkit-text-fill-color: transparent; -webkit-text-stroke-width: 1.5px; }
+.header .spacer { flex: 1; }
+.header-title { font-size: 36px; font-weight: bold; }
+/* Search and Settings: pills like the tabs (the top menu fits every tab, Local included, at 1920 px) */
+.header .hchip { display: inline-flex; align-items: center; font-size: 22px; padding: 8px 13px; margin-right: 6px; border-radius: 28px; background: #1a1f2b; color: #aeb6c4; border: 4px solid transparent; white-space: nowrap; }
+.header .hchip.focusable.focused { background: #818cf8; color: #0e1117; border-color: #fff; opacity: 1; }
+
+/* --- Rows --- */
+.rows { position: absolute; top: 110px; left: 0; right: 0; bottom: 0; overflow: hidden; }
+.row { margin: 0 0 16px 0; }
+.row-title { font-size: 26px; font-weight: bold; margin: 0 0 8px 60px; color: #c7cbd4; }
+/* vertical padding leaves room for the scaled focus ring (overflow clips the rest) */
+.row-scroller { white-space: nowrap; padding: 26px 60px; overflow: hidden; }
+
+/* --- Cards --- */
+.card {
+    display: inline-block;
+    width: 200px;
+    height: 300px;
+    margin-right: 22px;
+    border-radius: 10px;
+    background: #1a1f2b;
+    vertical-align: top;
+    position: relative;
+    overflow: hidden;
+    border: 4px solid transparent;
+}
+.card .poster { width: 100%; height: 100%; display: block; background-size: cover; background-position: center; }
+.card .fallback { display: flex; align-items: center; justify-content: center; height: 100%; padding: 10px; font-size: 20px; color: #8b93a5; text-align: center; white-space: normal; }
+.card .cap { position: absolute; bottom: 0; left: 0; right: 0; padding: 26px 10px 8px 10px; font-size: 18px; background: linear-gradient(transparent, rgba(0,0,0,0.85)); white-space: normal; line-height: 1.2; max-height: 70px; overflow: hidden; }
+.card .prog { position: absolute; bottom: 0; left: 0; height: 6px; background: #818cf8; }
+
+/* --- Focus state (TV) --- */
+.focusable.focused { border-color: #a5b4fc; box-shadow: 0 0 0 3px rgba(129,140,248,0.85); }
+
+/* Carousel cards: bold, obvious focus — white inner border + indigo ring + lift.
+   No blurred drop shadow: a large blur is repainted on every D-pad move and is
+   expensive on older TV GPUs; the ring + scale carry the focus on their own. */
+.card.focusable.focused {
+    border-color: #ffffff;
+    box-shadow: 0 0 0 5px #6366f1;
+    transform: scale(1.09);
+    z-index: 5;
+}
+.card.focusable.moving { border-color: #ffffff; box-shadow: 0 0 0 5px #f59e0b; transform: scale(1.09); z-index: 6; }
+
+/* Filled selection for list rows / buttons */
+.pill.focusable.focused, .stream.focusable.focused, .ep.focusable.focused { background: #818cf8; color: #0e1117; }
+/* Keep secondary lines readable on the bright selected background */
+.stream.focusable.focused .s-sub, .ep.focusable.focused .ep-sub,
+.ep.focusable.focused .ep-ov, .ep.focusable.focused .ep-rating { color: #17203a; }
+
+
+/* --- Detail screen --- */
+.detail-hero { position: absolute; top: 0; left: 0; right: 0; height: 620px; background-size: cover; background-position: center top; }
+.detail-hero .shade { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, rgba(14,17,23,0.96) 30%, rgba(14,17,23,0.35) 100%), linear-gradient(0deg, #0e1117 4%, transparent 40%); }
+/* The source and episode lists: the backdrop over the whole screen, shaded lighter, the rows
+   see-through (a focused one stays solid) */
+.detail-hero.hero-full { height: 1080px; }
+.detail-hero.hero-full .shade { background: linear-gradient(90deg, rgba(14,17,23,0.9) 22%, rgba(14,17,23,0.4) 100%), linear-gradient(0deg, rgba(14,17,23,0.5) 0%, transparent 45%); }
+.streams-panel .stream, .list-panel .ep { background: rgba(22,27,38,0.7); }
+.streams-panel .stream-group, .streams-panel .stream-for, .streams-panel .streams-hidden { text-shadow: 0 1px 3px #000, 0 0 8px rgba(0,0,0,0.6); }
+#screen-detail .header { position: relative; z-index: 3; }   /* the main menu, over the backdrop */
+/* the block spans the screen so a row of buttons never wraps (the TV's font is wider than
+   desktop Arial); the text inside keeps a readable measure */
+.detail-body { position: absolute; top: 150px; left: 60px; right: 60px; }   /* below the top menu */
+.detail-title { font-size: 54px; font-weight: bold; margin-bottom: 14px; }
+.detail-meta { font-size: 22px; color: #a7adba; margin-bottom: 18px; max-width: 1200px; }
+.detail-desc { font-size: 22px; line-height: 1.45; color: #cfd3dc; max-height: 200px; overflow: hidden; margin-bottom: 26px; max-width: 1000px; }
+.btn-row { margin-top: 10px; white-space: nowrap; }
+.pill { display: inline-block; padding: 14px 30px; margin-right: 16px; border-radius: 30px; background: #1a1f2b; font-size: 22px; border: 4px solid transparent; }
+/* selected season: gray with light text; focus must still win (higher specificity below) */
+.season-bar .pill.season-sel { background: #2a3346; color: #c7cbd4; }
+.season-bar .pill.focusable.focused { background: #818cf8; color: #0e1117; }
+
+/* Episode + stream lists */
+.list-panel { position: absolute; top: 640px; left: 60px; right: 60px; bottom: 40px; overflow: hidden; }
+.season-bar { margin-bottom: 14px; white-space: nowrap; }
+.ep, .stream { display: block; padding: 16px 22px; margin-bottom: 10px; background: #161b26; border-radius: 8px; font-size: 22px; border: 4px solid transparent; white-space: normal; }
+.ep .ep-sub, .stream .s-sub { display: block; font-size: 17px; color: #9aa2b1; margin-top: 4px; }
+
+/* episode rows with thumbnail + rating */
+.ep-row { display: flex; align-items: flex-start; padding: 12px 16px; height: 108px; overflow: hidden; }
+.ep-thumb { width: 120px; height: 68px; flex: 0 0 120px; margin-right: 18px; border-radius: 6px; background-color: #0e1117; background-size: cover; background-position: center; position: relative; overflow: hidden; }
+/* partly watched episode: progress along the bottom of its thumbnail */
+.ep-prog { position: absolute; left: 0; bottom: 0; height: 5px; background: #818cf8; }
+.ep-body { flex: 1; min-width: 0; }
+.ep-line { display: flex; align-items: flex-start; font-size: 22px; }
+.ep-title { flex: 1 1 auto; min-width: 0; }
+.ep-rating { flex: 0 0 auto; margin-left: 14px; color: #ffd257; font-size: 19px; white-space: nowrap; }
+.ep-rating:empty { margin-left: 0; }
+.airs-pill { background: transparent; border-color: #818cf8; color: #818cf8; }   /* a series' next episode isn't out yet (not a button) */
+.ep-airs { flex: 0 0 auto; margin-left: 14px; padding: 1px 10px; border-radius: 6px; border: 2px solid #818cf8; color: #818cf8; font-size: 17px; white-space: nowrap; }
+.ep.unaired { opacity: 0.7; }
+.ep.unaired.focused { opacity: 1; }
+.ep.focusable.focused .ep-airs { border-color: #17203a; color: #17203a; }
+.ep-ov { display: block; font-size: 17px; color: #9aa2b1; margin-top: 6px; max-height: 44px; overflow: hidden; }
+.list-scroll { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; }
+
+/* Series info page. The text block (just below the top menu) is capped; the panel under it
+   starts where the block ends (view-detail.js fitPanel; 456px until measured). The panel is
+   a fixed 84px season strip + the episode list (118px rows: 108 + 10 gap), with the 70px
+   margin Focus keeps below the focused row. Nothing in .series-panel overflows it, so Focus
+   scrolls only the episode list and the season strip always stays in view (it scrolls
+   sideways on its own when there are many). */
+.series-body { top: 110px; max-height: 388px; overflow: hidden; }
+.series-body .detail-desc { max-height: 128px; margin-bottom: 0; }   /* 4 lines */
+/* Resume / Play (padding keeps the focus ring inside the clipped text block) */
+.series-body .series-actions, .series-body .streams-actions { margin-top: 12px; padding: 4px; }
+.series-panel { top: 456px; bottom: 30px; }
+/* A source list (a movie, an episode, a channel): no season row, so the list starts
+   where a series has its seasons, under the same compact text block. */
+.streams-panel { top: 456px; bottom: 30px; }
+.streams-panel .list-scroll { padding: 4px 6px; }
+.series-panel .season-bar { height: 84px; margin: 0; padding: 6px; overflow: hidden; }
+.series-panel .list-scroll { top: 84px; padding: 4px 6px; }
+/* Files of a download (e.g. a RealDebrid season pack): same area, no season strip. */
+.files-panel { top: 456px; bottom: 30px; }
+.files-panel .list-scroll { padding: 4px 6px; }
+
+/* Settings */
+.settings-wrap { position: absolute; top: 120px; left: 60px; right: 60px; bottom: 40px; overflow: hidden; }
+.back-row { color: #c7cbd4; }
+/* Home Feeds ordering */
+.feed-row { display: flex; align-items: center; margin-bottom: 8px; }
+.feed-btn { width: 60px; text-align: center; padding: 14px 0; margin-right: 8px; background: #161b26; border-radius: 8px; font-size: 22px; border: 4px solid transparent; }
+.feed-name { flex: 1; padding: 14px 18px; background: #161b26; border-radius: 8px; font-size: 22px; border: 4px solid transparent; white-space: normal; }
+.feed-off .feed-name { opacity: 0.5; }
+.feed-btn.focusable.focused, .feed-name.focusable.focused { background: #818cf8; color: #0e1117; border-color: #fff; }
+.settings-wrap h2 { font-size: 30px; margin-bottom: 20px; }
+.addon-item { padding: 16px 20px; margin-bottom: 10px; background: #161b26; border-radius: 8px; font-size: 20px; border: 4px solid transparent; word-break: break-all; white-space: normal; }
+.addon-item .a-name { font-weight: bold; }
+.addon-item .a-url { font-size: 15px; color: #8b93a5; }
+.addon-item .addon-said { color: #f0a5a5; margin-top: 4px; white-space: normal; }   /* a failed addon's own error message */
+.hint { color: #8b93a5; font-size: 18px; margin-top: 20px; line-height: 1.5; }
+.feeds-hint { margin: 10px 0 14px; }
+.settings-version { position: absolute; right: 60px; bottom: 10px; font-size: 18px; color: #6f7788; }
+
+/* --- Add-addon page (field kept high, above the on-screen keyboard) --- */
+.add-wrap { position: absolute; top: 120px; left: 60px; right: 60px; }
+.add-hint { font-size: 22px; color: #8b93a5; margin-bottom: 28px; line-height: 1.4; max-width: 1200px; }
+.add-input { width: 100%; padding: 20px 24px; font-size: 32px; background: #0e1117; color: #fff; border: 4px solid #2a3346; border-radius: 12px; }
+.add-input.focused { border-color: #818cf8; box-shadow: 0 0 0 2px rgba(129,140,248,0.5); }
+.add-btn-row { margin-top: 34px; }
+.add-btn-row .pill { min-width: 220px; text-align: center; }
+.cfg-row .a-url { color: #6f7788; }
+
+/* --- Player OSD --- */
+#player-osd { position: absolute; left: 0; right: 0; bottom: 0; height: 220px; z-index: 20; padding: 40px 60px; background: linear-gradient(transparent, rgba(0,0,0,0.9)); }
+#osd-title { font-size: 30px; font-weight: bold; margin-bottom: 20px; }
+#osd-bar { position: relative; height: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; }
+#osd-buffer { position: absolute; top: 0; left: 0; height: 8px; background: rgba(255,255,255,0.35); border-radius: 4px; width: 0; }
+#osd-progress { position: absolute; top: 0; left: 0; height: 8px; background: #818cf8; border-radius: 4px; width: 0; z-index: 2; }
+/* Scrub preview (LEFT/RIGHT, FF/REW): the stretch being jumped over, a marker at the
+   landing point and a time bubble above it. The seek happens once the presses stop. */
+#osd-chapter { margin: -14px 0 10px; font-size: 22px; color: #c7d2fe; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#osd-sponsor { position: absolute; top: 0; left: 0; right: 0; height: 8px; z-index: 3; }
+.osd-sb { position: absolute; top: 0; height: 8px; opacity: 0.85; }
+.osd-sb-poi { position: absolute; top: -4px; width: 8px; height: 16px; margin-left: -4px; background: #fff; border: 2px solid #000; }
+#osd-chapters { position: absolute; top: 0; left: 0; right: 0; height: 8px; z-index: 3; }
+.osd-chapter-mark { position: absolute; top: -1px; width: 4px; height: 10px; margin-left: -2px; background: #000; }
+#osd-scrub-range { position: absolute; top: 0; height: 8px; background: rgba(165,180,252,0.5); border-radius: 4px; z-index: 3; }
+#osd-scrub { position: absolute; top: -9px; width: 6px; height: 26px; margin-left: -3px; background: #fff; border-radius: 3px; box-shadow: 0 0 0 2px #6366f1; z-index: 4; }
+#osd-scrub-time { position: absolute; bottom: 34px; left: 50%; -webkit-transform: translateX(-50%); transform: translateX(-50%); white-space: nowrap; font-size: 26px; font-weight: bold; color: #fff; background: rgba(20,25,36,0.96); border: 2px solid #6366f1; padding: 6px 14px; border-radius: 8px; }
+#osd-scrub.edge-l #osd-scrub-time { left: 0; -webkit-transform: none; transform: none; }
+#osd-scrub.edge-r #osd-scrub-time { left: auto; right: 0; -webkit-transform: none; transform: none; }
+#osd-times { display: flex; justify-content: space-between; margin-top: 10px; font-size: 20px; color: #cfd3dc; }
+#osd-times .osd-right { display: flex; align-items: center; }
+#osd-tags { font-size: 17px; color: #9aa2b1; margin-right: 18px; letter-spacing: 0.3px; }   /* (what's playing, in short) */
+#osd-tags:empty { display: none; }
+#osd-cur.live { color: #ff4d4d; font-weight: bold; letter-spacing: 1px; }
+#osd-hint { margin-top: 14px; font-size: 18px; color: #8b93a5; }
+
+/* --- Subtitles --- */
+#subs { position: absolute; left: 0; right: 0; bottom: 130px; z-index: 18; text-align: center; padding: 0 140px; }
+#subs2 { position: absolute; left: 0; right: 0; top: 60px; z-index: 18; text-align: center; padding: 0 140px; }   /* (the second subtitle, at the top) */
+#subs2 span { display: inline-block; background: rgba(0,0,0,0.6); color: #fff; font-size: 36px; line-height: 1.4; padding: 4px 16px; border-radius: 6px; white-space: pre-wrap; text-shadow: 0 2px 3px #000; }
+#subs span { display: inline-block; background: rgba(0,0,0,0.6); color: #fff; font-size: 36px; line-height: 1.4; padding: 4px 16px; border-radius: 6px; white-space: pre-wrap; text-shadow: 0 2px 3px #000; }
+
+#sub-menu { position: absolute; right: 60px; bottom: 250px; width: 560px; max-height: 620px; overflow: hidden; z-index: 30; background: rgba(20,25,36,0.98); border-radius: 12px; padding: 18px; }
+#sub-menu .sm-title { font-size: 24px; font-weight: bold; margin-bottom: 12px; color: #c7cbd4; }
+#sub-menu .sm-list { max-height: 520px; overflow: hidden; }
+#sub-menu .sm-item { padding: 12px 16px; border-radius: 8px; border: 3px solid transparent; }
+#sub-menu .sm-item .sm-main { font-size: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#sub-menu .sm-item .sm-detail { font-size: 16px; color: #9aa2b1; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#sub-menu .sm-item.sm-tall .sm-detail { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-height: 42px; line-height: 21px; }
+#sub-menu .sm-item.sel { background: #818cf8; color: #0e1117; }
+#sub-menu .sm-item.sel .sm-detail { color: #26304a; }
+
+/* --- Search --- */
+.search-wrap { position: absolute; top: 120px; left: 60px; right: 60px; bottom: 40px; }
+.search-bar { display: flex; margin-bottom: 26px; }
+#search-input { flex: 1; padding: 16px 20px; font-size: 26px; background: #0e1117; color: #fff; border: 4px solid #2a3346; border-radius: 8px; }
+#search-input.focused { border-color: #818cf8; }
+.search-go { margin-left: 16px; }
+/* Results keep exactly 7 portrait columns (7 x 222px - 22 = 1532px + padding, with room
+   on the right for the focused card's scale + ring); the ~220px that used to sit empty
+   to their right holds the recent-searches column. */
+.search-results { position: absolute; top: 96px; left: 0; right: 228px; bottom: 0; overflow: hidden; white-space: normal; padding: 22px 16px 22px 0; }
+.search-results .card { margin: 0 22px 24px 0; }
+/* results: one row per catalog (the rows scroll sideways, the list up and down). The
+   row's padding leaves room for the focused card's zoom and ring (about 14px each side),
+   which the row would otherwise clip on the first card's left edge. */
+.search-results .row-title { margin-left: 24px; font-size: 24px; }
+.search-results .row-scroller { padding: 26px 24px; }
+.search-results .row .card { margin: 0 22px 0 0; }
+.search-empty { font-size: 24px; color: #8b93a5; margin-top: 30px; }
+/* while a search's sources answer (and, after, the ones that didn't) */
+.search-status { display: flex; align-items: center; margin: 0 0 10px 24px; font-size: 22px; color: #8b93a5; min-height: 34px; }
+.search-status .spin-small { width: 22px; height: 22px; border-width: 4px; margin-right: 14px; flex: 0 0 auto; }
+.search-status-warn { color: #f0a5a5; }
+.search-recent { position: absolute; top: 96px; right: 0; width: 216px; bottom: 0; overflow: hidden; padding: 22px 4px 0 4px; }
+.recent-title { font-size: 18px; color: #8b93a5; margin-bottom: 12px; }
+.recent-item { padding: 12px 14px; margin-bottom: 10px; background: #161b26; border-radius: 8px; font-size: 20px; border: 4px solid transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recent-item.focusable.focused { background: #818cf8; color: #0e1117; border-color: #fff; }
+
+/* --- Stream info overlay (player menu) --- */
+#stream-info { position: absolute; top: 50px; right: 60px; z-index: 26; min-width: 460px; max-width: 760px; background: rgba(14,17,23,0.9); border: 2px solid #2a3346; border-radius: 12px; padding: 16px 22px; font-size: 20px; }
+#stream-info .si-row { display: flex; padding: 3px 0; }
+#stream-info .si-k { flex: 0 0 130px; color: #8b93a5; }
+#stream-info .si-v { flex: 1; color: #e6e9ef; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* --- Home: focused title's details between the top menu and the rows --- */
+.home-info + .rows { top: 274px; }   /* rows start just below the details strip, so it reads as theirs */
+/* Details strip: a clear gap under the top menu, sitting right on top of the rows.
+   Inset so its text lines up with the row titles (36 + 5 + 19 = 60px); shaded only while it
+   describes a title (.on). */
+.home-info { position: absolute; top: 117px; left: 36px; right: 36px; height: 142px; box-sizing: border-box;
+    padding: 10px 24px 10px 19px; overflow: hidden; border-radius: 12px; border-left: 5px solid transparent; }
+.home-info.on { background: linear-gradient(90deg, rgba(129,140,248,0.20) 0%, rgba(129,140,248,0.07) 55%, rgba(129,140,248,0.02) 100%);
+    border-left-color: #818cf8; }
+.home-info-title { font-size: 30px; line-height: 36px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-info-meta { font-size: 20px; line-height: 24px; color: #a7adba; margin: 4px 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-info-desc { font-size: 19px; line-height: 26px; color: #cfd3dc; max-height: 52px; overflow: hidden; max-width: 1400px; }
+
+/* --- Watched mark on posters --- */
+.card .card-rating { position: absolute; top: 8px; left: 8px; z-index: 2; padding: 3px 9px; border-radius: 12px; background: rgba(0,0,0,0.72); color: #ffd257; font-size: 17px; font-weight: bold; }
+.card .card-watched { position: absolute; top: 8px; right: 8px; z-index: 2; width: 34px; height: 34px; line-height: 34px; text-align: center; border-radius: 17px; background: rgba(99,102,241,0.95); color: #fff; font-size: 20px; font-weight: bold; }
+
+/* --- Contextual quick-action bar (UP) --- */
+#player-bar { position: absolute; left: 0; right: 0; bottom: 250px; z-index: 22; text-align: center; white-space: nowrap; }   /* (up to ten buttons: one line, compact) */
+#player-bar .pb-btn { display: inline-block; margin: 0 6px; padding: 14px 22px; font-size: 24px; border-radius: 40px; background: rgba(22,27,38,0.95); border: 4px solid transparent; color: #e6e9ef; }
+#player-bar .pb-btn.sel { background: #818cf8; color: #0e1117; border-color: #fff; }
+/* Cast & crew over the video (quick bar): a strip of photos, moved to keep the selected one in view */
+#cast-strip { position: absolute; left: 0; right: 0; bottom: 230px; z-index: 23; padding: 18px 60px 22px 60px; background: rgba(0,0,0,0.55); overflow: hidden; }   /* see-through, like the subtitles' default box; dark whatever the Appearance background */
+#cast-strip .cs-head { display: flex; align-items: baseline; margin-bottom: 14px; }
+#cast-strip .cs-title { flex: 1; font-size: 24px; font-weight: bold; color: #e6e9ef; text-shadow: 0 1px 3px rgba(0,0,0,0.9); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#cast-strip .cs-hint { flex: 0 0 auto; margin-left: 24px; font-size: 18px; color: #b4bac6; text-shadow: 0 1px 3px rgba(0,0,0,0.9); white-space: pre; }
+#cast-strip .cs-strip { white-space: nowrap; height: 330px; }
+#cast-strip .cs-card { display: inline-block; vertical-align: top; width: 172px; margin-right: 24px; white-space: normal; }
+#cast-strip .cs-photo { display: block; box-sizing: border-box; width: 172px; height: 240px; object-fit: cover; border-radius: 10px; background: #1a1f2b; border: 4px solid transparent; }
+#cast-strip .cs-none { line-height: 240px; text-align: center; font-size: 72px; color: #4b5366; }
+#cast-strip .cs-card.sel .cs-photo { border-color: #818cf8; }
+#cast-strip .cs-name { font-size: 20px; color: #e6e9ef; text-shadow: 0 1px 3px rgba(0,0,0,0.9); margin-top: 8px; max-height: 50px; overflow: hidden; }
+#cast-strip .cs-role { font-size: 16px; color: #b4bac6; text-shadow: 0 1px 3px rgba(0,0,0,0.9); max-height: 40px; overflow: hidden; }
+#cast-strip .cs-card.sel .cs-name { color: #818cf8; }
+#cast-strip .cs-note { font-size: 20px; color: #8b93a5; }
+/* A YouTube video's end screen (its linked videos) and cards, over the video */
+#yt-links { position: absolute; left: 0; right: 0; bottom: 230px; z-index: 23; padding: 18px 60px 22px 60px; background: rgba(0,0,0,0.55); }
+#yt-links .yl-head { display: flex; align-items: baseline; margin-bottom: 14px; }
+#yt-links .yl-heading { flex: 1; font-size: 24px; font-weight: bold; color: #e6e9ef; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+#yt-links .yl-hint { font-size: 18px; color: #b4bac6; white-space: pre; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+#yt-links .yl-row { white-space: nowrap; overflow: hidden; }
+#yt-links .yl-card { display: inline-block; vertical-align: top; width: 320px; margin-right: 24px; white-space: normal; }
+#yt-links .yl-thumb { display: block; box-sizing: border-box; width: 320px; height: 180px; border-radius: 10px; background: #1a1f2b; border: 4px solid transparent; object-fit: cover; }
+#yt-links .yl-card.sel .yl-thumb { border-color: #818cf8; }
+#yt-links .yl-title { font-size: 20px; color: #e6e9ef; margin-top: 8px; max-height: 52px; overflow: hidden; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+#yt-links .yl-card.sel .yl-title { color: #818cf8; }
+#yt-card { position: absolute; right: 60px; top: 60px; z-index: 24; max-width: 520px; padding: 14px 20px; border-radius: 12px; background: rgba(0,0,0,0.7); border-left: 4px solid #818cf8; }
+#yt-card .yc-teaser { font-size: 20px; color: #e6e9ef; }
+#yt-card .yc-title { font-size: 18px; color: #b4bac6; margin-top: 4px; max-height: 48px; overflow: hidden; }
+#yt-card .yc-hint { font-size: 16px; color: #818cf8; margin-top: 6px; }
+
+/* --- Skip intro/recap/credits prompt --- */
+#skip-prompt { position: absolute; right: 60px; bottom: 250px; z-index: 24; text-align: right; }
+#skip-prompt .skip-btn { display: inline-block; margin-left: 12px; padding: 16px 30px; font-size: 26px; font-weight: bold; border-radius: 10px; background: rgba(22,27,38,0.96); border: 4px solid #818cf8; color: #e6e9ef; }
+#skip-prompt .skip-btn.sel { background: #818cf8; color: #0e1117; border-color: #fff; }
+
+/* --- Landscape poster mode --- */
+.card .poster { object-fit: cover; }
+.card.landscape { width: 340px; height: 200px; }
+
+/* --- Confirm modal --- */
+.modal-overlay { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; z-index: 45; background: rgba(0,0,0,0.72); display: flex; align-items: center; justify-content: center; }
+.modal-box { width: 820px; background: #161b26; border: 2px solid #2a3346; border-radius: 16px; padding: 44px 48px; text-align: center; }
+.modal-msg { font-size: 30px; line-height: 1.4; color: #e6e9ef; margin-bottom: 36px; }
+.modal-row { display: flex; justify-content: center; }
+.modal-btn { min-width: 200px; text-align: center; }
+/* Watching's, an addon's and a playlist's menus: as wide as their buttons (each sized to its words, on one
+   line), within the screen; the name above wraps rather than widening it */
+.actions-box { width: auto; min-width: 560px; max-width: 1760px; }
+.actions-box .modal-btn { min-width: 0; white-space: nowrap; padding: 14px 24px; margin-right: 12px; }
+.actions-box .modal-btn:last-child { margin-right: 0; }
+/* Settings › IPTV: ▲ ▼ and the playlist (name, link, channels / downloaded, problem) */
+.playlist-row { align-items: stretch; margin-bottom: 10px; }
+.playlist-row .feed-btn { display: flex; align-items: center; justify-content: center; }
+.playlist-row .playlist-item { flex: 1; margin-bottom: 0; }
+.feed-off .playlist-item { opacity: 0.5; }
+.playlist-item .addon-said:empty { display: none; }
+/* list picker (single choice) */
+.pick-box { width: 720px; text-align: left; }
+.pick-box .modal-msg { text-align: left; margin-bottom: 20px; }
+.pick-list { max-height: 620px; overflow: hidden; }
+.pick-item { padding: 14px 20px; margin-bottom: 8px; border-radius: 8px; background: #0e1117; border: 4px solid transparent; font-size: 24px; }
+.pick-item.sel { background: #2a3346; }
+.pick-item.focusable.focused { background: #818cf8; color: #0e1117; border-color: #fff; }
+
+/* Trakt connect overlay */
+.trakt-connect { margin: 8px 0 28px; }
+.trakt-connect .tc-line { font-size: 24px; color: #cfd3dc; margin: 10px 0; }
+.trakt-connect .tc-line.small { font-size: 20px; color: #8b93a5; }
+.trakt-connect .tc-url { font-size: 30px; font-weight: bold; color: #818cf8; margin: 6px 0; }
+.trakt-connect .tc-qr { display: block; margin: 8px auto 4px; border-radius: 6px; }   /* (white, with its quiet margin: drawn so) */
+.trakt-connect .tc-code { font-size: 56px; font-weight: bold; letter-spacing: 6px; color: #fff; margin: 14px 0; }
+
+.pill.danger { background: #3a2130; }
+.pill.danger.focusable.focused { background: #ef4444; color: #fff; }
+.reset-item .a-name { color: #f0a5a5; }
+
+/* --- Toast + spinner --- */
+#hold-hint { position: absolute; right: 36px; bottom: 20px; z-index: 20; font-size: 17px; color: #c7cbd4; background: rgba(0,0,0,0.6); padding: 6px 14px; border-radius: 16px; pointer-events: none; }
+#toast { position: absolute; bottom: 60px; left: 50%; margin-left: -300px; width: 600px; text-align: center; z-index: 40; background: rgba(0,0,0,0.85); padding: 18px 24px; border-radius: 10px; font-size: 22px; }
+#spinner { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.3); }
+/* status line under the spinner ("Opening stream at 1080p…"); empty when unused */
+#spinner-msg { margin-top: 26px; font-size: 28px; color: #fff; text-shadow: 0 2px 6px #000; text-align: center; }
+.spin { width: 70px; height: 70px; border: 7px solid rgba(255,255,255,0.2); border-top-color: #818cf8; border-radius: 50%; -webkit-animation: sp 0.9s linear infinite; animation: sp 0.9s linear infinite; }
+@-webkit-keyframes sp { to { -webkit-transform: rotate(360deg); } }
+@keyframes sp { to { transform: rotate(360deg); } }
+
+/* Home top row: tab pills + Search + Settings on the left, StremioK logo on the right */
+.home-header .tabbar-inline { display: flex; align-items: center; }
+.tab-pill { display: inline-flex; align-items: center; font-size: 22px; padding: 8px 13px; margin-right: 6px; border-radius: 28px; background: #1a1f2b; color: #aeb6c4; border: 4px solid transparent; white-space: nowrap; }
+.tab-ic { margin-left: 6px; font-size: 22px; }
+.tab-pill.active { background: #2a3346; color: #fff; }
+.tab-pill.focusable.focused { background: #818cf8; color: #0e1117; border-color: #fff; }
+.home-header .hchip.active { background: #2a3346; color: #fff; opacity: 1; }
+.row-empty { margin: 50px 60px; font-size: 26px; color: #8b93a3; }
+
+/* --- Subtitle fonts (bundled; SIL Open Font License, see css/fonts/OFL-*.txt) ---
+   Latin, Latin-extended and Cyrillic subsets; unicode-range makes the webview
+   load only the files a subtitle needs. Other scripts fall back to the TV font. */
+@font-face { font-family: 'SK Roboto'; font-style: normal; font-weight: 500; src: url(fonts/roboto-cyrillic.woff2) format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: 'SK Roboto'; font-style: normal; font-weight: 500; src: url(fonts/roboto-latin-ext.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'SK Roboto'; font-style: normal; font-weight: 500; src: url(fonts/roboto-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'SK Atkinson Hyperlegible'; font-style: normal; font-weight: 400; src: url(fonts/atkinson-latin-ext.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'SK Atkinson Hyperlegible'; font-style: normal; font-weight: 400; src: url(fonts/atkinson-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'SK Nunito'; font-style: normal; font-weight: 600; src: url(fonts/nunito-cyrillic.woff2) format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: 'SK Nunito'; font-style: normal; font-weight: 600; src: url(fonts/nunito-latin-ext.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'SK Nunito'; font-style: normal; font-weight: 600; src: url(fonts/nunito-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'SK Cousine'; font-style: normal; font-weight: 400; src: url(fonts/cousine-cyrillic.woff2) format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: 'SK Cousine'; font-style: normal; font-weight: 400; src: url(fonts/cousine-latin-ext.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'SK Cousine'; font-style: normal; font-weight: 400; src: url(fonts/cousine-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+/* --- Appearance: color swatch in the accent picker --- */
+.pick-item .swatch { display: inline-block; width: 24px; height: 24px; border-radius: 12px; margin-right: 16px; vertical-align: middle; border: 2px solid rgba(255,255,255,0.35); }
+
+/* --- Title logos (instead of the title as text) --- */
+.detail-title.has-logo { height: 84px; margin-bottom: 14px; }
+.detail-logo { display: block; max-height: 84px; max-width: 560px; }
+.series-body .detail-title.has-logo { height: 64px; margin-bottom: 8px; }
+.series-body .detail-meta { margin-bottom: 12px; }   /* (tighter: headroom for the TV's taller font above the buttons) */
+.series-body .detail-logo { max-height: 64px; }
+.detail-title.logo-failed { line-height: 84px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 1400px; }
+.series-body .detail-title.logo-failed { line-height: 64px; }
+.home-info-title { height: 36px; }
+.home-info-logo { display: block; max-height: 36px; max-width: 520px; }
+
+/* --- Ratings from MDBList --- */
+.detail-ratings { font-size: 21px; line-height: 26px; height: 26px; color: #ffd257; margin: -6px 0 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 1400px; }
+.detail-ratings:empty { display: none; }
+.detail-ratings.reserve:empty { display: block; }   /* ratings on their way: keep their line */
+
+/* --- Cast & more / person pages --- */
+.more-body { max-height: 290px; overflow: hidden; }
+.more-body .detail-desc { max-height: 64px; margin-bottom: 0; }
+.person-body { right: 360px; }   /* clear of the photo */
+.person-body .detail-desc { max-height: 128px; }
+.ratings-body .detail-desc { display: none; }
+/* full width like the Home rows: the row padding leaves room for the focused (scaled,
+   ringed) first card, which a panel starting at 60px would clip */
+.more-panel { top: 440px; left: 0; right: 0; bottom: 0; }
+.more-rows { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; }
+.card.person-card { width: 150px; height: 225px; }
+.card .cap .cap-name { font-weight: bold; }
+.card .cap .cap-sub { font-size: 15px; color: #c7cbd4; }
+.person-photo { position: absolute; top: 116px; right: 80px; width: 220px; height: 330px; border-radius: 12px; background-size: cover; background-position: center top; }
+
+/* --- Episode ratings grid --- */
+.grid-panel { top: 360px; bottom: 30px; }
+.grid-scroll { position: absolute; top: 0; left: 0; right: 0; bottom: 40px; overflow: hidden; }
+.grid-table .grid-row { white-space: nowrap; height: 52px; }   /* (the episode ratings grid only: Home's Watching rows are .grid-row too) */
+.grid-cell { display: inline-block; width: 76px; height: 44px; line-height: 38px; margin: 0 6px 8px 0; text-align: center; border-radius: 6px; font-size: 20px; font-weight: bold; vertical-align: top; border: 3px solid transparent; color: #fff; }
+.grid-label { color: #8b93a5; }
+.r-na { background: #1a1f2b; color: #6f7788; }
+.r-9 { background: #15803d; }
+.r-8 { background: #22a35a; }
+.r-7 { background: #b89514; }
+.r-6 { background: #c2621b; }
+.r-5 { background: #b42318; }
+.grid-cell.focusable.focused { border-color: #fff; }
+.grid-legend { position: absolute; left: 0; bottom: 0; font-size: 18px; color: #8b93a5; }
+
+/* --- Continue Watching: new episode --- */
+.dl-list { margin: 6px 40px 18px 60px; max-width: 1500px; }   /* (the Local tab's Downloads: lined up with the drives' grid) */
+.dl-list .row-title { margin-left: 0; }
+.dl-list .dl-item.done .a-name { color: #9ae6b4; }
+.dl-list .dl-item.failed .a-name { color: #fbbf24; }
+.rows .cal-watched { display: inline-block; min-width: 520px; margin: 22px 0 6px 0; }   /* (the Calendar's Watched: OK shows it) */
+.card .card-new.card-code { background: rgba(14, 17, 23, 0.85); color: #e6e9ef; }   /* (the Calendar's episode / percentage tag) */
+.card .card-new { position: absolute; top: 8px; left: 8px; z-index: 2; padding: 3px 10px; border-radius: 6px; background: #ef4444; color: #fff; font-size: 16px; font-weight: bold; }
+
+/* --- Source list: quality group headings, Play best --- */
+.stream-group { font-size: 22px; font-weight: bold; color: #c7cbd4; margin: 22px 0 10px 6px; }
+.stream-group:first-child, .stream-for + .stream-group { margin-top: 4px; }
+.no-sources { margin: 2px 0 14px 6px; }
+.stream-note { margin: 0 0 14px 6px; max-width: 1500px; }   /* an addon's "why" (AIOStreams' Removal Reasons…) */
+.stream-note .sn-title { font-size: 22px; color: #e6e9ef; }
+.stream-note .sn-text { font-size: 20px; color: #a7adba; margin-top: 4px; }   /* "No sources found." above its Re-scan row */
+.stream-for { font-size: 20px; color: #a7adba; margin: 2px 0 12px 6px; }   /* "Sources for The Bear  S2E1 · 1 more addon still loading…" */
+
+/* --- Settings > Formats --- */
+.formats-group { font-size: 22px; font-weight: bold; color: #c7cbd4; margin: 20px 0 10px 4px; }
+.format-row.format-ok .a-name { color: #7ee2a8; }
+.format-row.format-bad .a-name { color: #f0a5a5; }
+.format-row.focusable.focused .a-name { color: inherit; }
+
+/* --- Discover --- */
+.discover-bar { position: absolute; top: 112px; left: 60px; right: 60px; white-space: nowrap; }
+.discover-bar .pill { margin-right: 12px; }
+.discover-search { width: 300px; margin-right: 12px; padding: 12px 22px; font-size: 22px; vertical-align: middle; background: #1a1f2b; color: #e6e9ef; border: 4px solid transparent; border-radius: 30px; }
+.discover-search.focused { border-color: #818cf8; }
+.discover-count { display: inline-block; margin-left: 14px; font-size: 20px; color: #8b93a5; vertical-align: middle; }
+#screen-discover .home-info { top: 196px; height: 124px; }
+#screen-discover .home-info-desc { max-height: 26px; }
+.discover-grid { position: absolute; top: 330px; left: 0; right: 0; bottom: 0; overflow: hidden;
+    padding: 26px 40px 60px 60px; display: flex; flex-wrap: wrap; align-content: flex-start; overflow-anchor: none; }   /* the app keeps its place when rows go (newer browsers would too: twice) */
+.discover-grid .card { flex: 0 0 auto; margin: 0 22px 34px 0; }
+.discover-grid .row-empty { margin: 30px 0; }
+.discover-grid .discover-empty { flex: 0 0 100%; }   /* an empty answer: its message, then ↻ Try again under it */
+.discover-grid .discover-empty .row-empty { margin: 30px 0 22px 0; }
+.discover-grid .discover-retry { display: inline-block; }
+/* Continue Watching: the cards wrap into a grid (like Discover's), which the rows area scrolls */
+.card-grid { display: flex; flex-wrap: wrap; align-content: flex-start; padding: 26px 40px 30px 60px; }
+.card-grid .card { flex: 0 0 auto; margin: 0 22px 34px 0; }
+/* Local tab (a USB drive): folders as plain tiles, a video with no poster by its name */
+.card.local-folder { background: #1c2333; }
+.card.local-folder .fallback { font-size: 24px; color: #c9cfdb; }
+.card.local-video .fallback { font-size: 18px; word-break: break-word; }
+
+/* Hide spoilers: an unwatched episode's still, blurred */
+.ep-thumb.spoiler { -webkit-filter: blur(14px); filter: blur(14px); }
+/* Direct links only: how many sources were left out */
+.streams-hidden { font-size: 20px; color: #9aa3b5; margin: 4px 0 12px; }
+/* Continue on phone: the QR in the player's menu */
+.phone-qr { padding: 8px 4px 12px; }
+.phone-qr-spot { text-align: center; margin-bottom: 10px; }
+.phone-qr-spot canvas { display: inline-block; }   /* (drawn at its own size: scaling blurs it on Tizen 3) */
+/* QR dialogs: an addon's Share / Configure, Play a link from the phone */
+.qr-box { width: 900px; }
+.qr-spot { text-align: center; margin: 4px 0 14px; min-height: 40px; }
+.qr-spot canvas { display: inline-block; }
+.qr-link { font-size: 22px; color: #c7cbd4; text-align: center; word-break: break-all; margin-bottom: 10px; }
+.qr-note { font-size: 20px; color: #9aa3b5; text-align: center; margin-bottom: 18px; line-height: 1.4; }
+
+/* Where an addon came from (Settings › Addons): S Stremio, A AIOManager, C a configuration file */
+.src-badge { display: inline-block; margin-left: 12px; padding: 1px 8px; border-radius: 6px; font-size: 18px; font-weight: bold; line-height: 1.3; color: #fff; vertical-align: middle; }
+.src-s { background: #7b5bf5; }
+.src-a { background: #0f9f8f; }
+.src-c { background: #6b7280; }
