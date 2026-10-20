@@ -8,6 +8,7 @@ Settings (**Settings ⚙**, after Search in the top menu, or **0** on the remote
 [Diagnostics](#diagnostics). Each opens a page of its sections. BACK goes up a level, onto the
 row you came from. Wherever a setting asks for a link or text, **▣ From your phone** sends it
 from your phone instead (see the [user guide](USER-GUIDE.md#typing-or-sending-from-your-phone)).
+In a list you order, ▲ / ▼ move an item one place and ⇈ / ⇊ move it to the top or bottom.
 
 - [Content](#content): [Addons](#addons), [AIOManager](#aiomanager),
   [Integrations](#integrations), [IPTV](#iptv), [YouTube](#youtube),
@@ -25,16 +26,17 @@ from your phone instead (see the [user guide](USER-GUIDE.md#typing-or-sending-fr
 ### Addons
 
 Adding, importing, ordering and managing addons is in the user guide's
-[Getting started](USER-GUIDE.md#add-your-addons).
+[Getting started](USER-GUIDE.md#add-your-addons). Each addon shows its logo, or its initial when
+it has none or the logo can't be loaded.
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *+ Add addon* | a manifest link | Adds an addon (`https://…/manifest.json`, or a `stremio://` install link). Only v3 addons work. |
 | *Import addons from your Stremio account* | | Lists your Stremio account's addons to tick and import. |
 | *AIOManager* | | Its own page: see [AIOManager](#aiomanager). |
-| Each addon | *Refresh*, *Remove*, *Share*, *Configure*, ▲ / ▼ | Reloads it, removes it, shows a QR code of its link (with your tokens: show it only to your own devices), shows a QR code of its setup page, or moves it. Higher addons describe titles first. |
+| Each addon | *Refresh*, *Turn off* / *Turn on*, *Remove*, *Share*, *Configure*, ⇈ ▲ ▼ ⇊ | Reloads it, switches it off (kept, not asked for anything) or on, removes it, shows a QR code of its link (with your tokens: show it only to your own devices) or of its setup page, or moves it. Higher addons describe titles first. |
 | *Wait for addons* | **Normal** (12 s; sources 15, search 25), 20, 30, 45, 60 seconds | How long StremioK waits for an addon's answer. Longer helps an addon hosted where it sleeps when unused: it fails the first time and answers the next. |
-| *Local-network links from internet addons* | **Blocked**, Allowed | Blocked, an addon on the internet can't point links into your home network (router, NAS, cameras, the TV itself). Addons on your own network and your IPTV playlists aren't affected. See [Privacy](PRIVACY.md#your-home-network). |
+| *Local-network links from internet addons* | **Blocked**, Allowed | Blocked, internet addons can't point links into your home network; your own network's addons and your playlists still can. See [Privacy](PRIVACY.md#your-home-network). |
 
 ### AIOManager
 
@@ -136,6 +138,7 @@ lines starting with `#` are ignored. What it has is listed to tick and import. S
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Seek step* | 5, **10**, 15, 30 seconds | How far LEFT / RIGHT jump. FF / REW jump three steps; holding a direction speeds up. |
+| *Reconnect live channels* | Off, **A few times**, Keep trying | A live channel that drops (its connection lost, or it freezes or ends) opens again at the live edge. A few times: up to 3 in 5 minutes. Keep trying: no limit, each try a little later (up to a minute apart); BACK stops it. Off: the player closes. |
 | *Buffer* | **Normal (the TV's own)**, More, Most | How much the TV's player loads before it starts and after running dry (More: 8 and 10 seconds; Most: 15 and 20). It applies from the next video. More takes a little longer to start but runs dry less on a slow connection. A 2017 TV stays within a few seconds' worth more. |
 
 ### Source ranking

@@ -43,7 +43,7 @@ is shown or appears in an error message, and in the logs.
 | Media servers (debrid services, the hosts in a source's link) | Requests for the video itself, with whatever the link carries (debrid tokens) and the headers an addon asks for | As something plays or downloads |
 | IPTV providers | Requests for your playlists and channels, with the username and password in their links and a channel's own headers | As you load playlists and watch |
 | Subtitle-file hosts | Requests for the subtitle files your addons list | As something plays |
-| Image hosts | Requests for posters and pictures | As you browse |
+| Image hosts | Requests for posters, pictures and addon logos | As you browse |
 
 StremioK has no analytics and sends nothing to its developers.
 
@@ -57,7 +57,7 @@ on, what you play isn't recorded:
 - nothing sent to Trakt;
 - no "played before", no remembered subtitle or audio choice;
 - a YouTube video's audio language isn't remembered, and Diagnostics doesn't name it ("a private
-  playback").
+  playback"): a network error during it is logged with the server's name only, not the link.
 
 What you do by hand (*Mark watched*, *Add to Continue Watching*) still counts. What starts from a
 private playback is private too: a video followed from an end screen, another source picked in
@@ -124,8 +124,7 @@ modules you trust, or use the sideloaded app, which keeps its data to itself.
 
 - **Trakt:** disconnecting stops everything under way for that sign-in and clears what was kept
   from Trakt (history, Continue Watching, rows, ratings) and the changes waiting.
-- **AIOManager:** *Forget AIOManager* clears the address, the key and the record of what came
-  from it (your addons stay).
+- **AIOManager:** *Forget AIOManager* (see [Getting started](USER-GUIDE.md#add-your-addons)).
 - **Saved copies:** Settings › Diagnostics › Storage › *Clear saved copies*.
 - **USB:** *Clear the USB index* and *Forget matches* (Settings › Content › USB drive).
 - **Formats:** *Forget all formats* (Settings › Playback › Formats).

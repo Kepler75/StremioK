@@ -28,6 +28,7 @@
         { key: 'tv', icon: '📡', label: 'IPTV' },
         { key: 'radio', icon: '📻', label: 'Radio' },
         { key: 'sport', icon: '⚽', label: 'Sports' },
+        { key: 'youtube', icon: '📹', label: 'YouTube' },   // (StremioK's YouTube catalogs, an addon's YouTube / channel ones: see isYouTubeCat)
         { key: 'local', icon: '💾', label: 'Local' }   // (a USB drive plugged in: see LocalMedia)
     ];
     function hasLocal() { return typeof LocalMedia !== 'undefined' && LocalMedia.present(); }
@@ -46,10 +47,18 @@
         });
     }
 
-    // Which cached catalogs belong to a tab. Sports and radio have dedicated tabs;
-    // Live TV is the catch-all for every other live source (tv, channel, …).
+    // YouTube's tab: StremioK's own YouTube catalogs (whatever type you gave one: "Podcasts"),
+    // and another addon's YouTube or channel catalogs (YouTubio's "YouTube", Stremio's "channel").
+    function isYouTubeCat(c) {
+        var m = c.addon && c.addon.manifest;
+        return !!(m && m.id === 'org.stremiok.youtube') || /^(youtube|channel)$/i.test('' + c.type);
+    }
+    // Which cached catalogs belong to a tab. Sports, radio and YouTube have dedicated tabs;
+    // IPTV is the catch-all for every other live source (tv, …).
     function catsForTab(key) {
         return (_homeCatalogs || []).filter(function (c) {
+            if (key === 'youtube') { return isYouTubeCat(c); }
+            if (isYouTubeCat(c)) { return false; }
             if (key === 'movie') { return c.type === 'movie'; }
             if (key === 'series') { return c.type === 'series'; }
             if (key === 'sport') { return c.type === 'sport'; }
@@ -967,16 +976,18 @@
         showModal(overlay, details || watched);
     }
 
-    // Local progress merged with Trakt playback (when connected), deduped, newest first.
+    // Local progress merged with Trakt playback (when connected), deduped, newest first; a
+    // place kept here that Trakt has you watching past since (another TV) left out.
     // One card per show: its furthest episode (highest season, then episode), placed by
     // the show's most recent activity. The others ride along as _dupes so Remove clears
     // the whole show.
     // byActivity: the most recent activity first, whatever order you gave the row (Move): the
     // home bar's tiles (previewTiles).
     function continueEntries(byActivity) {
-        var local = Player.continueList();
+        var local = Player.continueList(), traktOn = typeof Trakt !== 'undefined' && Trakt.isConnected();
+        if (traktOn && Trakt.watchedPast) { local = local.filter(function (e) { return !Trakt.watchedPast(e); }); }
         var merged = local.slice();
-        if (typeof Trakt !== 'undefined' && Trakt.isConnected()) {
+        if (traktOn) {
             var seen = {};
             local.forEach(function (e) { seen[e.type + ':' + e.id] = 1; });
             Trakt.continueList().forEach(function (e) {
@@ -1272,6 +1283,8 @@
     if (typeof IPTV !== 'undefined' && IPTV.onProgress) {
         IPTV.onProgress(function (n) { if (_homeFirstLoad) { U.spinner(true, channelsText(n)); } });
     }
+    // The IPTV playlists read after your addons loaded (they aren't waited for): their rows join.
+    if (typeof Stremio !== 'undefined' && Stremio.onIptvReady) { Stremio.onIptvReady(function () { refreshAddonRows('local:iptv'); }); }
     var PARTIAL_DELAY = 150;   // coalesces catalogs that arrive together into one redraw
     function loadHomeCatalogs() {
         if (_homeLoading) { return; }
@@ -1295,19 +1308,21 @@
             _homeLoading = false;
             _homeFirstLoad = false;
             if (first) { U.spinner(false); }
+            if (_reloadOnly && onHome()) { setTimeout(loadHomeCatalogs, 0); }   // (rows asked for meanwhile: the IPTV ones, read after the addons)
         }
         function onHome() { return _current() === s && !isModalOpen() && !Player.isActive(); }
         Stremio.catalogsForHome().then(function (cats) {
             var acc = cats.map(function (cat) { return { name: cat.name, type: cat.type, metas: [] }; });
             var arrived = cats.map(function () { return false; }), shown = 0, partialTimer = null;
-            // First load: publish the rows that have arrived in order (row 1..n), and redraw
-            // when that changes the tab on screen.
+            // First load: publish each row as soon as it arrives, in its own place (a slower one above
+            // it held by a "Loading…" placeholder, so nothing jumps when it comes), and redraw when
+            // that changes the tab on screen.
             function partial() {
-                var n = 0;
-                while (n < arrived.length && arrived[n]) { n++; }
+                var n = arrived.filter(Boolean).length, last = arrived.lastIndexOf(true);
                 if (!first || n <= shown) { return; }
                 shown = n;
-                _homeCatalogs = splitOtherCatalogs(acc.slice(0, n)).filter(function (c) { return c.metas && c.metas.length; });
+                var now = acc.slice(0, last + 1).map(function (c, i) { return arrived[i] ? c : { name: c.name, type: c.type, metas: [], loading: true }; });
+                _homeCatalogs = splitOtherCatalogs(now).filter(function (c) { return c.loading || (c.metas && c.metas.length); });
                 if (partialTimer) { return; }
                 partialTimer = setTimeout(function () {
                     partialTimer = null;
@@ -1360,6 +1375,7 @@
     function splitOtherCatalogs(list) {
         var out = [];
         list.forEach(function (c) {
+            if (c.loading) { if (c.type !== 'other') { out.push({ name: c.name, type: c.type, metas: [], loading: true }); } return; }   // (a placeholder: still loading)
             if (c.type !== 'other') { out.push({ name: c.name, type: c.type, metas: c.metas.slice(0, ROW_CARDS) }); return; }
             var movies = [], series = [];
             c.metas.forEach(function (m) { (SERIES_NAME.test(m.name || '') ? series : movies).push(m); });
@@ -1379,6 +1395,7 @@
         for (var i = from; i < to; i++) {
             var c = cats[i];
             var row = buildRow(c.name, c.metas.map(function (m) { return posterCard(m, c.type); }));
+            if (c.loading) { row.className += ' row-loading'; row.appendChild(U.el('div', 'row-empty', 'Loading…')); }   // (its place kept: nothing to focus)
             rows.appendChild(row);
             built.push(row);
         }

@@ -22,6 +22,7 @@
     function infoLang() { return P.infoLang.apply(null, arguments); }   // lang
     function trackInfo() { return P.trackInfo.apply(null, arguments); }   // lang
     function hasQualities() { return P.hasQualities.apply(null, arguments); }   // quality
+    function qualityUnread() { return P.qualityUnread ? P.qualityUnread() : false; }   // quality
     function qualityCount() { return P.qualityCount.apply(null, arguments); }   // quality
     function qualityLabel() { return P.qualityLabel.apply(null, arguments); }   // quality
     function qualityMenu() { return P.qualityMenu.apply(null, arguments); }   // quality
@@ -627,6 +628,8 @@
         }
         if (hasQualities()) {
             items.push({ label: 'Video quality', detail: qualityLabel(), run: function () { pushMenu(qualityMenu()); } });
+        } else if (qualityUnread()) {
+            items.push({ label: 'Video quality', detail: 'Auto: this stream’s qualities couldn’t be read', run: function () { U.toast('This stream’s qualities couldn’t be read: it plays on Auto', 4000); } });
         }
         if (chapters().length) {
             var ci = chapterAt(S.cur);
@@ -683,6 +686,7 @@
     function canDownload() {
         var c = S.ctx, st = c && c.stream;
         return !!(st && c.downloadAs && !S.isLive && !c.trailer && !c.yt && !c.localFile && !st._localFile && !st._yt && /^https?:\/\//i.test(st.url || '') &&
+            (typeof Downloads === 'undefined' || !Downloads.isFileLink || Downloads.isFileLink(st)) &&
             typeof Downloads !== 'undefined' && Downloads.available());
     }
     function downloadPlaying() {
@@ -807,6 +811,7 @@
         }
         lines.push(['Subtitles', subtitleSummary()]);
         if (hasQualities()) { lines.push(['Quality', qualityLabel() + '  (' + qualityCount() + ' available)']); }
+        else if (qualityUnread()) { lines.push(['Quality', 'Auto (this stream’s qualities couldn’t be read)']); }
         if (useAV) {
             try {
                 var bw = +avplay.getStreamingProperty('CURRENT_BANDWIDTH');

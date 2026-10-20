@@ -26,7 +26,7 @@
     function resetQuality(ctx) {
         _variants = []; _qualityBw = null; _ytRetried = false; _switchNote = null;
         _userPicked = false; _autoRetried = false; _startNote = '';
-        loadVariants(ctx.variantUrl || ctx.url, ctx.initialQualityHeight || 0, !!ctx.variantUrl);
+        loadVariants(ctx.variantUrl || ctx.url, ctx.initialQualityHeight || 0, !!ctx.variantUrl, ctx._headers);
     }
     // Playback started: a switch is done; say where a fallback landed.
     function qualityOnStart() {
@@ -38,6 +38,8 @@
     function qualityHeight() { var v = variantByBw(_qualityBw); return v ? v.h : 0; }
     function qualityCount() { return _variants.length; }
     function hasQualities() { return _variants.length > 1; }
+    var _unread = false;   // an HLS stream whose quality list couldn't be read
+    function qualityUnread() { return _unread && !_variants.length; }
 
     // Auto lets AVPlay adapt to bandwidth; an explicit pick caps the ladder via ADAPTIVE_INFO.
     // Two cap strategies, because YouTube-style HLS breaks the usual one:
@@ -187,8 +189,11 @@
         var u = '' + (url || ''), path = u.split('#')[0].split('?')[0], query = u.split('#')[0].split('?')[1] || '';
         return /\.m3u8$/i.test(path) || /(^|&)(type|format|ext|output)=m3u8(&|$)/i.test(query);
     }
-    function getHlsMaster(url) {
-        return U.getText(url, 8000, HLS_MASTER_MAX).then(function (text) {
+    // h: the stream's own User-Agent / Referer ({ ua, ref }): the list is then read through
+    // StremioK's service, which can send them (as the TV's player does); a web page can't.
+    function getHlsMaster(url, h) {
+        var viaService = !!(h && (h.ua || h.ref) && typeof YTPlay !== 'undefined' && YTPlay.hlsMaster && YTPlay.installMode && YTPlay.installMode() !== 'browser');
+        return (viaService ? YTPlay.hlsMaster(url, h) : U.getText(url, 8000, HLS_MASTER_MAX)).then(function (text) {
             var t = ('' + (text || '')).replace(/^\uFEFF/, '').replace(/^\s+/, '');
             if (t.indexOf('#EXTM3U') !== 0) { throw new Error('not an HLS playlist'); }
             return t;
@@ -205,12 +210,13 @@
         CLASSES.forEach(function (c) { if (Math.abs(c - t) <= c * 0.06) { best = c; } });
         return best;
     }
-    function loadVariants(url, initialHeight, isMaster) {
+    function loadVariants(url, initialHeight, isMaster, headers) {
         var tok = ++_variantsToken;   // a list arriving after you've moved on is for the old stream
         _variants = [];
         _sepAudio = false;
+        _unread = false;
         if (!url || !(isMaster || isHlsUrl(url))) { return; }
-        getHlsMaster(url).then(function (text) {
+        getHlsMaster(url, headers).then(function (text) {
             if (tok !== _variantsToken) { return; }
             var t = '' + text;
             _sepAudio = t.indexOf('#EXT-X-MEDIA:TYPE=AUDIO') !== -1 || /#EXT-X-STREAM-INF[^\r\n]*[,:]AUDIO=/.test(t);
@@ -239,7 +245,9 @@
                     }
                 }
             }
-        }, function () { if (tok === _variantsToken) { _variants = []; _sepAudio = false; } });
+        }, function (e) {   // (couldn't be read: said so, not "one quality"; an answer that isn't a playlist at all: no list, as before)
+            if (tok === _variantsToken) { _variants = []; _sepAudio = false; _unread = !/not an HLS playlist/.test((e && e.message) || ''); }
+        });
     }
 
     // Switch to a different source mid-playback, keeping position (VOD): a playback of its
@@ -312,7 +320,7 @@
 
     // ----- for the other parts (and js/player.js) -----
     P.resetQuality = resetQuality; P.qualityOnStart = qualityOnStart; P.clearStartNote = clearStartNote;
-    P.qualityHeight = qualityHeight; P.qualityCount = qualityCount; P.hasQualities = hasQualities;
+    P.qualityHeight = qualityHeight; P.qualityCount = qualityCount; P.hasQualities = hasQualities; P.qualityUnread = qualityUnread;
     P.adaptiveInfo = adaptiveInfo; P.tryFallback = tryFallback; P.switchSource = switchSource;
     P.qualityLabel = qualityLabel; P.qualityMenu = qualityMenu;
     P.hasYtLanguages = hasYtLanguages; P.ytLanguageLabel = ytLanguageLabel; P.ytLanguageMenu = ytLanguageMenu;

@@ -4,6 +4,7 @@ What to do when something doesn't work. For how things are meant to work, see th
 [user guide](USER-GUIDE.md); for every setting, the [settings reference](SETTINGS.md).
 
 - [Where to look](#where-to-look)
+- [Installing](#installing)
 - [Addons](#addons)
 - [No sources, or none that play](#no-sources-or-none-that-play)
 - [A source doesn't start](#a-source-doesnt-start)
@@ -15,6 +16,7 @@ What to do when something doesn't work. For how things are meant to work, see th
 - [Trakt](#trakt)
 - [USB drive](#usb-drive)
 - [Other apps](#other-apps)
+- [Home bar preview](#home-bar-preview)
 - [Storage](#storage)
 
 ## Where to look
@@ -29,6 +31,15 @@ What to do when something doesn't work. For how things are meant to work, see th
 - **Diagnostics** also says how StremioK was installed and whether its YouTube service is
   running.
 
+## Installing
+
+| What you see | Why, and what to do |
+|--------------|---------------------|
+| Tizen Studio: the install fails with a certificate error | A retail TV only takes apps signed with a *Samsung* certificate profile that includes its DUID. Create one in Certificate Manager (Samsung account, the TV's DUID added) and build again; a Tizen-only profile won't install. |
+| An update won't install over StremioK (a certificate mismatch) | It's signed with another certificate than the installed one. Sign with the same profile, or uninstall StremioK first (its settings and progress go with it). |
+| The TV isn't found (Tizen Studio, Apps2Samsung) | Developer Mode on, with *Host PC IP* set to that computer; restart the TV; both on one network. |
+| TizenBrew: no downloads, drive index or home bar preview | Those need the sideloaded app (see the [installation guide](INSTALL.md#which-way-to-install)). For YouTube, update TizenBrew. |
+
 ## Addons
 
 | What you see | Why, and what to do |
@@ -36,6 +47,7 @@ What to do when something doesn't work. For how things are meant to work, see th
 | An addon doesn't load | Settings › Content › Addons says why ("too large (over 2 MB)", "not an addon manifest", "timed out"…), with what the addon itself said when it refused (AIOStreams' "Invalid stream expression…" for a configuration it can't read). *Refresh* says it too. |
 | An addon fails the first time, then works | It's hosted where it sleeps when unused and takes a while to wake. Set *Wait for addons* longer (Settings › Content › Addons). |
 | An old addon link won't add | Only v3 addons work. Old `/stremio/v1` addons (e.g. `opensubtitles.strem.io/stremio/v1`) aren't supported; use their v3 versions. |
+| Title pages fail ("Couldn't load") while one addon is down | The addon describing your titles isn't answering (Diagnostics › Logs shows its errors, like HTTP 521). Keep a second details addon such as Cinemeta below it, or a backup turned off to turn on while it's down. |
 | Shows are described by the wrong addon (file names as episode titles) | A library addon (one describing shows from your files) answered before Cinemeta. The title page says which addon described it ("Details: Cinemeta"); move Cinemeta above the other with ▲ / ▼. |
 | An addon's links to a device on your home network don't open | *Local-network links from internet addons* is *Blocked* (the default). Allow it only for addons you trust (see [Privacy](PRIVACY.md#your-home-network)). |
 | AIOManager asks for the key again | AIOManager refused it, so it was forgotten. Enter a current one from AIOManager › the account's settings. |
@@ -46,7 +58,7 @@ What to do when something doesn't work. For how things are meant to work, see th
 
 | What you see | Why, and what to do |
 |--------------|---------------------|
-| "No sources found" | No addon had anything, or none answered in time. StremioK asks once more after 3 seconds on its own; then **↻ Re-scan**. An addon that gathers from others (AIOStreams) can still be gathering and has it ready the next time. What an addon said instead (its filters, its errors) shows on that page. |
+| "No sources found" | The page says why for each addon. *Refused* or *didn't answer*: try **↻ Re-scan** in a minute (a rate limit, HTTP 429, passes). *No sources for this*: that addon has nothing for this title. |
 | "None of your addons provide sources" | Add a stream addon (Settings › Content › Addons). Cinemeta and OpenSubtitles give titles and subtitles, not sources. |
 | Sources listed, but only as torrents | The TV's player needs a direct HTTP(S) or HLS link; StremioK has no torrent engine. Use a stream addon with a debrid service. *Sources the TV can't play: Hidden* leaves them out. |
 | A source is at the bottom, "Not working or not allowed on this TV" | A format in it failed twice before, or its resolution isn't allowed. Settings › Playback › [Formats](SETTINGS.md#formats) shows which, and OK switches it back to *Working*. |
@@ -82,10 +94,12 @@ sources. Try again later.
 
 | What you see | Why, and what to do |
 |--------------|---------------------|
+| Nothing plays; the screen stays black | A source that hasn't started playing after 45 seconds gives way to the next one; with none left, StremioK says it didn't start. Try another source. |
 | It stalls | A stalled stream reloads at the same position; if it keeps stalling, you're back on the source list. Try another source, or *Buffer: More* or *Most* (Settings › Playback › Seeking & buffering) on a slow connection. |
 | An HLS quality won't start | It steps down a quality, then falls back to *Auto*. |
-| A live channel keeps reopening | Its server stops the stream; StremioK opens it again ("The stream ended — opening the channel again…"), and stops when it keeps ending. |
-| After a pause, it jumps ahead | The TV's player sometimes jumps to where it would be had it never paused. StremioK takes it back and notes it in Diagnostics; the same jump twice in a row (a real gap in the file) is let through. |
+| A live channel keeps reconnecting | Its connection drops, or its server stops the stream; StremioK opens it again ("Connection lost — reconnecting…"). How often is up to *Reconnect live channels* (Settings › Playback › Seeking & buffering). |
+| A live channel closes when it drops | *Reconnect live channels* is Off, or set to A few times and it dropped 3 times in 5 minutes ("This channel keeps dropping"). Choose *Keep trying* for a channel whose connection comes and goes. |
+| After a pause, it jumps ahead | The TV's player sometimes does this. StremioK takes it back on its own and notes it in Diagnostics (see the [technical reference](TECHNICAL-REFERENCE.md#playback)). |
 | No speed control, no HDR / frame-rate switching | Not available: the TV's player mutes audio at other speeds, and web apps can't switch modes on Tizen 3. |
 
 ## Audio and subtitles
@@ -132,6 +146,7 @@ sources. Try again later.
 | What you see | Why, and what to do |
 |--------------|---------------------|
 | Changes waiting, or not sent | *Trakt sync* (Settings › Content › Integrations) lists each one Trakt refused or that ran out of tries, with what Trakt said. *Sync now* sends everything; *Let them go* drops them. |
+| Continue Watching offers an episode you watched on another TV | That TV's watch hasn't reached Trakt yet: check *Trakt sync* (Settings › Content › Integrations) there. Once Trakt has it, the show's next episode shows instead. |
 | **Trakt needs reconnecting** | Trakt no longer accepts the sign-in. Nothing is sent (changes wait) until you connect again. |
 | A long-running show's episodes don't sync (Trakt says "not found") | Trakt files some shows in two (later seasons as a separate show). StremioK sends the episode again by its TheTVDB number when the addon gives it, so a waiting change goes through once you've opened the show's page. Those episodes' Trakt history isn't shown here as watched. |
 | A note that Trakt changes were dropped | At most 200 changes wait; past that the oldest are dropped. Also noted when a change couldn't be saved on the TV (its storage full). |
@@ -163,3 +178,10 @@ sources. Try again later.
 | A note that something couldn't be saved (storage full) | StremioK clears what can be made again (saved Home rows, playlist copies, show info) to save what matters. If it still can't, it says so and notes it in Diagnostics. *Clear saved copies* (Settings › Diagnostics › Storage) frees more. |
 | The TV's database refuses saves | The 2017 TV's database doesn't always clear old versions out itself. StremioK tidies it on its own when they take more than half its room; *Tidy up the TV's database* does it now. Freeing space on the TV (unused apps) also raises what it allows. |
 | The TV's database keeps failing | Turn *Use the TV's database* off: everything goes in the settings storage instead (about 5 MB). |
+
+## Home bar preview
+
+| What you see | Why, and what to do |
+|--------------|---------------------|
+| No StremioK tiles on the TV's home bar | They need the sideloaded app on Tizen 4 or later (not TizenBrew, not the 2017 TV), StremioK on the home bar (Apps › StremioK › *Add to Home*), *Home bar preview* not *Off* (Settings › Appearance) and something playable in Continue Watching. |
+| The tiles are out of date | They're sent when you open or leave StremioK, at most every 10 minutes. "Home bar preview not sent" in Diagnostics › Logs: the TV didn't take them; they're tried again later. |

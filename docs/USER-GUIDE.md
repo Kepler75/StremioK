@@ -65,11 +65,11 @@ way can be combined with the others.
     the TV (the key like your other API keys); OK on either changes it.
   - **↻ Sync with AIOManager** (with both set; it says when you last synced and how many
     addons AIOManager has): StremioK reads the account's addons and lists what it would do,
-    none ticked: **↻ Refresh** the addons you have that AIOManager has too (their setup read
-    again: a change you made in AIOManager to an addon that keeps its link), **+ Add** each
-    one AIOManager has (turned on) that you haven't got, **− Remove** each one that came from
-    AIOManager before and is gone from it, or turned off there, now. An addon you added in
-    StremioK yourself is never offered for removal. Tick what you want (*Select all* for
+    none ticked: **↻ Refresh** the addons that came from AIOManager (their setup read again: a
+    change you made in AIOManager to an addon that keeps its link), **+ Add** each one
+    AIOManager has (turned on) that you haven't got, **− Remove** each one that came from
+    AIOManager and is gone from it, or turned off there, now. An addon you added in StremioK
+    yourself stays yours: a sync never refreshes, takes over or removes it. Tick what you want (*Select all* for
     everything) and *Apply N*; it says what it did.
   - Your addons are never sent to AIOManager, and your AIOManager setup isn't changed.
     StremioK does show in its *Connections* as a *Pull* app, with when it last read the list.
@@ -107,6 +107,10 @@ where it came from.
   carries any personal parts of the link, your tokens, so only show it to your own devices)
   and, for an addon with a setup page, *Configure* (a QR code of that page, to change its
   settings on your phone; adding the new link it gives you replaces the old one).
+- **Turn off / Turn on** (OK on an addon): an addon that's off stays in the list, dimmed, with
+  its link and its place, but isn't asked for anything (rows, details, sources, subtitles,
+  search) until you turn it on. Keep a backup addon off, and switch to it when your usual one
+  is down.
 - Remove them all and the list stays empty: Cinemeta and OpenSubtitles are added on the
   first launch only.
 
@@ -149,6 +153,12 @@ Settings. With Watching, Movies, Series and IPTV showing, 5 is Discover and 6 Se
 The tabs, **Discover**, **Search** and **Settings ⚙**, then the StremioK name. UP from a page
 reaches it.
 
+### Lists you put in order
+
+In Settings, a list you order (addons, playlists, YouTube catalogs, Home feeds, Search results,
+source ranking) has **▲ / ▼** to move an item one place and **⇈ / ⇊** to move it to the top or
+the bottom.
+
 ### Hold OK on a poster
 
 On a movie or series poster anywhere (Home, Discover, Search, *More like this*, a person's
@@ -179,15 +189,16 @@ and takes one entry (see [Privacy and data](PRIVACY.md#sending-text-from-your-ph
 
 ### Home
 
-- **Tabs:** **Watching**, **Calendar**, **Movies**, **Series**, **IPTV**, **Radio**, **Sports**
-  and **Local**, each shown when there's something for it (from your addons, playlists or a
-  USB drive). Picking a tab puts focus on its first title. Hide a tab you never use in
+- **Tabs:** **Watching**, **Calendar**, **Movies**, **Series**, **IPTV**, **Radio**, **Sports**,
+  **YouTube** and **Local**, each shown when there's something for it (from your addons,
+  playlists, YouTube catalogs or a USB drive). Picking a tab puts focus on its first title. Hide a tab you never use in
   Settings › Appearance › *Home tabs*; order and hide the rows in *Home feeds*.
 - A row shows a catalog's first page; [Discover](#discover) has the rest.
 - A details strip above the rows describes the focused title: its logo (or name), year,
   runtime, rating, genres and synopsis.
 - StremioK opens on the rows it showed last time and refreshes them in the background, and
-  again every 15 minutes.
+  again every 15 minutes. Without saved rows, each row appears as soon as it's ready, in its
+  place (*Loading…* holds the place of a slower one).
 - **Anime catalogs** (movies and series mixed, like AIOMetadata's "anime" type) are in
   Discover and Search only: no Home tab fits them.
 
@@ -393,9 +404,11 @@ addons is shown once ("also on …").
 - **🕘 From earlier:** when an addon doesn't answer in time, the sources you played from it
   (the last 3 for each movie or episode) are listed anyway, marked with when you played them.
   A link it gave a while ago may no longer play.
-- What an addon says instead of sources (AIOStreams' filters, its errors) shows on the "No
-  sources found" page, by addon ("AIOStreams · 📅 Digital Release Filter: 'Other Mommy'
-  releases in 2 days").
+- The "No sources found" page says, addon by addon, why there's nothing: *no sources for this*,
+  *refused* (with the server's answer: *HTTP 429 · rate_limited*), *didn't answer in time*,
+  *couldn't be reached*, or what the addon said instead (AIOStreams' filters: "AIOStreams ·
+  📅 Digital Release Filter: 'Other Mommy' releases in 2 days"). A live channel with nothing to
+  play says the same in its note ("No playable source for this channel: PenguPlay refused…").
 
 ## While it plays
 
@@ -408,8 +421,8 @@ without a key.
 - **▣ Phone** (continue on phone): a QR code of what's playing, to open on a phone in **VLC**
   (the default) or **Infuse** (they play MKV, HEVC and surround sound a phone's browser would
   only download), or as the **Direct link**; your pick is remembered. A YouTube video's is its
-  page, at the minute you're at. Anyone who scans it can play it, and a debrid link carries
-  your account's access, so it's shown only when you ask. Not for files on a USB drive; a
+  page, at the minute you're at. It's shown only when you ask, since anyone who scans it can
+  play what you're watching (see [Privacy](PRIVACY.md#links-that-carry-your-tokens)). Not for files on a USB drive; a
   channel that needs its own user agent or referrer may not open elsewhere.
 - **⬇ Download** (the sideloaded app, a USB drive plugged in, a source that's a link): saves
   what's playing to the drive, with the subtitle that's on (see [Downloads](#downloads)). The
@@ -428,7 +441,8 @@ without a key.
 - *Subtitles* and *Audio track*.
 - *Select source*: another source, at the same point. It plays as a playback of its own: its
   quality list, subtitles and file details are its own; the title and Private viewing stay.
-- *Video quality* (HLS streams: YouTube, and links to an `.m3u8`).
+- *Video quality* (HLS streams: YouTube, and links to an `.m3u8`); it says so when a stream's
+  qualities can't be read.
 - *Playback* (restart, rewind / forward).
 - *Picture*: Fit, Zoom or Stretch, remembered.
 - *Stream info*.
@@ -488,7 +502,8 @@ Atmos · 5.1 · MKV`).
 - **In the background** (the TV's Home button, another app): a movie or episode pauses and its
   place is saved (sent to Trakt too); coming back, it waits paused (OK plays on). A live
   channel plays on.
-- A stalled stream reloads at the same position; a live channel whose stream ends opens again.
+- A stalled stream reloads at the same position; a live channel that drops reconnects (see
+  *Reconnect live channels* in [Settings](SETTINGS.md#seeking--buffering)).
   See [Troubleshooting](TROUBLESHOOTING.md#playback) when it keeps happening.
 
 ## Subtitles and audio
@@ -587,8 +602,8 @@ StremioK has its own YouTube, through its bundled service: nothing to install, n
 Settings › Content › **YouTube** (see the [settings reference](SETTINGS.md#youtube)):
 
 - **+ Add catalog:** a channel (`@handle`, channel link or `UC…` ID), a playlist (link or `PL…`
-  ID), or words to search for. Your catalogs (up to 40) are Home feeds and Discover catalogs
-  like an addon's. OK on one to rename it, change its source, search type, sort order or type,
+  ID), or words to search for. Your catalogs (up to 40) are rows on Home's **YouTube** tab, and
+  Discover catalogs like an addon's. OK on one to rename it, change its source, search type, sort order or type,
   turn it off or remove it; ▲▼ reorder.
 - **YouTube in Search** (On by default) adds **YouTube · Videos**, **YouTube · Channels** and
   **YouTube · Live now** rows to Search.
@@ -696,6 +711,8 @@ drive*, or UP › *⬇ Download* while it plays.
 - It goes into a `StremioK` folder on the drive, named after the release, with a subtitle file
   next to it: one in your language from a subtitle addon, or, from the player, the subtitle
   that's on (a built-in one comes with the video).
+- Only a file can be downloaded. A streamed playlist (HLS or DASH, as many live and some
+  on-demand sources are) can't: it isn't offered, or the download stops and says so.
 - One downloads at a time (the others wait). It goes on while you browse or watch something
   else; closing StremioK may stop it, and it picks up where it stopped when you start again.
 - The **Downloads** list is at the top of the Local tab while it has anything: each with its
@@ -714,7 +731,8 @@ do; there's nothing else to set up.
 
 - **From Trakt:** titles you watched are marked watched; what you left part-way is in Continue
   Watching, and the shows you're watching are there on their next episode ("Next episode · from
-  Trakt").
+  Trakt"). An episode you left part-way and have since watched past, here or on another device,
+  gives way to the next one.
 - **To Trakt:** what you play here (where you stopped, once past the first minute; watched when
   the credits start), and what you mark watched or not watched by hand. Ratings you give (hold
   OK on a poster or a season › *Rate on Trakt*).

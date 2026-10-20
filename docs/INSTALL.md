@@ -42,13 +42,10 @@ that doesn't help (it needs a TizenBrew that runs module services).
 
 ### TizenBrew shares storage
 
-TizenBrew serves every module from the same address, so they all share one storage. Another
-module you install can read what StremioK keeps: API keys, addon links with their personal
-tokens, playlist links with any username and password, the stream links of what you're
-watching with their request headers (which can carry debrid tokens), remembered subtitle
-links, the sources you've played, and Trakt's sign-in tokens. It can also reach StremioK's
-service. Only install modules you trust, or use the sideloaded app, which keeps its data to
-itself. Settings shows this notice on a TizenBrew install.
+Every TizenBrew module can read what StremioK keeps, your API keys and addon tokens included
+(the full list is in [Privacy and data](PRIVACY.md#tizenbrew-shares-storage)). Install only
+modules you trust, or choose the sideloaded app. Settings shows this notice on a TizenBrew
+install.
 
 ## Apps2Samsung (a release's `.wgt`)
 

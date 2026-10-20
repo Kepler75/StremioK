@@ -40,7 +40,7 @@ html, body {
 .header .spacer { flex: 1; }
 .header-title { font-size: 36px; font-weight: bold; }
 /* Search and Settings: pills like the tabs (the top menu fits every tab, Local included, at 1920 px) */
-.header .hchip { display: inline-flex; align-items: center; font-size: 22px; padding: 8px 13px; margin-right: 6px; border-radius: 28px; background: #1a1f2b; color: #aeb6c4; border: 4px solid transparent; white-space: nowrap; }
+.header .hchip { display: inline-flex; align-items: center; font-size: 22px; padding: 8px 9px; margin-right: 5px; border-radius: 28px; background: #1a1f2b; color: #aeb6c4; border: 4px solid transparent; white-space: nowrap; }
 .header .hchip.focusable.focused { background: #818cf8; color: #0e1117; border-color: #fff; opacity: 1; }
 
 /* --- Rows --- */
@@ -335,6 +335,13 @@ html, body {
 .playlist-row .playlist-item { flex: 1; margin-bottom: 0; }
 .feed-off .playlist-item { opacity: 0.5; }
 .playlist-item .addon-said:empty { display: none; }
+/* an addon's logo (Settings › Content › Addons): its initial until the logo has loaded, then the logo over it */
+.addon-item.has-logo { position: relative; padding-left: 92px; min-height: 56px; }
+.addon-logo { position: absolute; left: 18px; top: 16px; width: 56px; height: 56px; border-radius: 8px; overflow: hidden; background: #0d1119; color: #8b93a5; font-size: 26px; font-weight: bold; line-height: 56px; text-align: center; word-break: normal; }
+.addon-logo img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; visibility: hidden; }
+.addon-logo:before { content: attr(data-initial); }
+.addon-logo.loaded:before { visibility: hidden; }
+.addon-logo.loaded img { visibility: visible; }
 /* list picker (single choice) */
 .pick-box { width: 720px; text-align: left; }
 .pick-box .modal-msg { text-align: left; margin-bottom: 20px; }
@@ -367,12 +374,13 @@ html, body {
 
 /* Home top row: tab pills + Search + Settings on the left, StremioK logo on the right */
 .home-header .tabbar-inline { display: flex; align-items: center; }
-.tab-pill { display: inline-flex; align-items: center; font-size: 22px; padding: 8px 13px; margin-right: 6px; border-radius: 28px; background: #1a1f2b; color: #aeb6c4; border: 4px solid transparent; white-space: nowrap; }
+.tab-pill { display: inline-flex; align-items: center; font-size: 22px; padding: 8px 9px; margin-right: 5px; border-radius: 28px; background: #1a1f2b; color: #aeb6c4; border: 4px solid transparent; white-space: nowrap; }
 .tab-ic { margin-left: 6px; font-size: 22px; }
 .tab-pill.active { background: #2a3346; color: #fff; }
 .tab-pill.focusable.focused { background: #818cf8; color: #0e1117; border-color: #fff; }
 .home-header .hchip.active { background: #2a3346; color: #fff; opacity: 1; }
 .row-empty { margin: 50px 60px; font-size: 26px; color: #8b93a3; }
+.row-loading .row-empty { margin: 10px 60px 26px 60px; font-size: 22px; }
 
 /* --- Subtitle fonts (bundled; SIL Open Font License, see css/fonts/OFL-*.txt) ---
    Latin, Latin-extended and Cyrillic subsets; unicode-range makes the webview

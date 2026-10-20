@@ -130,9 +130,7 @@ var YouTube = (function () {
     function move(id, dir) {
         var c = cfg(), i = -1;
         c.catalogs.forEach(function (x, n) { if (x.id === id) { i = n; } });
-        var j = i + dir;
-        if (i < 0 || j < 0 || j >= c.catalogs.length) { return false; }
-        var t = c.catalogs[i]; c.catalogs[i] = c.catalogs[j]; c.catalogs[j] = t;
+        if (!U.moveIn(c.catalogs, i, dir)) { return false; }   // (one place, or to the top / bottom)
         save(c);
         return true;
     }

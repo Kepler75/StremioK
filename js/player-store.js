@@ -107,7 +107,9 @@
         for (var i = 0; i < SUB_FONTS.length; i++) { if (SUB_FONTS[i][0] === id) { return SUB_FONTS[i][2]; } }
         return '';
     }
-    function setSubCfg(cfg) { U.store.set(SUBCFG_KEY, cfg); }
+    var _subCfgVer = 0;   // bumped on every change: a styled line knows it's up to date
+    function setSubCfg(cfg) { U.store.set(SUBCFG_KEY, cfg); _subCfgVer++; }
+    function subCfgVersion() { return _subCfgVer; }
 
     // Preferred audio language ('default' = keep the stream's first audio track) and a
     // second choice used when the first isn't on the stream ('none' = no second choice).
@@ -236,13 +238,15 @@
         ['zoom', 'Zoom (fill the screen, trims edges)', 'PLAYER_DISPLAY_MODE_CROPPED_FULL', 'cover'],
         ['stretch', 'Stretch', 'PLAYER_DISPLAY_MODE_FULL_SCREEN', 'fill']
     ];
-    // + seek: how far LEFT / RIGHT jump (s); buffer: 'normal' (the TV's own) | 'more' | 'most'
+    // + seek: how far LEFT / RIGHT jump (s); buffer: 'normal' (the TV's own) | 'more' | 'most';
+    // reconnect: a live channel that drops, 'off' | 'few' | 'always' (see player-core's liveDropped)
     // (Settings › Playback › Seeking & buffering)
     var SEEK_STEPS = [5, 10, 15, 30];
     function playerCfg() {
         var d = U.store.get(PLAYERCFG_KEY, {}) || {};
         return { aspect: d.aspect || 'fit', seek: SEEK_STEPS.indexOf(+d.seek) !== -1 ? +d.seek : 10,
             buffer: d.buffer === 'more' || d.buffer === 'most' ? d.buffer : 'normal',
+            reconnect: d.reconnect === 'off' || d.reconnect === 'always' ? d.reconnect : 'few',
             phone: d.phone === 'infuse' || d.phone === 'link' ? d.phone : 'vlc' };   // (Continue on phone: what the QR opens)
     }
     function setPlayerCfg(cfg) {   // (what's given changes; the rest stays)
@@ -263,5 +267,5 @@
     P.recallAudio = recallAudio; P.playerCfg = playerCfg; P.setPlayerCfg = setPlayerCfg;
     P.aspectDef = aspectDef; P.SUB_FONTS = SUB_FONTS; P.SUB_COLORS = SUB_COLORS; P.SUB_BGS = SUB_BGS;
     P.SUB_EDGES = SUB_EDGES; P.SUB_POSITIONS = SUB_POSITIONS; P.ASPECTS = ASPECTS;
-    P.isPrivate = isPrivate; P.setPrivate = setPrivate;
+    P.isPrivate = isPrivate; P.setPrivate = setPrivate; P.privateNow = privateNow; P.subCfgVersion = subCfgVersion;
 })(PlayerParts);

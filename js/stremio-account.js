@@ -42,6 +42,9 @@ var StremioAccount = (function () {
             try { xhr.open('POST', API + method, true); } catch (e) { reject(new Error('couldn’t reach Stremio')); return; }
             xhr.timeout = 20000;
             xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.onprogress = function (ev) {   // (an answer over MAX_BYTES: stopped as it arrives, as every other request is)
+                if (!done && ev && ev.loaded > MAX_BYTES) { done = true; try { xhr.abort(); } catch (e) {} reject(new Error('too large an answer')); }
+            };
             xhr.onreadystatechange = function () {
                 if (xhr.readyState !== 4 || done) { return; }
                 done = true;

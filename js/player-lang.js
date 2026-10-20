@@ -10,7 +10,7 @@
         var info = tr && tr.extra_info;
         if (typeof info === 'string') {
             try { info = JSON.parse(info); } catch (e) {
-                var out = {}, re = /["']?([A-Za-z_]+)["']?\s*[:=]\s*["']?([^"',}]*)/g, m;
+                var out = Object.create(null), re = /["']?([A-Za-z_]+)["']?\s*[:=]\s*["']?([^"',}]*)/g, m;   // (no inherited names)
                 while ((m = re.exec(info))) { out[m[1]] = m[2].trim(); }
                 info = out;
             }

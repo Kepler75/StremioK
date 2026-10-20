@@ -11,7 +11,7 @@ var Player = (function (P) {
         getSubCfg: P.getSubCfg, setSubCfg: P.setSubCfg, getAudioCfg: P.getAudioCfg, setAudioCfg: P.setAudioCfg,
         isWatched: P.isWatched, watchedState: P.watchedState, watchedAt: P.watchedAt, watchedSince: P.watchedSince, progressFor: P.progressFor,
         addToContinue: P.addToContinue, setWatched: P.setWatched, setWatchedMany: P.setWatchedMany, clearUnwatched: P.clearUnwatched,
-        isPrivate: P.isPrivate, setPrivate: P.setPrivate, playerCfg: P.playerCfg, setPlayerCfg: P.setPlayerCfg, langName: P.langName, lang2: P.lang2, langKey: P.langKey,
+        isPrivate: P.isPrivate, setPrivate: P.setPrivate, privateNow: P.privateNow, playerCfg: P.playerCfg, setPlayerCfg: P.setPlayerCfg, langName: P.langName, lang2: P.lang2, langKey: P.langKey,
         SUB_FONTS: P.SUB_FONTS, SUB_COLORS: P.SUB_COLORS, SUB_BGS: P.SUB_BGS, SUB_EDGES: P.SUB_EDGES, SUB_POSITIONS: P.SUB_POSITIONS
     };
 })(PlayerParts);

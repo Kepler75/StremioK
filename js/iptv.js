@@ -75,9 +75,8 @@ var IPTV = (function () {
     // Up (-1) or down (1): a channel in two playlists comes from the first, and rows are
     // in playlist order.
     function movePlaylist(id, dir) {
-        var list = getPlaylists(), i = find(list, id), j = i + dir;
-        if (i === -1 || j < 0 || j >= list.length) { return false; }
-        var t = list[i]; list[i] = list[j]; list[j] = t;
+        var list = getPlaylists();
+        if (!U.moveIn(list, find(list, id), dir)) { return false; }   // (one place, or to the top / bottom)
         savePlaylists(list);
         return true;
     }
@@ -368,6 +367,7 @@ var IPTV = (function () {
         _progressFns.forEach(function (fn) { try { fn(total); } catch (e) {} });
     }
     function onProgress(fn) { _progressFns.push(fn); }
+    function isReady() { return !!_cache; }   // (the playlists read: synthAddon has their channels)
 
     // Each playlist is fetched once and saved (the big store). Passing a playlist id
     // forces only that entry to refresh; true refreshes every configured playlist.
@@ -478,7 +478,7 @@ var IPTV = (function () {
         getPlaylists: getPlaylists, addPlaylist: addPlaylist, updatePlaylist: updatePlaylist,
         removePlaylist: removePlaylist, renamePlaylist: renamePlaylist, setPlaylistOff: setPlaylistOff,
         movePlaylist: movePlaylist, label: labelOf, isEnabled: isEnabled, reset: reset, status: status,
-        load: load, reload: reload, catalog: catalog, meta: meta, streams: streams, synthAddon: synthAddon,
+        load: load, reload: reload, catalog: catalog, meta: meta, streams: streams, synthAddon: synthAddon, isReady: isReady,
         onProgress: onProgress
     };
 })();

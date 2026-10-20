@@ -65,7 +65,7 @@ locally, use a wrapper package, or use the
 | `js/view-discover.js` | Discover: browse a catalog in full by type, catalog and genre / year, page by page; People (TMDB) by name |
 | `js/views.js` | Assembles the public `Views` API from the view parts (which share the `ViewParts` namespace) |
 | `js/app.js` | Bootstrap, navigation history, key routing |
-| `service/index.js` | StremioK's service, as the `.wgt`'s `<tizen:service>` (port 8099) and TizenBrew's `serviceFile` (port 8098): YouTube (`/yt`, `/ytinfo`, `/ytsubs`, `/ytsb`, `/ytlist`), USB drives (`/fslist`, `/fswalk`, `/fssub`, `/fshash`, `/fsfile`), downloads (`/fsdl`), the phone page (`/entry`), AIOManager (`/aiom/addons`), a live channel's sound repacked (`/live`). Each endpoint is described at the top of the file; how it's fenced off is in the [technical reference](TECHNICAL-REFERENCE.md#the-service) |
+| `service/index.js` | StremioK's service: YouTube, USB drives, downloads, the phone page, AIOManager, live relays (see [the service](TECHNICAL-REFERENCE.md#the-service)) |
 | `service/preview.js` | The home bar preview service: sets the tiles `js/hubpreview.js` sends, and sets them again when the TV asks (the sideloaded app only) |
 | `service/cacert.pem` | The trusted certificates downloads use (the 2017 TV's own list is too old for many servers) |
 
@@ -115,8 +115,18 @@ it.
 | This guide | The code |
 | [Changelog](../CHANGELOG.md) | One entry per version |
 
-On the TV, a Settings hint says the effect in a sentence or two, with any warning; the detail
-belongs in the documents.
+How to write it:
+
+- **Write for that document's reader.** The user guide says what to do and what you'll see;
+  limits, timings, sizes and how something works inside go in the technical reference.
+- **Explain once.** Anywhere else, a sentence and a link to its home.
+- **Short pieces.** A paragraph or bullet makes one point; several points make a list. A table
+  cell is a phrase or a sentence, with any detail right below the table.
+- **A changelog entry** is one bullet per change: what someone would notice, with a link to the
+  document that explains it.
+- **On the TV,** a Settings hint says the effect in a sentence or two, with any warning; the
+  detail belongs in the documents.
+- **American spelling.**
 
 Before a change's documentation is done, check:
 

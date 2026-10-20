@@ -75,8 +75,10 @@ a direct HTTP(S)/HLS/DASH URL, and this app embeds no torrent or debrid engine.
 
 The **IPTV** feature likewise hosts no content: you supply your own M3U playlist URLs. For
 YouTube entries, the bundled service finds the video's stream; the video itself comes
-straight from YouTube. Nothing is saved anywhere unless you download a source to your own USB
-drive.
+straight from YouTube. No video or audio is kept: everything plays straight from its source,
+unless you download it to your own USB drive. What StremioK does keep, on the TV, is your
+progress, settings and copies that let it start faster (see
+[Privacy and data](docs/PRIVACY.md#what-stays-on-the-tv)).
 
 ## Known limitations
 

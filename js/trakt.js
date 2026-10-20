@@ -92,7 +92,9 @@ var Trakt = (function () {
                 try { data = text ? JSON.parse(text) : null; } catch (e2) { bad = true; }
                 var retry = 0;
                 try { retry = parseInt(xhr.getResponseHeader('Retry-After'), 10) || 0; } catch (e5) {}
-                if (xhr.status >= 200 && xhr.status < 300) { resolve({ status: xhr.status, data: data, bad: bad }); }
+                var pages = 0, limit = 0;   // (a list sent a page at a time: how many pages, how many a page)
+                try { pages = parseInt(xhr.getResponseHeader('X-Pagination-Page-Count'), 10) || 0; limit = parseInt(xhr.getResponseHeader('X-Pagination-Limit'), 10) || 0; } catch (e6) {}
+                if (xhr.status >= 200 && xhr.status < 300) { resolve({ status: xhr.status, data: data, bad: bad, pages: pages, limit: limit }); }
                 else { reject({ status: xhr.status, data: data, retryAfter: retry }); }
             };
             xhr.ontimeout = function () { if (!done) { done = true; reject({ status: 0, timeout: true }); } };
@@ -338,19 +340,66 @@ var Trakt = (function () {
         return out;
     }
     function isWatched(type, id) { return watchedAt(type, id) > 0; }
+    // Watched past a place kept (Trakt's paused one, or this TV's): a movie watched since; an
+    // episode watched since, or a later one of the show (on any device). A place kept after
+    // those were watched (watching again) still stands. e: { type, id, updated }.
+    var _byShow = null, _byShowFor = null;   // { imdb: [[season, episode, when]] }, built from _watched when it changes
+    function byShow() {
+        if (_byShowFor === _watched) { return _byShow; }
+        var m = {};
+        Object.keys(_watched).forEach(function (k) {
+            var p = /^series:(tt\d+):(\d+):(\d+)$/.exec(k), v = _watched[k];
+            if (p && typeof v === 'number' && v > 0) { (m[p[1]] = m[p[1]] || []).push([+p[2], +p[3], v]); }
+        });
+        _byShow = m; _byShowFor = _watched;
+        return m;
+    }
+    function watchedPast(e) {
+        var since = (e && e.updated) || 0;
+        if (!e || !since) { return false; }
+        if (e.type === 'movie') { return watchedAt('movie', e.id) > since; }
+        var p = /^(tt\d+):(\d+):(\d+)$/.exec('' + e.id);
+        if (e.type !== 'series' || !p) { return false; }
+        var sn = +p[2], en = +p[3];
+        return (byShow()[p[1]] || []).some(function (w) { return w[2] > since && (w[0] > sn || (w[0] === sn && w[1] >= en)); });
+    }
 
+    // Trakt's watched lists come a page at a time (since July 2026), and shows carry their
+    // episodes only when asked (extended=progress). Every page is read: up to the count Trakt
+    // gives, or, without one, until a page is shorter than its page size (Trakt's, or the one
+    // asked); PAGES_MAX at most, and no more items than max. A page that repeats the one
+    // before (a server that ignores the page asked) ends it too, and isn't kept twice.
+    var PAGES_MAX = 100;
+    function allPages(path, perPage, max, g) {
+        var out = [], page = 1, before = '';
+        function next() {
+            return authed('GET', path + (path.indexOf('?') === -1 ? '?' : '&') + 'page=' + page + '&limit=' + perPage, null).then(function (r) {
+                live(g);
+                var items = list(r.data, perPage), first = items.length ? JSON.stringify(items[0]) : '';
+                if (page > 1 && first && first === before) { return out.slice(0, max); }
+                before = first;
+                out = out.concat(items);
+                var last = !items.length || out.length >= max || page >= PAGES_MAX ||
+                    (r.pages ? page >= r.pages : items.length < (r.limit || perPage));
+                if (last) { return out.slice(0, max); }
+                page++;
+                return next();
+            });
+        }
+        return next();
+    }
     var SHOWS_MAX = 5000, SEASONS_MAX = 200, EPISODES_MAX = 1000;
     function fetchWatched(g) {
         var map = {};
-        return authed('GET', '/sync/watched/movies', null).then(function (r) {
-            list(r.data, 20000).forEach(function (m) {
+        return allPages('/sync/watched/movies', 250, 20000, g).then(function (movies) {
+            movies.forEach(function (m) {
                 var imdb = m && imdbOf(m.movie && m.movie.ids);
                 if (imdb) { map['movie:' + imdb] = when(m.last_watched_at) || 1; }
             });
-            return authed('GET', '/sync/watched/shows', null);
-        }).then(function (r) {
+            return allPages('/sync/watched/shows?extended=progress', 100, SHOWS_MAX, g);
+        }).then(function (all) {
             var shows = [];
-            list(r.data, SHOWS_MAX).forEach(function (sh) {
+            all.forEach(function (sh) {
                 var show = sh && sh.show, imdb = show && imdbOf(show.ids);
                 if (!imdb) { return; }
                 var trakt = num(show.ids.trakt, 1e10), at = when(sh.last_watched_at);
@@ -472,13 +521,15 @@ var Trakt = (function () {
 
     // ---- playback (Continue Watching) cache ----
     // Trakt's paused titles, but not one you removed from Continue Watching here, unless Trakt
-    // has newer progress for it since (you watched more of it, here or elsewhere).
+    // has newer progress for it since (you watched more of it, here or elsewhere), nor one
+    // you've watched past since (watchedPast: Trakt keeps a paused place it's been told of in
+    // other ways, a history entry, and the show's next episode would wait behind it).
     // And the shows you're watching (Trakt's Up next): their next episode, placed by when you
     // last watched the show, unless Trakt has a paused episode of it already.
     function continueList() {
         var gone = U.store.get(DISMISSED_KEY, {}) || {};
         function kept(e) { var at = gone[e.type + ':' + e.id]; return !at || (e.updated || 0) > at; }
-        var list = (U.store.get(PLAYBACK_KEY, []) || []).filter(kept), paused = {};
+        var list = (U.store.get(PLAYBACK_KEY, []) || []).filter(function (e) { return kept(e) && !watchedPast(e); }), paused = {};
         list.forEach(function (e) { if (e.type === 'series') { paused[('' + e.id).split(':')[0]] = true; } });
         (U.store.get(UPNEXT_KEY, []) || []).forEach(function (u) {
             if (!u || !u.imdb || paused[u.imdb]) { return; }
@@ -837,7 +888,7 @@ var Trakt = (function () {
     return {
         hasCreds: hasCreds, isConnected: isConnected, connectStatus: connectStatus,
         startDeviceFlow: startDeviceFlow, disconnect: disconnect, refreshCaches: refreshCaches,
-        isWatched: isWatched, watchedAt: watchedAt, watchedSince: watchedSince, continueList: continueList, dismiss: dismiss, synthAddon: synthAddon,
+        isWatched: isWatched, watchedAt: watchedAt, watchedSince: watchedSince, watchedPast: watchedPast, continueList: continueList, dismiss: dismiss, synthAddon: synthAddon,
         onWatched: onWatched, onMarked: onMarked, onProgress: onProgress, onStopped: onStopped, refreshSoon: refreshSoon, rate: rate, myRating: myRating,
         retryFailed: retryFailed, discardFailed: discardFailed, sendNow: sendNow, flush: flushOutbox, noteEpisodes: noteEpisodes
     };

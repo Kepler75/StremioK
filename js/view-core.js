@@ -191,6 +191,16 @@ var ViewParts = {};
         var cancel = U.el('div', 'pill focusable modal-btn', 'Cancel');
         var refresh = U.el('div', 'pill focusable modal-btn', 'Refresh');
         var remove = U.el('div', 'pill focusable modal-btn danger', 'Remove');
+        // Turn off / on: kept in your list, not asked for anything while it's off (a backup)
+        var isOff = !!(Stremio.isAddonOff && Stremio.isAddonOff(url));
+        var onoff = U.el('div', 'pill focusable modal-btn', isOff ? 'Turn on' : 'Turn off');
+        onoff.__onselect = function () {
+            closeModal();
+            Stremio.setAddonOff(url, !isOff);
+            refreshAddonRows();   // (its rows come or go; nothing else is fetched)
+            U.toast(isOff ? '“' + name + '” is on' : '“' + name + '” is off: not asked for anything until you turn it on', 4000);
+            renderSettings();
+        };
 
         cancel.__onselect = function () {
             closeModal();
@@ -237,6 +247,7 @@ var ViewParts = {};
         }
         row.appendChild(cancel);
         row.appendChild(refresh);
+        row.appendChild(onoff);
         if (configure) { row.appendChild(configure); }
         row.appendChild(share);
         row.appendChild(remove);

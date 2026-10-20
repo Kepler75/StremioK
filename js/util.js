@@ -410,6 +410,14 @@ var U = (function () {
        are dropped), and at most `max` of them. Addons and APIs are outside our control:
        a list that's a string, or has nulls in it, or runs to a million items, must not
        stop the app. */
+    // Moves list[i] in place: dir -1 / 1 one step, -Infinity / Infinity to the top / bottom
+    // (the others keep their order). False when it can't move (not found, already there).
+    function moveIn(list, i, dir) {
+        var j = dir === -Infinity ? 0 : dir === Infinity ? list.length - 1 : i + dir;
+        if (i < 0 || i >= list.length || j < 0 || j >= list.length || j === i) { return false; }
+        list.splice(j, 0, list.splice(i, 1)[0]);
+        return true;
+    }
     function listOf(x, max, keep) {   // keep(item): an extra test, applied before counting
         if (!Array.isArray(x)) { return []; }
         var out = [];
@@ -422,7 +430,14 @@ var U = (function () {
     /* GET via XHR with a timeout. Returns a Promise of the response text.
        maxBytes: give up as soon as more than that has arrived ("Too large (over …)");
        TEXT_MAX when not given. */
-    function logged(err) { log('network', err.message); err.logged = true; return err; }
+    // A failed download, in Diagnostics. During a private playback, only its server: its link (a
+    // title's name can be in it) isn't kept, in the log or the copy saved for the next launch.
+    function privateNow() { try { return typeof Player !== 'undefined' && !!Player.privateNow && Player.privateNow(); } catch (e) { return false; } }
+    function logged(err) {
+        var msg = '' + err.message;
+        if (privateNow()) { msg = msg.replace(/(https?:\/\/[^\/\s?#]+)[^\s]*/g, '$1/…'); }
+        log('network', msg); err.logged = true; return err;
+    }
     function noteNetwork(err) { return logged(err); }
     // What a server said when it refused (an error answer's own message, e.g. AIOStreams'
     // { error: { message: "Invalid stream expression … Expected :" } }, or short plain text),
@@ -1476,7 +1491,7 @@ var U = (function () {
     }
 
     return {
-        byId: byId, el: el, clear: clear, getJSON: getJSON, getText: getText, redactUrl: redactUrl, problem: problem, problemDetail: problemDetail, listOf: listOf, lru: lru, cachedJSON: cachedJSON,
+        byId: byId, el: el, clear: clear, moveIn: moveIn, getJSON: getJSON, getText: getText, redactUrl: redactUrl, problem: problem, problemDetail: problemDetail, listOf: listOf, lru: lru, cachedJSON: cachedJSON,
         parseUrl: parseUrl, urlProblem: urlProblem, isPlaylistUrl: isPlaylistUrl, isManifestUrl: isManifestUrl,
         isPrivateHost: isPrivateHost, urlIsPrivate: urlIsPrivate, setLocalPolicy: setLocalPolicy, sanitizeHeaders: sanitizeHeaders, drawable: drawable,
         log: log, logEntries: logEntries, clearLog: clearLog, bigStore: bigStore, diskInfo: diskInfo,

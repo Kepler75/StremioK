@@ -71,6 +71,15 @@ var YTPlay = (function () {
             return U.getJSON(PROXY + q + a.q, force ? 5000 : 30000, 65536, null, a.h);
         });
     }
+    // An HLS stream's quality list, read by the service with the stream's own User-Agent /
+    // Referer (h: { ua, ref }), which a web page can't send: its text.
+    function hlsMaster(url, h) {
+        if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
+        return ensureService().then(entryAuth).then(function (a) {
+            var q = '/live/master?u=' + encodeURIComponent(url) + (h && h.ua ? '&ua=' + encodeURIComponent(h.ua) : '') + (h && h.ref ? '&ref=' + encodeURIComponent(h.ref) : '');
+            return U.getText(PROXY + q + a.q, 12000, 524288, null, false, a.h);
+        });
+    }
     // An AIOManager account's addons (its Hydra API, through the service: an instance only
     // answers the web origins it's set to): { addons: [{ url, name, enabled }] }. base: its
     // address; key: the account's API key (a header, never in the link).
@@ -172,6 +181,6 @@ var YTPlay = (function () {
         return MODE === 'tizenbrew' ? 'TizenBrew module' : MODE === 'wgt' ? 'Sideloaded app (.wgt)' : 'Browser (development)';
     }
 
-    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, aiomAddons: aiomAddons, entryOpen: entryOpen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
+    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, hlsMaster: hlsMaster, aiomAddons: aiomAddons, entryOpen: entryOpen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
         installLabel: installLabel, unavailableMessage: unavailableMessage, isRunning: isRunning, port: PORT };
 })();

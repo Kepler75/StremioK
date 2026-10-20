@@ -330,8 +330,12 @@
         el.className = '';
         var span = el.firstChild;
         if (!span) { span = document.createElement('span'); el.appendChild(span); }
-        styleSpan(span);
-        el.style.bottom = '';   // (styleSpan places the bottom one: this one stays at the top)
+        var ver = P.subCfgVersion ? P.subCfgVersion() : -1;
+        if (span.__styled !== ver || ver === -1) {   // (styled when made, and when the subtitle settings change: not every tick)
+            styleSpan(span);
+            el.style.bottom = '';   // (styleSpan places the bottom one: this one stays at the top)
+            span.__styled = ver;
+        }
         if (span.textContent !== show) { span.textContent = show; }
     }
     // Green › Second subtitle: Off, or a language the addons have (the same setting as Settings').
@@ -559,7 +563,7 @@
     // group), named in full, with the file's own tracks in the same groups as the addons'.
     // Order: the language showing now, the preferred language, then by name.
     function langMenu() {
-        var groups = {}, order = [];
+        var groups = Object.create(null), order = [];   // (no inherited names: a language an addon calls "__proto__" is just a key)
         function add(k, item) {
             if (!groups[k]) { groups[k] = []; order.push(k); }
             groups[k].push(item);

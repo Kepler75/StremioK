@@ -62,10 +62,11 @@
             U.spinner(false);
             _d.streams = list;
             var playable = list.filter(Stremio.isPlayable);
-            if (!playable.length) {   // (and why, in Settings › Diagnostics)
+            if (!playable.length) {   // (and why: on screen, each addon's reason; in Settings › Diagnostics)
+                var why = list.length ? '' : (Stremio.streamNotes ? Stremio.streamNotes(type, id) : []).slice(0, 3).map(function (n) { return n.addon + ' ' + n.title; }).join('; ');
                 U.log('sources', 'No playable source for “' + ((_d.meta && _d.meta.name) || id) + '” (' + type + ' ' + id + '): ' +
-                    (list.length ? list.length + ' source(s), none playable here' : 'no addon sent any'));
-                U.toast('No playable source for this channel'); App.back(); return;
+                    (list.length ? list.length + ' source(s), none playable here' : 'no addon sent any') + (why ? ' (' + why + ')' : ''));
+                U.toast('No playable source for this channel' + (why ? ': ' + why : ''), why ? 6000 : 3000); App.back(); return;
             }
             if (playable.length === 1) {
                 startPlayback(playable[0], id, _d.streamLabel || _d.meta.name || 'Live');
@@ -1566,7 +1567,7 @@
     // offer, it's asked at once.
     function sourceMenu(stream) {
         var canStart = !howHere() && savedPlace(_d.streamId);
-        var canDownload = typeof Downloads !== 'undefined' && Downloads.available() && /^https?:\/\//i.test(stream.url || '') && !stream._localFile && !stream._yt;
+        var canDownload = typeof Downloads !== 'undefined' && Downloads.available() && (Downloads.isFileLink ? Downloads.isFileLink(stream) : /^https?:\/\//i.test(stream.url || '')) && !stream._localFile && !stream._yt;
         if (!canStart && !canDownload) { toggleUnsuitable(stream); return; }
         var unsuit = isUnsuitable(_d.id, stream), opts = [];
         if (canStart) { opts.push(['start', 'Play from the start']); }

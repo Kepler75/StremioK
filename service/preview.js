@@ -24,7 +24,7 @@ module.exports.onExit = function () {};
 function run() {
     if (_ran) { return; }
     _ran = true;
-    var json = null, fs = null;
+    var json = null, fs = null, fromApp = false;
     try { fs = require('fs'); } catch (e) {}
     try {
         var req = tizen.application.getCurrentApplication().getRequestedAppControl();
@@ -33,12 +33,22 @@ function run() {
             if (d.key === 'caller') { caller = d.value && d.value[0]; }
             if (d.key === 'tiles') { tiles = d.value && d.value[0]; }
         });
-        if (caller === 'ForegroundApp' && typeof tiles === 'string' && tiles.length <= TILES_MAX) { json = tiles; }
+        if (caller === 'ForegroundApp' && typeof tiles === 'string' && tiles.length <= TILES_MAX) { json = tiles; fromApp = true; }
     } catch (e1) {}
     if (json) { try { fs.writeFileSync(dataDir() + '/' + TILES_FILE, json); } catch (e2) {} }
     else { try { json = String(fs.readFileSync(dataDir() + '/' + TILES_FILE, 'utf8')); } catch (e3) { json = null; } }   // (the TV asking: the last ones sent)
     var ok = false;
     try { var o = JSON.parse(json); ok = !!o && Array.isArray(o.sections) && json.length <= TILES_MAX; } catch (e4) {}
-    if (!ok || typeof webapis === 'undefined' || !webapis || !webapis.preview || typeof webapis.preview.setPreviewData !== 'function') { done(); return; }
-    try { webapis.preview.setPreviewData(json, done, done); } catch (e5) { done(); }
+    // StremioK (not the TV) asked: told whether the TV took them (it counts them as sent only then)
+    function answer(took) {
+        if (fromApp) {
+            try {
+                var rq = tizen.application.getCurrentApplication().getRequestedAppControl();
+                if (took) { rq.replyResult([new tizen.ApplicationControlData('result', ['ok'])]); } else { rq.replyFailure(); }
+            } catch (e6) {}
+        }
+        done();
+    }
+    if (!ok || typeof webapis === 'undefined' || !webapis || !webapis.preview || typeof webapis.preview.setPreviewData !== 'function') { answer(false); return; }
+    try { webapis.preview.setPreviewData(json, function () { answer(true); }, function () { answer(false); }); } catch (e5) { answer(false); }
 }

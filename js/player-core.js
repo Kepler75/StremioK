@@ -58,7 +58,8 @@ var PlayerParts = {};
         dur: 0,              // seconds
         cur: 0,              // seconds
         isLive: false,       // live stream (sports/IPTV): no fixed duration
-        playStarted: false,  // this AVPlay attempt reached playback (vs. failed early)
+        playStarted: false,  // this AVPlay attempt was prepared (opened, ready to play)
+        playing: false,      // ...and actually played: its position moved for a second (see oncurrentplaytime)
         // seek robustness (AVPlay can error if you seek mid-buffer)
         buffering: false,
         pendingSeek: null,
@@ -156,8 +157,14 @@ var PlayerParts = {};
 
     function isActive() { return S.active; }
 
-    function saveProgress() {
+    // fromTicker: the 5-second save while it plays: skipped when nothing moved since the last one
+    // (paused); a stop, a leave or a jump always saves.
+    var _savedSig = '';
+    function saveProgress(fromTicker) {
         if (!S.ctx || !S.dur || S.isLive || S.ctx.trailer || S.ctx.private || isNotice()) { return; }   // (a notice clip, private viewing: nothing saved, nothing removed)
+        var sig = progressKey(S.ctx) + '|' + Math.floor(S.cur) + '|' + Math.floor(S.dur);
+        if (fromTicker && sig === _savedSig) { return; }
+        _savedSig = sig;
         // Past the credits the episode is watched: its entry was removed and the next one
         // queued (handleCredits). Saving again would put it back next to the next episode.
         if (_creditsHandled) { return; }
@@ -376,7 +383,8 @@ var PlayerParts = {};
         resetQuality(ctx);
         resetControls();
         _stall = { t: -1, since: 0, bufSince: 0, recoveries: [] };
-        _prefetchedNext = false; S.playStarted = false;
+        recoReset();
+        _prefetchedNext = false; S.playStarted = false; S.playing = false;
         _segments = null; _creditsSec = null; _creditsHandled = false; _segmentsFor = null;
         S.buffering = false; S.pendingSeek = null; S.lastSeekAt = 0; S.settleFrom = 0; _seekRecovering = false; _jumpUndone = null; _pausedOnce = false;
         updateHint();
@@ -509,7 +517,7 @@ var PlayerParts = {};
         url = (S.ctx && S.ctx._relay && S.ctx._relayFor === url) ? S.ctx._relay : opened(url);   // (a live channel's sound repacked: see liveCheck)
         var token = ++_playToken;
         objEl.className = 'active';
-        S.playStarted = false;
+        S.playStarted = false; S.playing = false;
         _lastTickMs = null; _playedMs = 0;
         _tick = null; _pausedOnce = false;   // (a new open: the jump watch starts over, see checkJump)
         subsBeforeOpen();   // a built-in subtitle track is selected again once this attempt plays
@@ -564,6 +572,7 @@ var PlayerParts = {};
                     // Played, not just opened: a file can open and then fail (or show nothing)
                     if (_lastTickMs !== null && ms > _lastTickMs && ms - _lastTickMs < 1500) { _playedMs += ms - _lastTickMs; }
                     _lastTickMs = ms;
+                    if (!S.playing && _playedMs >= 1000) { S.playing = true; _reco.tries = 0; }   // (started: playing, not just opened; a reconnect's tries start over)
                     if (_playedMs >= 2000 && !isNotice()) { reportStart(true); }   // (a notice clip proves nothing about the format)
                     audioOnTick();
                     subsOnTick();
@@ -586,11 +595,15 @@ var PlayerParts = {};
                         setTimeout(function () { _seekRecovering = false; }, 4000);
                         return;
                     }
-                    // Failed before playback ever started → retry / step down / Auto.
-                    if (!S.playStarted && (relayFailed() || tryFallback())) { return; }
+                    // A live channel that played: its connection dropped → opened again (liveDropped).
+                    if (S.playing && liveReconnects()) { U.log('player', 'Playback error: ' + err + ' (' + where(S.ctx.url) + ')'); liveDropped('Connection lost'); return; }
+                    // A reconnect's try that didn't play → the next try.
+                    if (!S.playing && _reco.tries) { if (!relayFailed()) { liveDropped('Couldn’t reconnect'); } return; }
+                    // Failed before it ever played (opened, maybe, but nothing shown) → retry / step down / Auto.
+                    if (!S.playing && (relayFailed() || tryFallback())) { return; }
                     reportStart(false, err);   // (unless it had already played)
                     U.log('player', 'Playback error: ' + err + ' (' + where(S.ctx && S.ctx.url) + ')');
-                    if (!S.playStarted) { failedStart('Playback error: ' + err); return; }
+                    if (!S.playing) { failedStart('Playback error: ' + err); return; }
                     U.toast('Playback error: ' + err);
                     exitLater();
                 }
@@ -625,6 +638,7 @@ var PlayerParts = {};
                 if (!S.active || token !== _playToken) { return; }
                 U.spinner(false);
                 if (relayFailed()) { return; }
+                if (_reco.tries) { liveDropped('Couldn’t reconnect'); return; }   // (a reconnect's try: the next one)
                 // Prepare failed → retry / step down / Auto.
                 if (tryFallback()) { return; }
                 U.log('player', 'Could not open: ' + (err && (err.name || err.message || err)) + ' (' + where(url) + ')');
@@ -710,7 +724,7 @@ var PlayerParts = {};
         _ticker = setInterval(function () {
             if (inBackground()) { return; }   // (saved on the way there; nothing to watch until it's back)
             if (useAV) { try { S.cur = avplay.getCurrentTime() / 1000; } catch (e) {} onProgress(); checkStall(); }
-            saveProgress();
+            saveProgress(true);
         }, 5000);
     }
 
@@ -723,8 +737,8 @@ var PlayerParts = {};
         return !!S.ctx && !S.ctx.yt && !S.ctx.trailer && !S.isLive && (S.ctx.type === 'movie' || S.ctx.type === 'series') && S.dur > 0 && S.dur < NOTICE_MAX_S;
     }
     function onEnded() {
-        // a live channel whose stream ended (its server stopped it): opened again, as a stall is
-        if (S.isLive && S.ctx && !S.ctx.trailer && !S.ctx.yt) { recoverStall('The stream ended — opening the channel again…'); return; }
+        // a live channel whose stream ended (its server stopped it): opened again (liveDropped)
+        if (liveReconnects()) { liveDropped('The stream ended'); return; }
         if (isNotice()) {   // (back to its sources: another one, or this one later)
             U.toast('That source isn\'t ready yet (the debrid service is still getting it): try another, or this one later', 6000);
             exit();
@@ -834,6 +848,13 @@ var PlayerParts = {};
         if (_creditsHandled || !S.ctx || S.ctx.trailer || isNotice()) { return; }
         _creditsHandled = true;
         if (S.ctx.private) { return; }   // (private viewing: not marked watched, nothing queued)
+        // With Trakt: sent as a finish (Trakt's own way, which also clears a paused place it
+        // kept for it), not as a separate "watched"
+        if (S.dur > 0 && typeof Trakt !== 'undefined' && Trakt.onStopped && Trakt.isConnected && Trakt.isConnected()) {
+            markFinished(true);
+            Trakt.onStopped(S.ctx.type, S.ctx.id, S.cur, S.dur, S.ctx.name);
+            return;
+        }
         markFinished(false);
     }
     // Watched: off Continue Watching, the next episode queued. quiet: Trakt's been told another
@@ -937,7 +958,7 @@ var PlayerParts = {};
     var NEXT_TRIES = 3, AV_START_MS = 45000, _openedAt = 0;
     function nextSourceOnFail(notice) {
         var c = S.ctx;
-        if (!c || !S.active || S.playStarted || S.isLive || c.trailer || c.yt || c.localFile || !c.stream || typeof c.nextSource !== 'function') { return false; }
+        if (!c || !S.active || S.playing || S.isLive || c.trailer || c.yt || c.localFile || !c.stream || typeof c.nextSource !== 'function') { return false; }
         if (typeof Stremio === 'undefined' || !Stremio.getPrefs || !Stremio.getPrefs().nextOnFail) { return false; }
         var tried = (c._tried || []).concat([Stremio.sourceId(c.stream)]);
         if (tried.length > NEXT_TRIES) { return false; }
@@ -1000,11 +1021,17 @@ var PlayerParts = {};
         else { n.text = svc + ' couldn’t give this file (' + addon + ': “' + kind.replace(/_/g, ' ') + '”)'; }
         return n;
     }
-    // Not started after AV_START_MS (no answer from the server): as a refusal, when there's a
-    // next source to try (otherwise it's left to go on waiting).
+    // Not playing after AV_START_MS (no answer from the server, or opened and nothing shown): the
+    // next source when there's one; else it stops and says so (not while you've paused it).
     function startCheck() {
-        if (!S.active || S.playStarted || !useAV || !_openedAt || Date.now() - _openedAt < AV_START_MS) { return; }
-        nextSourceOnFail();
+        if (!S.active || S.playing || !useAV || !_openedAt || Date.now() - _openedAt < AV_START_MS) { return; }
+        if (_reco.tries) { liveDropped('Couldn’t reconnect'); return; }   // (a reconnect's try: the next one)
+        if (nextSourceOnFail()) { return; }
+        if (S.playStarted && isPaused()) { return; }
+        U.log('player', 'Didn’t start: nothing played in ' + (AV_START_MS / 1000) + ' s (' + where(S.ctx && S.ctx.url) + ')');
+        U.spinner(false);
+        U.toast('Didn’t start: nothing played in ' + (AV_START_MS / 1000) + ' seconds. Try another source.', 6000);
+        exitLater();
     }
     P.startCheck = startCheck;
 
@@ -1077,14 +1104,15 @@ var PlayerParts = {};
         var now = Date.now();
         if (S.buffering) {
             if (!_stall.bufSince) { _stall.bufSince = now; }
-            else if (now - _stall.bufSince > BUFFER_STALL_SECS * 1000) { recoverStall('Stream stopped loading — reloading…'); }
+            else if (now - _stall.bufSince > BUFFER_STALL_SECS * 1000) { recoverStall('Stream stopped loading'); }
             return;
         }
         _stall.bufSince = 0;
         if (isPaused() || S.cur !== _stall.t) { _stall.t = S.cur; _stall.since = now; return; }
-        if (_stall.since && now - _stall.since > STALL_SECS * 1000) { recoverStall('Playback stalled — reloading…'); }
+        if (_stall.since && now - _stall.since > STALL_SECS * 1000) { recoverStall('Playback stalled'); }
     }
-    function recoverStall(message) {
+    function recoverStall(why) {
+        if (liveReconnects()) { liveDropped(why); return; }
         var now = Date.now();
         _stall.recoveries = _stall.recoveries.filter(function (t) { return now - t < STALL_WINDOW_MS; });
         if (_stall.recoveries.length >= STALL_MAX) {
@@ -1094,7 +1122,51 @@ var PlayerParts = {};
             return;
         }
         _stall.recoveries.push(now);
-        reopen(message);
+        reopen(why + ' — reloading…');
+    }
+
+    // ---------- a live channel that drops ----------
+    // A live channel that stops (an error once it played, its connection lost; frozen, stuck
+    // loading, or ended by its server) is opened again at the live edge, as Settings › Playback ›
+    // Seeking & buffering › Reconnect live channels says: Off (the player closes), A few times
+    // (STALL_MAX within STALL_WINDOW_MS, as any stall) or Keep trying (no limit). A try that
+    // doesn't play is followed by another, each a little later (RECO_WAIT_S); BACK stops it.
+    // Not for a trailer or YouTube (a stall there reloads as a video's does).
+    var RECO_WAIT_S = [0, 5, 10, 20, 40, 60], _reco = { tries: 0, timer: null };
+    function liveReconnects() { return S.isLive && !!S.ctx && !S.ctx.trailer && !S.ctx.yt; }
+    function recoReset() {
+        if (_reco.timer) { clearTimeout(_reco.timer); }
+        _reco = { tries: 0, timer: null };
+    }
+    function liveDropped(why) {
+        if (_reco.timer) { return; }   // (a try already waiting)
+        var mode = P.playerCfg().reconnect, now = Date.now();
+        if (mode === 'off') {
+            U.log('player', 'Live channel: ' + why + '; reconnecting is off');
+            U.spinner(false); U.toast(why + ': the channel stopped (reconnecting is off)', 5000);
+            exitLater();
+            return;
+        }
+        _stall.recoveries = _stall.recoveries.filter(function (t) { return now - t < STALL_WINDOW_MS; });
+        if (mode !== 'always' && _stall.recoveries.length >= STALL_MAX) {
+            U.log('player', 'Live channel: ' + why + '; dropped ' + STALL_MAX + ' times in ' + (STALL_WINDOW_MS / 60000) + ' minutes, given up');
+            U.spinner(false); U.toast('This channel keeps dropping — try it again later', 5000);
+            exit();
+            return;
+        }
+        _stall.recoveries.push(now);
+        var n = ++_reco.tries, wait = RECO_WAIT_S[Math.min(n - 1, RECO_WAIT_S.length - 1)] * 1000, ctx = S.ctx;
+        var msg = why + ' — reconnecting' + (n > 1 ? ' (try ' + n + ')' : '') + '…';
+        U.log('player', 'Live channel: ' + why + ', reconnecting (try ' + n + (wait ? ', in ' + (wait / 1000) + ' s' : '') + ')');
+        if (!wait) { reopen(msg); return; }
+        U.spinner(true, msg);
+        function due() {
+            _reco.timer = null;
+            if (!S.active || S.ctx !== ctx) { return; }
+            if (inBackground()) { _reco.timer = setTimeout(due, 5000); return; }   // (back first)
+            reopen(msg);
+        }
+        _reco.timer = setTimeout(due, wait);
     }
     // The stream opened again in place: VOD at the same position, live at the edge.
     function reopen(message) {
@@ -1126,6 +1198,7 @@ var PlayerParts = {};
         closeControls();
         screenSaver(true);
         _playToken++;   // invalidate AVPlay/HTML5 callbacks before stop/close emits any
+        recoReset();
         if (_ticker) { clearInterval(_ticker); _ticker = null; }
         if (_osdTimer) { clearTimeout(_osdTimer); _osdTimer = null; }
         hideOSD();

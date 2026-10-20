@@ -323,7 +323,7 @@
             ['Audio', 'Preferred and second-choice audio language', 'audio'],
             ['Subtitles', 'Default language, size, color, background, position, font', 'subtitles'],
             ['Skipping', 'Intros, recaps and previews, and the next episode at the credits: ask, or on their own after a countdown', 'skipping'],
-            ['Seeking & buffering', 'How far ◀ ▶ jump; a bigger buffer for slow connections', 'seeking'],
+            ['Seeking & buffering', 'How far ◀ ▶ jump; a bigger buffer for slow connections; reconnecting live channels', 'seeking'],
             ['Source ranking', 'How sources are ordered (played before, resolution, release type…), and your addons: their order, on or off', 'ranking'],
             ['Formats', 'Allowed resolutions, and what plays on this TV, learned as you watch', 'formats'],
             ['Private viewing', 'Play without anything recorded: no progress, Continue Watching, watched marks or Trakt', 'private']] },
@@ -470,6 +470,24 @@
         });
         return 'Gives: ' + (bits.length ? bits.join(' · ') : 'nothing StremioK uses') + (types.length ? '   ·   ' + types.slice(0, 8).join(', ') : '');
     }
+    // An addon's logo tile: its initial (the first character, an emoji whole; "?" for one that
+    // didn't load; drawn by the CSS from data-initial, so the row's text is still its name),
+    // and over it the logo from its manifest (Stremio.addonLogo), loaded with the other
+    // artwork; one that can't load is taken away, leaving the initial.
+    function addonTile(m, url) {
+        var name = ('' + ((m && m.name) || '')).replace(/^\s+/, ''), c = name.charCodeAt(0);
+        var tile = U.el('div', 'addon-logo');
+        tile.setAttribute('data-initial', !m ? '?' : name ? name.slice(0, c >= 0xD800 && c <= 0xDBFF ? 2 : 1).toUpperCase() : 'A');
+        var src = Stremio.addonLogo ? Stremio.addonLogo(m, url) : null;
+        if (src) {
+            var img = document.createElement('img');
+            img.onload = function () { tile.className = 'addon-logo loaded'; };
+            img.onerror = function () { if (img.parentNode) { img.parentNode.removeChild(img); } tile.className = 'addon-logo'; };
+            tile.appendChild(img);
+            U.deferImage(img, src);
+        }
+        return tile;
+    }
     function settingsAddons(wrap) {
         wrap.appendChild(U.el('h2', null, 'Addons'));
         // Home-network links from addons on the internet (see Stremio.blocksLocal)
@@ -489,16 +507,14 @@
             var urls = Stremio.getAddonUrls(), want = null;
             if (urls.length > 1) { wrap.appendChild(U.el('div', 'hint', '▲ / ▼ set the order: a title\'s details come from the highest addon that has them (its page says which), and the higher addon comes first where several answer.')); }
             urls.forEach(function (url) {
-                var loaded = addons.find(function (a) { return a.url === url; });
-                var frow = U.el('div', 'feed-row playlist-row');
-                function move(dir, ctl) { return function () { if (Stremio.moveAddon(url, dir)) { _addonFocus = { url: url, ctl: ctl }; refreshAddonRows(); renderSettings(); } }; }
-                var up = U.el('div', 'feed-btn focusable', '▲');
-                up.__onselect = move(-1, 'up');
-                var down = U.el('div', 'feed-btn focusable', '▼');
-                down.__onselect = move(1, 'down');
-                var item = U.el('div', 'addon-item focusable playlist-item');
+                var off = !!(Stremio.isAddonOff && Stremio.isAddonOff(url)), kept = off && Stremio.savedManifest ? Stremio.savedManifest(url) : null;
+                var loaded = addons.find(function (a) { return a.url === url; }) || (kept ? { url: url, manifest: kept } : null);   // (one that's off: its saved manifest)
+                var frow = U.el('div', 'feed-row playlist-row' + (off ? ' feed-off' : ''));
+                var btns = orderButtons(function (dir, ctl) { if (Stremio.moveAddon(url, dir)) { _addonFocus = { url: url, ctl: ctl }; refreshAddonRows(); renderSettings(); } });
+                var item = U.el('div', 'addon-item focusable playlist-item has-logo');
+                item.appendChild(addonTile(loaded && loaded.manifest, url));
                 var why = !loaded && Stremio.manifestProblem ? Stremio.manifestProblem(url) : '';   // "too large (over 2 MB)", "not an addon manifest"…
-                var nm = U.el('div', 'a-name', loaded ? (loaded.manifest.name || 'Addon') : '(failed to load' + (why ? ': ' + why : '') + ')');
+                var nm = U.el('div', 'a-name', (loaded ? (loaded.manifest.name || 'Addon') : off ? 'Addon' : '(failed to load' + (why ? ': ' + why : '') + ')') + (off ? '   (off)' : ''));
                 var origin = Stremio.addonOrigin ? Stremio.addonOrigin(url) : '', ob = originBadge(origin);
                 if (ob) { nm.appendChild(ob); }
                 item.appendChild(nm);
@@ -512,10 +528,10 @@
                 item.__onselect = function () {
                     addonActions(name, url);
                 };
-                if (urls.length > 1) { frow.appendChild(up); frow.appendChild(down); }
+                if (urls.length > 1) { btns.forEach(function (b) { frow.appendChild(b); }); }
                 frow.appendChild(item);
                 wrap.appendChild(frow);
-                if (_addonFocus && _addonFocus.url === url) { want = _addonFocus.ctl === 'up' ? up : down; }
+                if (_addonFocus && _addonFocus.url === url) { want = btns[ctlIndex(_addonFocus.ctl)]; }
             });
 
             var addRow = U.el('div', 'addon-item focusable add-row');
@@ -731,9 +747,12 @@
             var byNorm = {};
             there.forEach(function (x) { byNorm[norm(x.url)] = x; });
             var mine = Stremio.getAddonUrls(), mineNorm = mine.map(norm);
-            var shared = mine.filter(function (u) { var x = byNorm[norm(u)]; return x && x.enabled !== false; });
+            // Only what came from AIOManager is its to refresh or remove (am.synced: the ones a sync
+            // added); an addon you added yourself stays yours, even when AIOManager has it too.
+            function fromIt(u) { return am.synced.indexOf(norm(u)) !== -1; }
+            var shared = mine.filter(function (u) { var x = byNorm[norm(u)]; return fromIt(u) && x && x.enabled !== false; });
             var add = there.filter(function (x) { return x.enabled !== false && mineNorm.indexOf(norm(x.url)) === -1; });
-            var gone = mine.filter(function (u) { var x = byNorm[norm(u)]; return am.synced.indexOf(norm(u)) !== -1 && (!x || x.enabled === false); });
+            var gone = mine.filter(function (u) { var x = byNorm[norm(u)]; return fromIt(u) && (!x || x.enabled === false); });
             var items = [];
             if (shared.length) { items.push({ key: 'refresh', label: '↻ Refresh the ' + shared.length + ' addon' + (shared.length === 1 ? '' : 's') + ' you have from AIOManager' }); }
             add.forEach(function (x, i) { items.push({ key: 'add:' + i, label: '+ Add  ·  ' + U.drawable(x.name || shortHost(x.url)).slice(0, 50) + '  ·  ' + shortHost(x.url) }); });
@@ -741,18 +760,18 @@
                 var x = byNorm[norm(u)];
                 items.push({ key: 'rm:' + i, label: '− Remove  ·  ' + (x && x.name ? U.drawable(x.name).slice(0, 50) + '  ·  ' : '') + shortHost(u), note: x ? 'off in AIOManager' : 'gone from AIOManager' });
             });
-            function done(n) {
-                var keptUrls = Stremio.getAddonUrls().filter(function (u) { var x = byNorm[norm(u)]; return x && x.enabled !== false; });
-                keptUrls.forEach(function (u) { if (!Stremio.addonOrigin(u)) { Stremio.setAddonOrigin(u, 'aiomanager'); } });   // (yours that AIOManager has too: from it from now on)
+            function done(n, addedUrls) {   // what came from it: as before, and what this sync added (still in your list)
+                var now = (addedUrls || []).map(norm);
+                var keptUrls = Stremio.getAddonUrls().filter(function (u) { return fromIt(u) || now.indexOf(norm(u)) !== -1; });
                 aiomSave({ synced: keptUrls.map(norm), at: Date.now(), count: there.length });
                 if (n) { clearCatalogCache(); refreshAddonRows(null); }
                 renderSettings();
             }
             if (!items.length) { U.toast('Nothing to sync: AIOManager has no addons StremioK can use', 4000); done(0); return; }
             pickMany('Sync with AIOManager: tick what to do', items, { button: function (n) { return 'Apply ' + n; } }, function (keys) {
-                var added = 0, removed = 0, jobs = [];
+                var added = 0, removed = 0, addedUrls = [];
                 keys.forEach(function (k) {
-                    if (k.indexOf('add:') === 0) { var got = Stremio.addAddon(add[+k.slice(4)].url); if (got) { added++; Stremio.setAddonOrigin(got, 'aiomanager'); } }
+                    if (k.indexOf('add:') === 0) { var got = Stremio.addAddon(add[+k.slice(4)].url); if (got) { added++; addedUrls.push(got); Stremio.setAddonOrigin(got, 'aiomanager'); } }
                     else if (k.indexOf('rm:') === 0) { Stremio.removeAddon(gone[+k.slice(3)]); removed++; }
                 });
                 var refreshing = keys.indexOf('refresh') !== -1 ? shared.filter(function (u) { return Stremio.getAddonUrls().indexOf(u) !== -1; }) : [];
@@ -762,7 +781,7 @@
                     if (removed) { parts.push(removed + ' removed'); }
                     if (refreshing.length) { parts.push(refreshed + ' refreshed' + (refreshed < refreshing.length ? ' (' + (refreshing.length - refreshed) + ' didn’t answer)' : '')); }
                     U.toast('Synced: ' + (parts.join(', ') || 'nothing changed'), 4000);
-                    done(added + removed + refreshed);
+                    done(added + removed + refreshed, addedUrls);
                 });
             });
         }, function (e) {
@@ -888,10 +907,7 @@
                     renderSettings();
                 };
             }
-            var up = ctl(U.el('div', 'feed-btn focusable', '▲'), 'up');
-            up.__onselect = move(-1, 'up');
-            var down = ctl(U.el('div', 'feed-btn focusable', '▼'), 'down');
-            down.__onselect = move(1, 'down');
+            var btns = orderButtons(function (dir, name) { move(dir, name)(); }, ctl);
             var item = ctl(U.el('div', 'addon-item focusable playlist-item'), 'item');
             item.appendChild(U.el('div', 'a-name', label + (playlist.off ? '   (off)' : '')));
             item.appendChild(U.el('div', 'a-url', U.redactUrl(playlist.url)));   // (credentials masked)
@@ -903,8 +919,7 @@
                 _iptvFocus = { id: playlist.id, ctl: 'item' };
                 playlistActions(playlist, label);
             };
-            frow.appendChild(up);
-            frow.appendChild(down);
+            btns.forEach(function (b) { frow.appendChild(b); });
             frow.appendChild(item);
             wrap.appendChild(frow);
             rows.push({ p: playlist, info: info, problem: problem, idx: idx });
@@ -1090,15 +1105,12 @@
         list.forEach(function (x) {
             var frow = U.el('div', 'feed-row playlist-row' + (x.off ? ' feed-off' : ''));
             function ctl(node, name) { node.setAttribute('data-pl', x.id); node.setAttribute('data-ctl', name); return node; }
-            var up = ctl(U.el('div', 'feed-btn focusable', '▲'), 'up');
-            up.__onselect = function () { if (YouTube.move(x.id, -1)) { ytChanged({ id: x.id, ctl: 'up' }); } };
-            var down = ctl(U.el('div', 'feed-btn focusable', '▼'), 'down');
-            down.__onselect = function () { if (YouTube.move(x.id, 1)) { ytChanged({ id: x.id, ctl: 'down' }); } };
+            var btns = orderButtons(function (dir, name) { if (YouTube.move(x.id, dir)) { ytChanged({ id: x.id, ctl: name }); } }, ctl);
             var item = ctl(U.el('div', 'addon-item focusable playlist-item yt-catalog'), 'item');
             item.appendChild(U.el('div', 'a-name', x.name + (x.off ? '   (off)' : '')));
             item.appendChild(U.el('div', 'a-url', ytDescribe(x)));
             item.__onselect = function () { ytActions(x); };
-            frow.appendChild(up); frow.appendChild(down); frow.appendChild(item);
+            btns.forEach(function (b) { frow.appendChild(b); }); frow.appendChild(item);
             wrap.appendChild(frow);
         });
 
@@ -1347,14 +1359,17 @@
     // unused fails the first time while it wakes up).
     var ADDON_WAITS = [['0', 'Normal (12 s; sources 15, search 25)'], ['20', '20 seconds'], ['30', '30 seconds'], ['45', '45 seconds'], ['60', '60 seconds']];
     var NEXT_CHOICES = [['0', 'Ask'], ['5', 'After 5 seconds'], ['10', 'After 10 seconds'], ['15', 'After 15 seconds'], ['30', 'After 30 seconds']];
-    // Seeking & buffering: how far LEFT / RIGHT jump; a bigger buffer for slow connections.
+    // Seeking & buffering: how far LEFT / RIGHT jump; a bigger buffer for slow connections; how
+    // often a live channel that drops is opened again.
+    var RECONNECTS = [['off', 'Off'], ['few', 'A few times (3 in 5 minutes)'], ['always', 'Keep trying']];
     function settingsSeeking(wrap) {
         wrap.appendChild(U.el('h2', null, 'Seeking & buffering'));
-        var store = { get: function () { var c = Player.playerCfg(); return { seek: '' + c.seek, buffer: c.buffer }; },
-            set: function (cfg) { Player.setPlayerCfg({ seek: +cfg.seek || 10, buffer: cfg.buffer }); } };
+        var store = { get: function () { var c = Player.playerCfg(); return { seek: '' + c.seek, buffer: c.buffer, reconnect: c.reconnect }; },
+            set: function (cfg) { Player.setPlayerCfg({ seek: +cfg.seek || 10, buffer: cfg.buffer, reconnect: cfg.reconnect }); } };
         wrap.appendChild(subPickRow('Seek step', [['5', '5 s'], ['10', '10 s'], ['15', '15 s'], ['30', '30 s']], 'seek', store));
         wrap.appendChild(subPickRow('Buffer', [['normal', 'Normal (the TV’s own)'], ['more', 'More'], ['most', 'Most']], 'buffer', store));
-        wrap.appendChild(U.el('div', 'hint', 'Seek step: how far LEFT / RIGHT jump (FF / REW jump three steps). Buffer: More or Most starts a little slower but stops less on a slow connection, from the next video you play.'));
+        wrap.appendChild(subPickRow('Reconnect live channels', RECONNECTS, 'reconnect', store));
+        wrap.appendChild(U.el('div', 'hint', 'Seek step: how far LEFT / RIGHT jump (FF / REW jump three steps). Buffer: More or Most starts a little slower but stops less on a slow connection, from the next video you play. Reconnect: a live channel that drops opens again; Keep trying waits a little longer each time (BACK stops it).'));
         focusSettings();
     }
     function settingsSkipping(wrap) {
@@ -1962,7 +1977,20 @@
     var SOURCE_ROWS = { prefix: 'src:', off: 'off', keyOf: function (x) { return x.key; },
         move: function (k, d) { return Stremio.moveFeedSource(k, d); }, toggle: function (k) { Stremio.toggleFeedSource(k); },
         hidden: function (k) { return Stremio.isFeedSourceOff(k); } };
-    // ▲ / ▼ / name rows for an ordered list (L: keyOf, hidden, move, toggle, off, prefix).
+    // ⇈ ▲ ▼ ⇊ for a row of a list you put in order: to the top, one place up, one down, to the
+    // bottom. move(dir, ctl) moves it (dir -Infinity / -1 / 1 / Infinity: see U.moveIn); mark(node,
+    // ctl) tags each button, so the page can focus the one used once it's drawn again.
+    var ORDER_BTNS = [['top', '⇈', -Infinity], ['up', '▲', -1], ['down', '▼', 1], ['bottom', '⇊', Infinity]];
+    function orderButtons(move, mark) {
+        return ORDER_BTNS.map(function (b) {
+            var n = U.el('div', 'feed-btn focusable', b[1]);
+            if (mark) { mark(n, b[0]); }
+            n.__onselect = function () { move(b[2], b[0]); };
+            return n;
+        });
+    }
+    function ctlIndex(ctl) { for (var i = 0; i < ORDER_BTNS.length; i++) { if (ORDER_BTNS[i][0] === ctl) { return i; } } return 1; }
+    // ⇈ ▲ ▼ ⇊ / name rows for an ordered list (L: keyOf, hidden, move, toggle, off, prefix).
     // After a change the page is drawn again, focused on the control used (refeed).
     function feedRows(wrap, kind, items, L) {
         items.forEach(function (item) {
@@ -1970,20 +1998,14 @@
             var hidden = L.hidden(key);
             var frow = U.el('div', 'feed-row' + (hidden ? ' feed-off' : ''));
 
-            var up = U.el('div', 'feed-btn focusable', '▲');
-            up.setAttribute('data-fk', fk); up.setAttribute('data-ctl', 'up');
-            up.__onselect = function () { L.move(key, -1).then(function () { refeed(kind, fk, 'up'); }); };
-
-            var down = U.el('div', 'feed-btn focusable', '▼');
-            down.setAttribute('data-fk', fk); down.setAttribute('data-ctl', 'down');
-            down.__onselect = function () { L.move(key, 1).then(function () { refeed(kind, fk, 'down'); }); };
+            var btns = orderButtons(function (dir, ctl) { L.move(key, dir).then(function () { refeed(kind, fk, ctl); }); },
+                function (n, ctl) { n.setAttribute('data-fk', fk); n.setAttribute('data-ctl', ctl); });
 
             var name = U.el('div', 'feed-name focusable', item.name + (hidden ? '   (' + (L.off || 'hidden') + ')' : ''));
             name.setAttribute('data-fk', fk); name.setAttribute('data-ctl', 'name');
             name.__onselect = function () { L.toggle(key); refeed(kind, fk, 'name'); };
 
-            frow.appendChild(up);
-            frow.appendChild(down);
+            btns.forEach(function (b) { frow.appendChild(b); });
             frow.appendChild(name);
             wrap.appendChild(frow);
         });

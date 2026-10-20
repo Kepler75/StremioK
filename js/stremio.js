@@ -77,18 +77,31 @@ var Stremio = (function () {
 
     // Your order (Settings › Addons ▲▼): the higher addon is asked first wherever one answer
     // is used (a title's details: the first that has them) and listed first where several are.
+    // dir: -1 / 1 one place, -Infinity / Infinity to the top / bottom (U.moveIn)
     function moveAddon(url, dir) {
-        var list = getAddonUrls(), i = list.indexOf(url), j = i + dir;
-        if (i < 0 || j < 0 || j >= list.length) { return false; }
-        list.splice(i, 1); list.splice(j, 0, url);
+        var list = getAddonUrls();
+        if (!U.moveIn(list, list.indexOf(url), dir)) { return false; }
         saveAddonUrls(list);
         configChanged();   // (rebuilt from the saved manifests: nothing fetched)
         return true;
     }
 
+    // Addons you turned off (Settings › Content › Addons, OK on one): kept in your list, in
+    // their place, but not loaded, so nothing is asked of them (rows, details, sources,
+    // subtitles, search) until they're turned on again. A backup can wait there.
+    var OFF_KEY = 'stremiok.addonsoff';
+    function offUrls() { var l = U.store.get(OFF_KEY, []); return Array.isArray(l) ? l.filter(function (u) { return typeof u === 'string'; }) : []; }
+    function isAddonOff(url) { return offUrls().indexOf(url) !== -1; }
+    function setAddonOff(url, off) {
+        var l = offUrls().filter(function (u) { return u !== url; });
+        if (off) { l.push(url); }
+        U.store.set(OFF_KEY, l);
+        configChanged();   // (loaded again without it, or with it: from the saved manifests)
+    }
     function removeAddon(url) {
         var list = getAddonUrls().filter(function (u) { return u !== url; });
         saveAddonUrls(list);
+        if (isAddonOff(url)) { U.store.set(OFF_KEY, offUrls().filter(function (u) { return u !== url; })); }   // (added again: on)
         var o = originsAll();
         if (o[url]) { delete o[url]; U.store.set(ORIGIN_KEY, o); }   // (added again by hand: none)
         configChanged();
@@ -329,6 +342,21 @@ var Stremio = (function () {
     var MAX_METAS = 1000, MAX_STREAMS = 500, MAX_SUBTITLES = 300, MAX_EPISODES = 5000, MAX_CATALOGS = 200;
     var _manifestProblem = {};   // url -> why it didn't load ("too large (over 2 MB)", "not an addon manifest"…)
     var _manifestDetail = {};    // url -> what the addon itself said about it, if anything (its error message)
+    // An addon's logo (its manifest's "logo", else "icon"), for Settings › Content › Addons: an
+    // http(s) link by the artwork rules (U.cardImage), or a small base64 picture written into
+    // the manifest, whole (one as long as STR_MAX was cut short). From an internet addon (url:
+    // its link; none given, taken as one), never a link into your home network (blocksLocal).
+    // Else null: its initial shows instead.
+    var LOGO_DATA = /^data:image\/(?:png|jpeg|gif|webp|svg\+xml);base64,[A-Za-z0-9+\/]+=*$/i;
+    function addonLogo(m, url) {
+        if (!m || typeof m !== 'object') { return null; }
+        var u = typeof m.logo === 'string' && m.logo.trim() ? m.logo : typeof m.icon === 'string' ? m.icon : '';
+        u = u.trim();
+        if (!u) { return null; }
+        if (/^data:/i.test(u)) { return u.length < STR_MAX && LOGO_DATA.test(u) ? u : null; }
+        u = U.cardImage(u, 'logo');
+        return u && (url ? blocksLocal({ url: url }) : true) && U.urlIsPrivate(u) ? null : u;
+    }
     // A manifest as the app can use it, or null: an id, and lists that are lists.
     // Its lists too: resources (a name, or { name, types, idPrefixes }), types and id prefixes
     // (text), catalogs (a type and id; extras each a name, their options text).
@@ -385,13 +413,14 @@ var Stremio = (function () {
     function loadAddons() {
         if (_loaded) { return Promise.resolve(_loaded); }
         if (_loading) { return _loading; }
-        var urls = getAddonUrls();
+        var off = offUrls(), urls = getAddonUrls().filter(function (u) { return off.indexOf(u) === -1; });   // (the ones turned off: not loaded)
         var saved = U.store.get(MANIFESTS_KEY, {}) || {};
         var force = _forceNet; _forceNet = false;
         var need = urls.filter(function (u) { return force || !saved[u]; }), rev = _rev, p;
-        // IPTV playlists load alongside the manifests (the synthetic addon is built from them).
-        var pre = (_hasIptv && IPTV.isEnabled()) ? IPTV.load() : Promise.resolve(null);
-        p = Promise.all([pre, need.length ? fetchManifests(need) : Promise.resolve({})]).then(function (res) {
+        // The IPTV playlists aren't waited for (a big one takes a while to read): the synthetic
+        // addon joins once they're read (iptvJoin), and onIptvReady's listeners redraw its rows.
+        var iptvOn = _hasIptv && IPTV.isEnabled(), iptvNow = iptvOn && (!IPTV.isReady || IPTV.isReady());
+        p = Promise.all([null, need.length ? fetchManifests(need) : Promise.resolve({})]).then(function (res) {
             if (_loading === p) { _loading = null; }
             if (rev !== _rev) { return loadAddons(); }   // (your addons changed meanwhile: loaded as they are now)
             var got = res[1], addons = [];
@@ -401,7 +430,8 @@ var Stremio = (function () {
             });
             // Prepend so the IPTV rows sort first on Home (reorder them in Settings >
             // Appearance > Home feeds; there's no cap on how many rows or feeds).
-            if (_hasIptv && IPTV.isEnabled()) { addons.unshift(IPTV.synthAddon()); }
+            if (iptvNow) { addons.unshift(IPTV.synthAddon()); }
+            else if (iptvOn) { iptvJoin(addons, rev); }
             if (hasYouTube()) { addons.push(YouTube.synthAddon()); }   // (after your addons: its rows last on Home)
             if (typeof Trakt !== 'undefined' && Trakt.isConnected()) { addons.push(Trakt.synthAddon()); }   // (your Watchlist and Up next)
             _loaded = addons;
@@ -414,6 +444,17 @@ var Stremio = (function () {
         return p;
     }
 
+    // The IPTV playlists, read after the addons loaded: their synthetic addon put first among them
+    // (its rows sort first on Home), as if it had been there, and onIptvReady's listeners told.
+    var _iptvReadyFns = [];
+    function onIptvReady(fn) { _iptvReadyFns.push(fn); }
+    function iptvJoin(addons, rev) {
+        IPTV.load().then(function () {
+            if (rev !== _rev || _loaded !== addons) { return; }   // (your addons changed meanwhile: loaded afresh, with it)
+            if (!addons.some(function (a) { return a.url === 'local:iptv'; })) { addons.unshift(IPTV.synthAddon()); }
+            _iptvReadyFns.forEach(function (fn) { try { fn(); } catch (e) {} });
+        }, function () {});
+    }
     // Background refresh of manifests that came from the TV's saved copies. Updates the
     // loaded addons in place, so anything holding them sees the new manifest.
     function refreshSavedManifests(urls) {
@@ -668,9 +709,8 @@ var Stremio = (function () {
             visible: function () { return list().then(function (items) { return sort(items).filter(function (c) { return !isHidden(keyOf(c)); }); }); },
             move: function (key, dir) {
                 return list().then(function (items) {
-                    var ordered = sort(items).map(keyOf), i = ordered.indexOf(key), j = i + dir;
-                    if (i < 0 || j < 0 || j >= ordered.length) { return; }
-                    var t = ordered[i]; ordered[i] = ordered[j]; ordered[j] = t;
+                    var ordered = sort(items).map(keyOf);
+                    if (!U.moveIn(ordered, ordered.indexOf(key), dir)) { return; }
                     var c = cfg(); c.order = ordered; U.store.set(storeKey, c);
                 });
             },
@@ -747,9 +787,7 @@ var Stremio = (function () {
     function moveRanking(key, dir) {
         var g = getRanking(), i = -1;
         g.criteria.forEach(function (c, n) { if (c.key === key) { i = n; } });
-        var j = i + dir;
-        if (i < 0 || j < 0 || j >= g.criteria.length) { return; }
-        var t = g.criteria[i]; g.criteria[i] = g.criteria[j]; g.criteria[j] = t;
+        if (!U.moveIn(g.criteria, i, dir)) { return; }
         saveRanking(g);
     }
     function toggleRanking(key) {
@@ -802,6 +840,10 @@ var Stremio = (function () {
         return out.filter(Boolean);
     }
 
+    // An addon's error sent as a title's details (AIOStreams: "aiostreamserror.…", its name
+    // "[❌] <the addon that failed>", the error as its description; AIOMetadata: "aiom.error.…"):
+    // not the title, so the next addon is asked.
+    function isErrorMeta(m) { return /^(aiostreamserror\.|aiom\.error\.)/.test('' + (m && m.id)); }
     function getMeta(type, id, cancel) {
         if (/^ytk:/.test(id) && typeof YouTube !== 'undefined') {
             return YouTube.meta(id).then(function (m) { if (!m) { throw new Error('Not found on YouTube'); } return m; });
@@ -832,6 +874,11 @@ var Stremio = (function () {
                 var url = a.base + '/meta/' + encodeURIComponent(asType[a.url] || type) + '/' + encodeURIComponent(id) + '.json';
                 return U.getJSON(url, addonMs(12000), META_MAX, cancel).then(function (res) {
                     var meta = fromAddon(a, res, 'title details').meta;
+                    if (meta && typeof meta === 'object' && isErrorMeta(meta)) {
+                        U.log('addon', ((a.manifest && a.manifest.name) || 'An addon') + ' sent an error instead of details for ' + id + ': ' +
+                            String(meta.name || '').slice(0, 80) + (meta.description ? ' (' + String(meta.description).slice(0, 120) + ')' : ''));
+                        return tryNext();
+                    }
                     if (meta && typeof meta === 'object') {
                         if (meta.videos !== undefined) { meta.videos = oneEach(U.listOf(meta.videos, MAX_EPISODES), meta.id || id); }
                         meta._from = (a.manifest && a.manifest.name) || '';   // (the title page says which addon described it)
@@ -872,8 +919,8 @@ var Stremio = (function () {
         if (e && !force && (e.pending > 0 || Date.now() - e.at < STREAM_TTL)) {
             syncLocal(e, type, id);   // (the addons' answers kept; the USB drive's matches as they are now)
             if (onUpdate) {
-                e.listeners.push(onUpdate);
-                if (e.started) { onUpdate(e.list, e.pending); }
+                if (!e.done) { e.listeners.push(onUpdate); }   // (still loading: told as each addon answers)
+                if (e.started) { onUpdate(e.list, e.pending); }   // (done: told once, now, and not kept)
             }
             return e.promise.then(function () { syncLocal(e, type, id); return e.list; });
         }
@@ -902,7 +949,7 @@ var Stremio = (function () {
                     return function () {
                         var url = a.base + '/stream/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '.json';
                         return U.getJSON(url, addonMs(15000)).then(function (res) {
-                            var arr = U.listOf(fromAddon(a, res, 'sources').streams, MAX_STREAMS).map(youTubeSource);
+                            var arr = U.listOf(fromAddon(a, res, 'sources').streams, MAX_STREAMS).map(youTubeSource), said = notes.length;
                             arr = arr.filter(function (s) {   // (an addon's notices: what it removed and why, its errors; not sources)
                                 if (!isNotice(s)) { return true; }
                                 notes.push({ addon: a.manifest.name || 'Addon', title: ('' + (s.name || '')).replace(/\s+/g, ' ').trim().slice(0, 120),
@@ -916,18 +963,23 @@ var Stremio = (function () {
                                 if (h) { s._headers = h; }
                             });
                             slots[i] = arr; okCount++;
+                            if (!arr.length && notes.length === said) { note(a, i, 'no sources for this'); }   // (its notices say why, when it sent any)
                         }).then(function () { done(); }, function (err) {
                             // (no answer in time: what you played from it before, marked so — see keptSources)
                             if (isTimeout(err) && !slots[i].length) { slots[i] = keptSources(type, id, a, i); }
+                            note(a, i, whyNone(err));
                             done(); throw err;
                         });
                     };
                 }), 4);
             }
+            // Why an addon gave nothing ("No sources found" shows it), in your addon order
+            function note(a, i, why) { notes.push({ addon: a.manifest.name || 'Addon', title: why, text: '', rank: i }); }
             function done() {
                 e.pending--;
                 e.list = local.concat([].concat.apply([], slots));
-                _streamNotes.set(key, notes.slice(0, 6));
+                notes.sort(function (x, y) { return (x.rank === undefined ? -1 : x.rank) - (y.rank === undefined ? -1 : y.rank); });
+                _streamNotes.set(key, notes.slice(0, 10));
                 notify();
             }
             // Addons that gather from others (AIOStreams…) can answer nothing while those are
@@ -942,6 +994,7 @@ var Stremio = (function () {
                 return new Promise(function (r) { setTimeout(r, RETRY_EMPTY_STREAMS_MS); }).then(ask);
             }).then(function () {
                 e.at = Date.now();
+                e.done = true; e.listeners = [];   // (nothing more to tell: none kept)
                 // Nothing (no answer, or no sources): not kept, so opening it again asks again.
                 if (providers.length && (!okCount || fresh() <= local.length) && _streamCache[key] === e) { delete _streamCache[key]; }
                 return e.list;
@@ -954,6 +1007,16 @@ var Stremio = (function () {
     }
 
     function isTimeout(err) { return /^Timeout/.test((err && err.message) || ''); }
+    // Why an addon's sources didn't come, in a few words (its link, and any token in it, left out):
+    // "refused (HTTP 429 · rate_limited)", "didn't answer in time", "couldn't be reached"…
+    function whyNone(err) {
+        var m = String((err && err.message) || ''), h = /^HTTP (\d{3}) for \S+(?::\s+(.+))?$/.exec(m);   // (its message after ": ", not the link's "://")
+        if (h) { return 'refused (HTTP ' + h[1] + (h[2] ? ' · ' + h[2].replace(/https?:\/\/\S+/g, '…').slice(0, 80) : '') + ')'; }
+        if (isTimeout(err)) { return 'didn’t answer in time'; }
+        if (/^Network error/.test(m)) { return 'couldn’t be reached'; }
+        if (/^Too large/.test(m)) { return 'sent too much (' + (/\(([^)]+)\)/.exec(m) || ['', 'too large'])[1] + ')'; }
+        return 'failed (' + m.replace(/https?:\/\/\S+/g, '…').slice(0, 80) + ')';
+    }
 
     // The debrid service a source comes through, from its tag ("[TB⚡]", "[RD+]"): { tag, name } or null.
     var DEBRIDS = { TB: 'TorBox', RD: 'Real-Debrid', AD: 'AllDebrid', PM: 'Premiumize', DL: 'Debrid-Link', ED: 'EasyDebrid', OC: 'Offcloud', PP: 'PikPak' };
@@ -1488,9 +1551,11 @@ var Stremio = (function () {
         var ep = parts.length >= 3 ? { season: parts[1], episode: parts[2] } : null;
         return { imdb: parts[0], ep: ep };
     }
-    // GET https://api.theintrodb.org/v3/media?imdb_id=tt..[&season=&episode=][&duration_ms=]
+    // GET https://api.theintrodb.org/v4/media?imdb_id=tt..[&season=&episode=][&duration_ms=]
+    // (v4: answers keyed by the show's TheTVDB id, episodes in TheTVDB's default order; the
+    // segments as v3 gave them. v2 and v3 stop on 18 Jan 2027.)
     function theIntroDb(q, durationMs) {
-        var url = 'https://api.theintrodb.org/v3/media?imdb_id=' + encodeURIComponent(q.imdb);
+        var url = 'https://api.theintrodb.org/v4/media?imdb_id=' + encodeURIComponent(q.imdb);
         if (q.ep) { url += '&season=' + encodeURIComponent(q.ep.season) + '&episode=' + encodeURIComponent(q.ep.episode); }
         if (durationMs && durationMs > 0) { url += '&duration_ms=' + Math.floor(durationMs); }
         return U.getJSON(url, 10000).then(function (r) {
@@ -1943,7 +2008,7 @@ var Stremio = (function () {
         DEFAULT_ADDONS: DEFAULT_ADDONS, prettyType: prettyType,
         addonUrlProblem: function (v) { return U.urlProblem(v); },
         getAddonUrls: getAddonUrls, manifestProblem: function (url) { return _manifestProblem[url] || ''; }, manifestDetail: function (url) { return _manifestDetail[url] || ''; }, addAddon: addAddon, removeAddon: removeAddon, moveAddon: moveAddon, streamNotes: streamNotes, keepSource: keepSource, forgetSource: forgetSource, sourceId: sourceId, hasStreamAddons: hasStreamAddons, thirdPartyNote: thirdPartyNote, refreshAddons: refreshAddons, refreshAddon: refreshAddon,
-        getIntegrations: getIntegrations, setIntegration: setIntegration, getPrefs: getPrefs, setPref: setPref,
+        getIntegrations: getIntegrations, setIntegration: setIntegration, getPrefs: getPrefs, setPref: setPref, addonLogo: addonLogo,
         getIntroSegments: getIntroSegments,
         tmdbValidate: tmdbValidate, mdblistValidate: mdblistValidate, omdbValidate: omdbValidate,
         tmdbFindTvId: tmdbFindTvId, tmdbSeasonEpisodes: tmdbSeasonEpisodes, tmdbImg: tmdbImg,
@@ -1974,7 +2039,7 @@ var Stremio = (function () {
         streamInfo: streamInfo, formatTags: formatTags, formatKeys: formatKeys, recordFormats: recordFormats, setFormat: setFormat,
         resetFormats: resetFormats, badFormats: badFormats, formatList: formatList,
         resList: resList, setResAllowed: setResAllowed, blockedRes: blockedRes,
-        importSetupList: importSetupList, savedManifest: savedManifest,
+        importSetupList: importSetupList, savedManifest: savedManifest, isAddonOff: isAddonOff, setAddonOff: setAddonOff, onIptvReady: onIptvReady, streamListenerCount: function (type, id) { var e = _streamCache[type + ':' + id]; return e ? e.listeners.length : 0; },
         iptvGetPlaylists: iptvGetPlaylists, iptvAddPlaylist: iptvAddPlaylist,
         iptvUpdatePlaylist: iptvUpdatePlaylist, iptvRemovePlaylist: iptvRemovePlaylist,
         iptvRenamePlaylist: iptvRenamePlaylist, iptvSetPlaylistOff: iptvSetPlaylistOff, iptvMovePlaylist: iptvMovePlaylist, iptvLabel: iptvLabel,

@@ -8,6 +8,9 @@
 var HubPreview = (function () {
     'use strict';
     var SERVICE = 'StremioK01.service', EVERY_MS = 10 * 60 * 1000, SENT_KEY = 'stremiok.homepreview';
+    // Sent counts only once the preview service says the TV took them (SENT_KEY); a try is kept
+    // apart (_tried), for the 10 minutes between sends; a failure is tried again later (RETRY_MS).
+    var RETRY_MS = [60000, 300000, 900000], _tried = null, _fails = 0;
     var _timer = null;
     // Tizen 4 and later: the 2017 TV (Tizen 3) shows no preview for it, so there it's left out
     // (no setting, nothing sent).
@@ -28,15 +31,22 @@ var HubPreview = (function () {
     function send(now) {
         if (!available()) { return; }
         var json = JSON.stringify(payload()), last = U.store.get(SENT_KEY, null) || {}, t = Date.now();
-        if (!now && json === last.json) { return; }
-        if (!now && t - (last.at || 0) < EVERY_MS) { later(last.at + EVERY_MS - t); return; }
-        U.store.set(SENT_KEY, { json: json, at: t });
+        if (!now && json === last.json) { return; }   // (the TV has these already)
+        var lastTry = Math.max(last.at || 0, (_tried && _tried.at) || 0);
+        if (!now && t - lastTry < EVERY_MS) { later(lastTry + EVERY_MS - t); return; }
+        _tried = { json: json, at: t };
+        function failed(why) {
+            U.log('preview', 'Home bar preview not sent: ' + why);
+            if (_fails < RETRY_MS.length) { var wait = RETRY_MS[_fails++]; _tried = null; later(wait); }   // (then as usual: a change, 10 minutes apart)
+        }
         try {
             tizen.application.launchAppControl(
                 new tizen.ApplicationControl('http://tizen.org/appcontrol/operation/pick', null, 'image/jpeg', null,
                     [new tizen.ApplicationControlData('caller', ['ForegroundApp']), new tizen.ApplicationControlData('tiles', [json])]),
-                SERVICE, function () {}, function (e) { U.log('preview', 'Home bar preview not sent: ' + ((e && e.message) || e)); });
-        } catch (e) { U.log('preview', 'Home bar preview not sent: ' + (e && e.message)); }
+                SERVICE, function () {}, function (e) { failed((e && e.message) || e); },
+                { onsuccess: function () { U.store.set(SENT_KEY, { json: json, at: t }); _fails = 0; },
+                  onfailure: function () { failed('the TV didn’t take them'); } });
+        } catch (e) { failed(e && e.message); }
     }
     function later(ms) {
         if (_timer) { clearTimeout(_timer); }

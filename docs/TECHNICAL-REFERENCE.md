@@ -25,8 +25,19 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
 
 ## Starting up and Home rows
 
+- **Which tab a row is on** goes by its catalog: movies, series, sports and radio to their
+  tabs; StremioK's own YouTube catalogs, and other addons' YouTube or channel catalogs
+  (YouTubio's), to **YouTube**; everything else (IPTV playlists, live and TV catalogs) to
+  **IPTV**.
 - The last Home rows and addon manifests are saved on the TV, so a launch shows them at once
   and refreshes them in the background.
+- **Nothing waits on something unrelated:** your addons load without waiting for the IPTV
+  playlists (a big one takes a while to read); the IPTV rows join Home once they're read. On a
+  first load, each row shows as soon as its catalog answers, in its own place: a slower row above
+  it keeps its place with *Loading…* until it comes.
+- **Saved only when it changed:** playback progress is saved every 5 seconds while it moves (not
+  while paused), the downloads list only when something in it changed, and a second subtitle's
+  style only when its settings change.
 - The rows are saved twice: a small snapshot (40 rows of 20 cards, just poster and name) in the
   settings storage, read at once, and the whole (up to 60 rows, about 1.5 MB) in the TV's
   database, written without holding up the remote. The whole replaces the snapshot a moment
@@ -93,6 +104,9 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
   3 sources) and all of them by the IMDb id (31); the same file from both is shown once.
 - **BACK through pages:** the last 6 title and person pages are kept as they were; older ones
   open again when you reach them, so a long chain doesn't fill the TV's memory.
+- **An addon's error in place of details** (AIOStreams' ids starting `aiostreamserror.`,
+  AIOMetadata's `aiom.error.`, the error as the title's name) isn't taken for the title: the next
+  addon is asked, and Diagnostics notes the addon and its message.
 - **Episodes listed more than once:** an episode an addon lists once per file is shown once, by
   its best entry (the show's own episode id, a real title rather than a file name).
 - **Trailers:** TMDB's trailers join the addon's in your languages (the audio's and the
@@ -160,15 +174,22 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
 - **Select source** plays as a playback of its own: its quality list, subtitles and captions,
   SponsorBlock sections, request headers and file details are its own, and what's learned
   (Formats, Played before) is about it; the title, its episodes and Private viewing stay.
+- **Started means playing:** a source counts as started once its position has moved for a
+  second; being opened isn't enough. A failure before that goes to the next source. With
+  nothing playing after 45 seconds: the next source, or, with none left, it stops and says so
+  (not while you've paused it).
 - **Video quality** reads an HLS stream's quality list only, capped at 512 KB and only if it's a
-  real playlist; a debrid MKV / MP4 or any other direct file is never downloaded "to look".
+  real playlist; a debrid MKV / MP4 or any other direct file is never downloaded "to look". A
+  stream that needs its own User-Agent or Referer has its list read through StremioK's service,
+  with them (a web page can't send those). When the list can't be read, the menu says so,
+  rather than looking like a stream with one quality.
 - **Jumps after pauses:** after pauses, the TV's player sometimes jumps ahead at the next
   buffering, to where it would be had it never paused. A jump ahead you didn't ask for (more than
   the time that has passed) is taken back to where you were and noted in Diagnostics; the same
   jump twice in a row (a real gap in the file) is let through.
 - **In the background**, the TV's player is suspended and restored when you come back; if it
   can't be restored, the stream opens again where it was.
-- **Skip times** come from TheIntroDB, with SkipDB and then IntroDB filling in when TheIntroDB
+- **Skip times** come from TheIntroDB (its v4 API), with SkipDB and then IntroDB filling in when TheIntroDB
   doesn't answer or lacks a kind of segment (an episode it only has the intro for gets the
   credits from one of the others; an empty one, ending where it starts or before, counts as
   missing). They're asked for once the video's length is known (TheIntroDB and SkipDB match
@@ -312,7 +333,7 @@ extras the same.
 
 ### Changing addons
 
-Adding, removing, moving or refreshing an addon or a playlist (or allowing local-network links)
+Adding, removing, moving, refreshing or turning off an addon or a playlist (or allowing local-network links)
 clears what came from the old set (title details, sources, the catalog pages kept for an addon's
 empty answers), and a load still under way for the old set keeps nothing: a removed addon can't
 come back. Adding, refreshing or removing one only touches that addon: its manifest and its Home
@@ -334,8 +355,13 @@ them.
 - **Progress:** sent once past the first minute. Stopped past 85% (before the credits) is sent
   as finished, so Trakt marks it watched, and here it leaves Continue Watching with the next
   episode queued. Stopped between 80% and 85% is sent as 79.9% (Trakt takes no later place for
-  something paused) while StremioK keeps your exact place. A show Trakt has a paused episode of
-  isn't added again on its next episode.
+  something paused) while StremioK keeps your exact place. Played to the credits, it's sent as
+  finished too, which also clears a place Trakt kept for it. A show Trakt has a paused episode of
+  isn't added again on its next episode, unless you've since watched that episode or a later one
+  (on any device): that paused place, and one this TV kept, is then left out.
+- **Reading your history:** Trakt sends watched lists a page at a time, and shows with their
+  episodes only when asked. StremioK asks for them, 250 movies or 100 shows a page, and reads
+  every page up to the count Trakt gives (100 pages at most).
 - **The outbox:** changes are sent at once, kept until Trakt confirms them, retried after 30 s,
   1 min, 2 min… (up to an hour apart, 8 tries; Trakt's Retry-After when it's busy), 100 titles /
   episodes a request. Of several places for one title waiting, only the latest is sent. Changes
@@ -434,7 +460,8 @@ A small service in the app (`service/preview.js`) gives the TV's Smart Hub its t
 has no such service. Only movies and series you can play now get a tile: one you stopped
 part-way, or a next episode that has aired (not YouTube, IPTV, sports, radio or USB files). The
 tiles are sent when StremioK opens and when you leave it, at most once every 10 minutes (as
-Samsung asks); the TV also asks for them now and then. *Off* empties the row. The 2017 TV shows
+Samsung asks); the TV also asks for them now and then. They count as sent only once the preview
+service confirms the TV took them; a failure is tried again after 1, 5 and 15 minutes. *Off* empties the row. The 2017 TV shows
 no preview for it, so it isn't offered there.
 
 ## YouTube
@@ -483,7 +510,7 @@ to watch, catalog pages or search rows — the transfers themselves, not just th
 Sources aren't stopped (they're shared, and the next episode's are fetched ahead). A download
 several screens share (TMDB's answers) is stopped only once every screen waiting on it has gone.
 What still comes back for a screen that's gone changes nothing: a title page's sources or
-details (no playback, no BACK, no "couldn't load"; a cancelled request isn't an error), the
+details (no playback, no BACK, no "couldn't load"; a canceled request isn't an error), the
 YouTube service starting for a trailer or a video, a search's rows still waiting their turn
 (not even asked) and a link's video, a configuration file's import (it's imported, but the
 screen you're on stays). After a failure the player closes a moment later only if nothing
@@ -501,7 +528,10 @@ Pictures that failed aren't asked for again for 10 minutes (the last 300 are rem
 URLs you type or import (addons, playlists, the configuration file), and subtitle and artwork
 links from addons, go through one parser: http(s) only, a real host and port, no
 `user:password@` in the address. Addon URLs keep a query after `manifest.json`, and
-`stremio://` install links work.
+`stremio://` install links work. An addon's logo (its manifest's `logo`, else `icon`) follows
+the artwork rules, or is a base64 `data:` PNG, JPEG, GIF, WebP or SVG under 50,000 characters;
+from an internet addon, never a link into your home network. It loads through the artwork
+queue, and its initial shows until it does.
 
 ## The service
 
@@ -574,7 +604,8 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 - **Tizen 6 headers:** YouTube's watch page often comes with more headers than a Tizen 6 TV's
   Node reads (an experiment's 7 KB header, 12 KB in all, over its 8 KB). The service then reads
   that answer itself, straight off the connection, and asks again for anything else it can't
-  read (twice at most).
+  read (twice at most). That reader accepts only a complete answer: every chunk and its
+  end, or its declared length.
 - **Audio:** many videos carry AI-dubbed audio (every dub listed, none marked default, a dub
   often first), and switching tracks on such a stream right after it starts hangs the 2017 TV's
   player. The service keeps only the **original** audio, as the default (a stream with no track
@@ -613,7 +644,11 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 
 - Only folders under `/opt/media/<drive>/`: a path is resolved to where it really is and must
   stay inside the drive it was asked under. Links in a folder are listed as links and never
-  followed or walked, and subtitle files and hashes are read only through that check.
+  followed or walked, and subtitle files, hashes and `/fsfile`'s files are read only through
+  that check (a file is opened once, and served only if it's a regular file).
+- A drive must be mounted (listed in `/proc/mounts`). Its free space is read with `df`, run
+  directly with the drive as its argument, never through a shell, and without holding up the
+  service.
 - `/fssub` reads subtitle files up to 5 MB: SRT and WebVTT as they are, ASS / SSA turned into
   SRT, Windows-1252 and UTF-16 converted. `/fshash` reads a video's size and its first and last
   64 KB. `/fsfile` serves a file with ranges, for the 2017 TV's player, which can't read past
@@ -628,12 +663,20 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 - One at a time, up to 50 in the list, into a `….part` file renamed when complete.
 - A dropped connection (or 60 s of silence) is picked up where it stopped, with a range request
   where the server allows it, up to 5 times, waiting 5 s, 15 s, 30 s, 1 min, then 2 min.
+- A resumed answer must start exactly where the partial file ends (its `Content-Range`), for the
+  same file (`If-Range`, with the ETag or date the download began with); otherwise it starts
+  over. The finished file must be the declared size.
 - Checked before it starts: the drive's free space (with 50 MB to spare) and, on a FAT32 drive,
-  the 4 GB file limit.
-- Links over HTTP(S) only, never to the TV itself (`localhost`, `127.…`, `0.…`, `::1`) or a
-  link-local address (`169.254.…`); HTTPS checked against the bundled `service/cacert.pem`.
+  the 4 GB file limit. The partial file and the finished one must be regular files, not links.
+- A streamed playlist (HLS or DASH, by its type or its first bytes) isn't a file: refused.
+- Links over HTTP(S) only, never to the TV itself: loopback, unspecified and link-local addresses
+  however they're written (`localhost`, `127.…`, `2130706433`, `0x7f…`, `::1`,
+  `::ffff:127.0.0.1`, `169.254.…`), checked again on the address a name resolves to when
+  connecting. Home-network addresses (a NAS) are allowed. HTTPS checked against the bundled
+  `service/cacert.pem`.
 - The list is kept in the service's memory; the app keeps its own copy and adds again what the
-  service no longer knows after a restart.
+  service no longer knows after a restart. One that had already finished (its file on the drive
+  at its size, no partial file left) is taken as done, not downloaded a second time.
 
 ### The phone page
 
@@ -647,8 +690,9 @@ most 8 connections, and each visit is given 20 seconds (10 s of silence). See
 ### AIOManager
 
 `/aiom/addons` reads an account's addons with AIOManager's Hydra API (`GET <address>/hydra/addons`,
-the API key sent as `X-API-Key`), up to 2 MB, within 20 seconds, following up to 4 redirects,
-and keeps at most 500. It then registers StremioK (`POST <address>/hydra/register`, best effort),
+the API key sent as `X-API-Key`), up to 2 MB, within 20 seconds in all, and keeps at most 500.
+It follows up to 4 redirects on the same server only (HTTP to HTTPS allowed, never the other
+way): the key never goes anywhere else. One cancel stops the whole chain. It then registers StremioK (`POST <address>/hydra/register`, best effort),
 which is its card in AIOManager's Connections. Nothing else is written to AIOManager. It's done
 in the service because an instance only answers the web addresses it's set to. The same host
 rule as downloads applies.

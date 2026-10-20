@@ -13,7 +13,8 @@ var Downloads = (function () {
         return typeof YTPlay !== 'undefined' && YTPlay.installMode() === 'wgt' && typeof LocalMedia !== 'undefined' && LocalMedia.present && LocalMedia.present();
     }
     function kept() { var l = U.store.get(DL_KEY, []); return Array.isArray(l) ? l : []; }
-    function keep(l) { U.store.set(DL_KEY, l.slice(-MAX)); }
+    var _keptJson = null;   // (what was last written: the list polled every few seconds is written only when it changed)
+    function keep(l) { var v = l.slice(-MAX), j = JSON.stringify(v); if (j === _keptJson) { return; } _keptJson = j; U.store.set(DL_KEY, v); }
     function keyOf(x) { return x.dir + '/' + x.name; }
     // The same file, renamed or not ("Film.mkv", "Film (k3x9).mkv"): its folder and its name's stem.
     function sameFile(y, k) {
@@ -55,11 +56,13 @@ var Downloads = (function () {
             });
             _synced = true;
             emit();
-            return U.settleAll(again.map(function (k) { return function () { return send(k); }; }), 1).then(function () { return _items; });
+            return U.settleAll(again.map(function (k) { return function () { return send(k, true); }; }), 1).then(function () { return _items; });
         }, function () { return _items; });
     }
-    function send(k) {
-        return ask('/fsdl/add?' + qs({ dir: k.dir, name: k.name, url: k.url, ua: k.ua, ref: k.ref, size: k.size, title: k.title }), 20000).then(function (x) {
+    // again: the service no longer knows it (it restarted): it checks the drive first, so one it had
+    // finished isn't downloaded a second time.
+    function send(k, again) {
+        return ask('/fsdl/add?' + qs({ dir: k.dir, name: k.name, url: k.url, ua: k.ua, ref: k.ref, size: k.size, title: k.title, again: again ? '1' : '' }), 20000).then(function (x) {
             var mine = kept();
             mine.forEach(function (y) { if (keyOf(y) === keyOf(k)) { y.id = x.id; y.state = x.state; y.err = ''; } });
             keep(mine);
@@ -129,6 +132,14 @@ var Downloads = (function () {
 
     // ---- starting one, from a title's source (view-detail's source menu) ----
     var EXT = /\.(mkv|mp4|m4v|avi|ts|webm|mov|wmv|mpe?g)$/i;
+    // Only a file can be downloaded: a link (http/https) that isn't a streamed playlist (HLS
+    // .m3u8, DASH .mpd), which would save just the list, not the video. (One whose link doesn't
+    // say is checked by StremioK's service, by what the server answers.)
+    function isFileLink(stream) {
+        var u = '' + ((stream && stream.url) || ''), path = u.split(/[?#]/)[0], query = u.split('#')[0].split('?')[1] || '';
+        if (!/^https?:\/\//i.test(u)) { return false; }
+        return !/\.(m3u8?|mpd)$/i.test(path) && !/(^|&)(type|format|ext|output)=(m3u8|hls|mpd|dash)(&|$)/i.test(query);
+    }
     function fileNameFor(stream, label) {
         var bh = stream.behaviorHints || {}, path = ('' + (stream.url || '')).split(/[?#]/)[0];
         var named = typeof bh.filename === 'string' && EXT.test(bh.filename) ? bh.filename : '';
@@ -150,6 +161,7 @@ var Downloads = (function () {
     // ui: { pick(title, options, onPick), confirm(msg, ok, fn) } (the views' popups)
     function start(stream, t, ui) {
         if (!available()) { U.toast('Plug a USB drive into the TV first'); return; }
+        if (!isFileLink(stream)) { U.toast('This source is a streamed playlist (HLS or DASH), not a file: it can’t be downloaded. Pick another source.', 6000); return; }
         var name = fileNameFor(stream, t.label), bytes = +((stream.behaviorHints || {}).videoSize) || 0;
         spaces().then(function (list) {
             if (!list.length) { U.toast('No USB drive'); return; }
@@ -202,6 +214,6 @@ var Downloads = (function () {
         }, function () {});
     }
 
-    return { available: available, items: items, sync: sync, watch: watch, onChange: onChange, add: add, cancel: cancel, clear: clear, retry: retry,
+    return { available: available, isFileLink: isFileLink, items: items, sync: sync, watch: watch, onChange: onChange, add: add, cancel: cancel, clear: clear, retry: retry,
         start: start, fileNameFor: fileNameFor, busy: busy, synced: function () { return _synced; } };
 })();

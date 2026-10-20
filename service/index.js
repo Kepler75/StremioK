@@ -117,6 +117,31 @@ function videoHost(h) { return /(^|\.)googlevideo\.com$/i.test(h) || youtubeHost
 // channel's /live URL redirects to /watch), each to a host `allow(host)` accepts; gives up
 // after TIMEOUT_MS of silence or MAX_BODY bytes; an answer other than 200 is an error.
 // Returns abort() (the hop under way, and no further one). Only through httpReq's gate.
+// The body of an answer read straight off the connection: only when it's complete. Chunked:
+// every chunk's size line, its bytes and their CRLF, up to the closing zero-size chunk; else its
+// declared Content-Length, all of it. { body } or { error }.
+function rawBody(hd, buf) {
+    if (/chunked/i.test(hd['transfer-encoding'] || '')) {
+        var out = [], pos = 0;
+        for (;;) {
+            var nl = buf.indexOf('\r\n', pos);
+            if (nl === -1) { return { error: 'incomplete answer' }; }
+            var line = buf.slice(pos, nl).toString('binary').split(';')[0].trim();
+            if (!/^[0-9a-f]{1,8}$/i.test(line)) { return { error: 'malformed answer' }; }
+            var n = parseInt(line, 16);
+            if (n === 0) { return { body: Buffer.concat(out) }; }   // (the end: trailers, if any, not needed)
+            if (nl + 2 + n + 2 > buf.length || buf[nl + 2 + n] !== 13 || buf[nl + 3 + n] !== 10) { return { error: 'incomplete answer' }; }
+            out.push(buf.slice(nl + 2, nl + 2 + n));
+            pos = nl + 2 + n + 2;
+        }
+    }
+    if (hd['content-length'] !== undefined) {
+        var len = +hd['content-length'];
+        if (!(len >= 0) || buf.length < len) { return { error: 'incomplete answer' }; }
+        return { body: buf.slice(0, len) };
+    }
+    return { body: buf };   // (no length: what came before the connection closed)
+}
 function rawReq(method, urlStr, headers, body, cb, allow, _n, _at) {
     cb = once(cb);
     var at = _at || {};
@@ -218,19 +243,10 @@ function bigHeaderGet(urlStr, headers, cb, allow, at, _n) {
             bigHeaderGet(urllib.resolve(urlStr, hd.location), headers, cb, allow, at, (_n || 0) + 1);
             return;
         }
-        if (/chunked/i.test(hd['transfer-encoding'] || '')) {
-            var out = [], pos = 0;
-            while (pos < bodyBuf.length) {
-                var nl = bodyBuf.indexOf('\r\n', pos);
-                if (nl === -1) { break; }
-                var n = parseInt(bodyBuf.slice(pos, nl).toString('binary'), 16);
-                if (!(n > 0)) { break; }
-                out.push(bodyBuf.slice(nl + 2, nl + 2 + n));
-                pos = nl + 2 + n + 2;
-            }
-            bodyBuf = Buffer.concat(out);
-        } else if (hd['content-length']) { bodyBuf = bodyBuf.slice(0, +hd['content-length']); }
+        var whole = rawBody(hd, bodyBuf);
         if (sc !== 200) { end(new Error('HTTP ' + sc)); return; }
+        if (whole.error) { end(new Error(whole.error)); return; }
+        bodyBuf = whole.body;
         if (bodyBuf.length > MAX_BODY) { end(new Error('response too large')); return; }
         end(null, sc, bodyBuf.toString('utf8'));
     });
@@ -1296,22 +1312,120 @@ function dlName(n) {   // a file name: no folders, nothing a drive refuses, not 
     var s = String(n || '').replace(/[\/\\:*?"<>|\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+/, '');
     return s.slice(0, 200);
 }
-function dlHostOk(h) {
-    h = String(h || '').toLowerCase().replace(/^\[|\]$/g, '');
-    return !!h && h !== 'localhost' && !/\.localhost$/.test(h) && !/^127\./.test(h) && !/^0\./.test(h) && h !== '::1' && h !== '0:0:0:0:0:0:0:1' && !/^169\.254\./.test(h);
+// The TV itself (loopback, unspecified, link-local), however an address is written: dotted,
+// decimal, hex or octal IPv4 ("2130706433", "0x7f.1", "0177.0.0.1"), IPv6 and IPv4-mapped IPv6
+// ("::ffff:127.0.0.1", "::ffff:7f00:1"), "localhost". Home-network addresses (a NAS) are fine.
+function ipv4Int(h) {   // inet_aton's forms: 1 to 4 parts, each decimal, 0x hex or 0 octal; else -1
+    var parts = h.split('.');
+    if (!parts.length || parts.length > 4) { return -1; }
+    var nums = [];
+    for (var i = 0; i < parts.length; i++) {
+        var t = parts[i], v;
+        if (/^0x[0-9a-f]+$/i.test(t)) { v = parseInt(t.slice(2), 16); }
+        else if (/^0[0-7]*$/.test(t)) { v = parseInt(t, 8); }
+        else if (/^[1-9][0-9]*$/.test(t)) { v = parseInt(t, 10); }
+        else { return -1; }
+        if (!isFinite(v)) { return -1; }
+        nums.push(v);
+    }
+    var last = nums.pop(), max = [4294967296, 16777216, 65536, 256][nums.length], n = 0;
+    if (last >= max || nums.some(function (x) { return x > 255; })) { return -1; }
+    nums.forEach(function (x, k) { n += x * Math.pow(256, 3 - k); });
+    return n + last;
 }
-function dfOf(dir) {   // { free, total } in bytes, or null
+function ipv6Words(h) {   // 8 numbers, or null
+    var tail = /(\d+\.\d+\.\d+\.\d+)$/.exec(h), extra = null;
+    if (tail) {   // (a dotted IPv4 at the end: its two words)
+        var v = ipv4Int(tail[1]);
+        if (v < 0) { return null; }
+        extra = [Math.floor(v / 65536), v % 65536];
+        h = h.slice(0, -tail[1].length) + '0:0';
+    }
+    var halves = h.split('::');
+    if (halves.length > 2) { return null; }
+    var a = halves[0] ? halves[0].split(':') : [], b = halves.length === 2 && halves[1] ? halves[1].split(':') : [], all;
+    if (halves.length === 1) { all = a; }
+    else {
+        var fill = 8 - a.length - b.length, zeros = [];
+        if (fill < 1) { return null; }
+        while (zeros.length < fill) { zeros.push('0'); }
+        all = a.concat(zeros, b);
+    }
+    if (all.length !== 8 || !all.every(function (w) { return /^[0-9a-f]{1,4}$/i.test(w); })) { return null; }
+    all = all.map(function (w) { return parseInt(w, 16); });
+    if (extra) { all[6] = extra[0]; all[7] = extra[1]; }
+    return all;
+}
+function isSelfAddr(host) {
+    var h = String(host || '').toLowerCase().replace(/^\[|\]$/g, '').replace(/%.*$/, '').replace(/\.$/, '');
+    if (!h || h === 'localhost' || /\.localhost$/.test(h)) { return true; }
+    function v4self(n) { var a = Math.floor(n / 16777216); return a === 127 || a === 0 || Math.floor(n / 65536) === 0xA9FE; }
+    if (h.indexOf(':') === -1) { var n = ipv4Int(h); return n >= 0 && v4self(n); }
+    var w = ipv6Words(h);
+    if (!w) { return false; }
+    var zero5 = w[0] === 0 && w[1] === 0 && w[2] === 0 && w[3] === 0 && w[4] === 0;
+    if (zero5 && (w[5] === 0xffff || w[5] === 0) && !(w[5] === 0 && w[6] === 0 && w[7] <= 1)) { return v4self(w[6] * 65536 + w[7]); }   // (IPv4-mapped, or the old IPv4-compatible)
+    if (zero5 && w[5] === 0 && w[6] === 0 && w[7] <= 1) { return true; }   // (::1, ::)
+    return (w[0] & 0xffc0) === 0xfe80;   // (link-local)
+}
+function dlHostOk(h) { return !!String(h || '') && !isSelfAddr(h); }
+// Checked again where a name actually leads: the address it resolves to, before connecting, and
+// the one connected to (a name that resolves to the TV itself, now or after a change, is refused).
+function guardSelf(req, fail) {
+    req.on('socket', function (sock) {
+        sock.on('lookup', function (err, addr) { if (!err && isSelfAddr(addr)) { fail(); } });
+        sock.on('connect', function () { if (isSelfAddr(sock.remoteAddress)) { fail(); } });
+    });
+}
+// A drive's free space: df run directly (execFile: the path an argument, never a shell), without
+// holding up the service. cb({ free, total } in bytes, or null).
+function dfOf(dir, cb) {
     try {
-        var line = String(require('child_process').execSync('df -k "' + dir.replace(/"/g, '') + '"', { timeout: 5000 })).trim().split('\n').slice(-1)[0].split(/\s+/);
-        var total = +line[1] * 1024, free = +line[3] * 1024;
-        return isFinite(total) && isFinite(free) ? { total: total, free: free } : null;
-    } catch (e) { return null; }
+        require('child_process').execFile('df', ['-k', dir], { timeout: 5000 }, function (err, out) {
+            if (err) { cb(null); return; }
+            var line = String(out || '').trim().split('\n').slice(-1)[0].split(/\s+/);
+            var total = +line[1] * 1024, free = +line[3] * 1024;
+            cb(isFinite(total) && isFinite(free) ? { total: total, free: free } : null);
+        });
+    } catch (e) { cb(null); }
+}
+// A USB drive that's actually mounted (in /proc/mounts, its mount point's escapes undone).
+function isMounted(mount) {
+    try {
+        return String(require('fs').readFileSync('/proc/mounts', 'utf8')).split('\n').some(function (l) {
+            return (l.split(' ')[1] || '').replace(/\\([0-7]{3})/g, function (a, o) { return String.fromCharCode(parseInt(o, 8)); }) === mount;
+        });
+    } catch (e) { return false; }
 }
 function fsTypeOf(mount) {
     try {
         var hit = String(require('fs').readFileSync('/proc/mounts', 'utf8')).split('\n').filter(function (l) { return l.split(' ')[1] === mount; })[0];
         return hit ? hit.split(' ')[2] : '';
     } catch (e) { return ''; }
+}
+// /fsfile: a file on a USB drive, with ranges: only where it really is (fsRealOk: a link that
+// leads off the drive is refused), opened once, and served only if that's a regular file.
+function fsFileServe(req, res, path) {
+    var fs = require('fs');
+    fsRealOk(path, function (bad, real) {
+        if (bad) { send(res, bad.status === 403 ? 403 : 404, 'text/plain', bad.status === 403 ? 'not on the USB drive' : 'no such file'); return; }
+        fs.open(real, 'r', function (oe, fd) {
+            if (oe) { send(res, 404, 'text/plain', 'no such file'); return; }
+            fs.fstat(fd, function (se, st) {
+                if (se || !st.isFile()) { fs.close(fd, function () {}); send(res, 404, 'text/plain', 'no such file'); return; }
+                var size = st.size, m = /bytes=(\d*)-(\d*)/.exec(req.headers.range || ''), a0 = 0, b0 = size - 1, part = false;
+                if (m) { part = true; if (m[1] !== '') { a0 = +m[1]; if (m[2] !== '') { b0 = Math.min(+m[2], size - 1); } } else if (m[2] !== '') { a0 = Math.max(0, size - (+m[2])); } }
+                if (a0 > b0 || a0 >= size) { fs.close(fd, function () {}); res.writeHead(416, { 'Content-Range': 'bytes */' + size }); res.end(); return; }
+                var h = { 'Content-Type': /\.mp4$|\.m4v$/i.test(real) ? 'video/mp4' : 'video/x-matroska', 'Accept-Ranges': 'bytes', 'Content-Length': b0 - a0 + 1, 'Cache-Control': 'no-store' };
+                if (part) { h['Content-Range'] = 'bytes ' + a0 + '-' + b0 + '/' + size; }
+                res.writeHead(part ? 206 : 200, h);
+                var rs = fs.createReadStream(real, { fd: fd, start: a0, end: b0 });
+                rs.on('error', function () { try { res.end(); } catch (e) {} });
+                res.on('close', function () { try { rs.destroy(); } catch (e) {} });
+                rs.pipe(res);
+            });
+        });
+    });
 }
 function dlView(e) {
     return { id: e.id, title: e.title, name: e.name, dir: e.dir, size: e.size || 0, got: e.got || 0, speed: Math.round(e.speed || 0), state: e.state, err: e.err || '', at: e.at, tries: e.tries || 0 };
@@ -1322,15 +1436,14 @@ function dlControl(path, query, res) {
     if (path === '/fsdl/list') { send(res, 200, 'application/json', JSON.stringify({ items: _dls.map(dlView) })); return; }
     if (path === '/fsdl/space') {
         var m = mountOf(q.path || '');
-        if (!m || !fsDirOk(m)) { send(res, 400, 'text/plain', 'not a USB drive'); return; }
-        var df = dfOf(m);
-        send(res, 200, 'application/json', JSON.stringify({ free: df ? df.free : null, total: df ? df.total : null, fs: fsTypeOf(m) }));
+        if (!m || !fsDirOk(m) || !isMounted(m)) { send(res, 400, 'text/plain', 'not a USB drive'); return; }
+        dfOf(m, function (df) { send(res, 200, 'application/json', JSON.stringify({ free: df ? df.free : null, total: df ? df.total : null, fs: fsTypeOf(m) })); });
         return;
     }
     if (path === '/fsdl/add') {
         var dir = q.dir || '', name = dlName(q.name), u = q.url || '', pu = null;
         try { pu = urllib.parse(u); } catch (e) {}
-        if (!fsDirOk(dir) || dir.split('/').length > 6) { send(res, 400, 'text/plain', 'not a folder on a USB drive'); return; }
+        if (!fsDirOk(dir) || dir.split('/').length > 6 || !isMounted(mountOf(dir))) { send(res, 400, 'text/plain', 'not a folder on a USB drive'); return; }
         if (!name) { send(res, 400, 'text/plain', 'no file name'); return; }
         if (!pu || (pu.protocol !== 'https:' && pu.protocol !== 'http:') || !dlHostOk(pu.hostname)) { send(res, 400, 'text/plain', 'not a link it can download'); return; }
         var same = _dls.filter(function (x) { return x.dir === dir && x.name === name && (x.state === 'queued' || x.state === 'downloading' || x.state === 'waiting'); })[0];
@@ -1340,9 +1453,14 @@ function dlControl(path, query, res) {
             headers: { 'User-Agent': String(q.ua || 'Mozilla/5.0').slice(0, 300) } };
         if (/^https?:\/\//.test(q.ref || '')) { e.headers.Referer = String(q.ref).slice(0, 2000); }
         _dls = _dls.filter(function (x) { return !(x.dir === dir && x.name === name); });   // (a done / failed one of the same file: replaced)
-        _dls.push(e);
-        dlPump();
-        send(res, 200, 'application/json', JSON.stringify(dlView(e)));
+        // Asked again by the app (this service restarted meanwhile): one that had already finished
+        // (its file there, a regular file at its size, no partial file left) is done, not downloaded twice.
+        dlFinishedBefore(q.again === '1' ? e : null, function (done) {
+            if (done) { e.state = 'done'; e.got = e.size = done.size; }
+            _dls.push(e);
+            if (!done) { dlPump(); }
+            send(res, 200, 'application/json', JSON.stringify(dlView(e)));
+        });
         return;
     }
     var x = _dls.filter(function (y) { return y.id === q.id; })[0];
@@ -1377,6 +1495,48 @@ function dlEnd(e, state, err) {
     if (_dlActive === e) { _dlActive = null; }
     setTimeout(dlPump, 0);
 }
+// cb({ size }) when e's file is already on the drive, finished: a regular file, at its size (when
+// known), with no partial file beside it; else cb(null).
+function dlFinishedBefore(e, cb) {
+    if (!e) { cb(null); return; }
+    var fs = require('fs'), file = e.dir + '/' + e.name;
+    fs.lstat(file + '.part', function (pe) {
+        if (!pe) { cb(null); return; }   // (a partial file: picked up where it stopped instead)
+        fs.lstat(file, function (fe, st) {
+            if (fe || !st.isFile() || (e.size && st.size !== e.size)) { cb(null); return; }
+            cb({ size: st.size });
+        });
+    });
+}
+// A resumed answer must go on exactly where the partial file ends: "bytes <have>-…/…".
+function resumeOk(have, contentRange) {
+    var m = /^bytes (\d+)-(\d+)\/(\d+|\*)$/.exec(String(contentRange || '').trim());
+    return !!m && +m[1] === have && +m[2] >= have;
+}
+// A streamed playlist (HLS, DASH) isn't a file to download: by its type, or its first bytes.
+function isPlaylistAnswer(type, first) {
+    if (/mpegurl|dash\+xml/i.test(String(type || ''))) { return true; }
+    var t = String(first || '').replace(/^\uFEFF/, '').replace(/^\s+/, '');
+    return t.indexOf('#EXTM3U') === 0 || (/^<\?xml/.test(t) && /<MPD[\s>]/.test(t.slice(0, 512))) || t.indexOf('<MPD') === 0;
+}
+// The partial file opened without following a link (O_NOFOLLOW where the TV's Node has it),
+// and only if it's a regular file. cb(err, fd).
+function openPart(fs, part, append, cb) {
+    var C = {};
+    try { C = require('constants'); } catch (e) {}
+    var flags = append ? 'a' : 'w';
+    if (C.O_WRONLY && C.O_CREAT) { flags = C.O_WRONLY | C.O_CREAT | (append ? C.O_APPEND : C.O_TRUNC) | (C.O_NOFOLLOW || 0); }
+    fs.lstat(part, function (le, lst) {
+        if (!le && !lst.isFile()) { cb(new Error('the partial file isn\'t a regular file')); return; }
+        fs.open(part, flags, 420, function (oe, fd) {
+            if (oe) { cb(oe); return; }
+            fs.fstat(fd, function (fe, st) {
+                if (fe || !st.isFile()) { fs.close(fd, function () {}); cb(fe || new Error('the partial file isn\'t a regular file')); return; }
+                cb(null, fd);
+            });
+        });
+    });
+}
 function dlRun(e) {
     var fs = require('fs'), part = e.dir + '/' + e.name + '.part';
     e.state = 'downloading'; e.err = '';
@@ -1401,13 +1561,14 @@ function dlRun(e) {
         if ((pu.protocol !== 'https:' && pu.protocol !== 'http:') || !dlHostOk(pu.hostname)) { dlEnd(e, 'failed', 'a link it can\'t follow'); return; }
         var h = {};
         Object.keys(e.headers).forEach(function (k) { h[k] = e.headers[k]; });
-        if (have > 0) { h.Range = 'bytes=' + have + '-'; }
+        if (have > 0) { h.Range = 'bytes=' + have + '-'; if (e.validator) { h['If-Range'] = e.validator; } }   // (the same file, or the whole of it again)
         var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, headers: h };
         if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
         var r, ws = null, closed = false;
         function stop() { closed = true; try { r.abort(); } catch (er) {} if (ws) { try { ws.end(); } catch (er2) {} } }
         e.stop = stop;
         try { r = mod.get(opts, onResp); } catch (er) { again('couldn\'t connect: ' + (er.code || er.message)); return; }
+        guardSelf(r, function () { if (!closed) { stop(); dlEnd(e, 'failed', 'a link to the TV itself'); } });
         r.on('error', function (er) { if (!closed) { closed = true; if (ws) { try { ws.end(); } catch (x) {} } again('connection: ' + (er.code || er.message)); } });
         r.setTimeout(DL_SILENCE_MS, function () { if (!closed) { stop(); again('no data for ' + (DL_SILENCE_MS / 1000) + ' s'); } });
         function onResp(resp) {
@@ -1416,17 +1577,39 @@ function dlRun(e) {
             if (sc >= 400 && sc < 500) { resp.resume(); closed = true; dlEnd(e, 'failed', 'the server refused it (HTTP ' + sc + '): the link may have expired'); return; }
             if (sc >= 500) { resp.resume(); closed = true; again('the server: HTTP ' + sc); return; }
             if (sc !== 200 && sc !== 206) { resp.resume(); closed = true; dlEnd(e, 'failed', 'HTTP ' + sc); return; }
+            if (sc === 206 && have > 0 && !resumeOk(have, resp.headers['content-range'])) {   // (not where the partial file ends: started over)
+                resp.resume(); closed = true;
+                fs.unlink(part, function () { if (e.state === 'downloading') { get(e.url, 0, 0); } });
+                return;
+            }
             var resumed = sc === 206 && have > 0;
             if (!resumed) { have = 0; }
+            if (!resumed) { var et = resp.headers.etag; e.validator = et && !/^W\//.test(et) ? et : (resp.headers['last-modified'] || ''); }   // (asked again on a resume: If-Range)
+            if (isPlaylistAnswer(resp.headers['content-type'], '')) { resp.resume(); closed = true; dlEnd(e, 'failed', 'a streamed playlist (HLS or DASH), not a file: it can\'t be downloaded'); return; }
             var total = 0, cr = /\/(\d+)\s*$/.exec(resp.headers['content-range'] || '');
             if (cr) { total = +cr[1]; } else if (resp.headers['content-length']) { total = have + (+resp.headers['content-length']); }
             if (total) { e.size = total; }
-            var need = (e.size || 0) - have, mount = mountOf(e.dir), df = dfOf(e.dir), fsType = fsTypeOf(mount);
+            var need = (e.size || 0) - have, mount = mountOf(e.dir), fsType = fsTypeOf(mount);
             if (e.size > FAT_MAX && /^(vfat|msdos|fat)/.test(fsType)) { resp.resume(); closed = true; dlEnd(e, 'failed', 'the drive is FAT32, which can\'t hold a file over 4 GB'); return; }
-            if (df && need > 0 && df.free < need + DL_SPARE) { resp.resume(); closed = true; dlEnd(e, 'failed', 'not enough space on the drive'); return; }
-            try { ws = fs.createWriteStream(part, { flags: resumed ? 'a' : 'w' }); }
+            dfOf(e.dir, function (df) {   // (the answer waits, unread, meanwhile)
+                if (closed || e.state !== 'downloading') { resp.resume(); return; }
+                if (df && need > 0 && df.free < need + DL_SPARE) { resp.resume(); closed = true; dlEnd(e, 'failed', 'not enough space on the drive'); return; }
+                openPart(fs, part, resumed, function (oe, fd) {
+                    if (closed || e.state !== 'downloading') { if (fd) { fs.close(fd, function () {}); } resp.resume(); return; }
+                    if (oe) { resp.resume(); closed = true; dlEnd(e, 'failed', 'can\'t write to the drive: ' + (oe.code || oe.message)); return; }
+                    write(fd);
+                });
+            });
+            function write(fd) {
+            try { ws = fs.createWriteStream(part, { fd: fd }); }
             catch (er) { resp.resume(); closed = true; dlEnd(e, 'failed', 'can\'t write to the drive: ' + (er.code || er.message)); return; }
             e.got = have;
+            var firstSeen = resumed;
+            resp.on('data', function (c) {   // (a playlist's first bytes, where its type didn't say: refused)
+                if (firstSeen) { return; }
+                firstSeen = true;
+                if (isPlaylistAnswer('', c.slice(0, 600).toString('utf8'))) { stop(); fs.unlink(part, function () {}); dlEnd(e, 'failed', 'a streamed playlist (HLS or DASH), not a file: it can\'t be downloaded'); }
+            });
             var tick = { at: Date.now(), got: have };
             ws.on('error', function (er) { if (!closed) { stop(); dlEnd(e, 'failed', 'can\'t write to the drive: ' + (er.code || er.message)); } });
             resp.on('data', function (c) {
@@ -1454,8 +1637,9 @@ function dlRun(e) {
                 if (closed || e.state !== 'downloading') { return; }
                 closed = true;
                 if (e.size && e.got < e.size) { again('the connection dropped'); return; }   // (picked up where it stopped)
+                if (e.size && e.got > e.size) { fs.unlink(part, function () {}); dlEnd(e, 'failed', 'more came than the file\'s size: started again it may work'); return; }
                 var final = e.dir + '/' + e.name;
-                fs.stat(final, function (fe) {
+                fs.lstat(final, function (fe) {   // (anything there, a link too: not replaced)
                     if (!fe) { final = e.dir + '/' + e.name.replace(/(\.[^.]+)?$/, ' (' + Date.now().toString(36) + ')$1'); }   // (one already there: not overwritten)
                     fs.rename(part, final, function (re) {
                         if (re) { dlEnd(e, 'failed', 'couldn\'t finish the file: ' + (re.code || re.message)); return; }
@@ -1464,6 +1648,7 @@ function dlRun(e) {
                     });
                 });
             });
+            }
         }
     }
 }
@@ -1519,20 +1704,7 @@ function handle(req, res) {
             var fq = {};
             (parts[1] || '').split('&').forEach(function (kv) { var i = kv.indexOf('='); if (i > 0) { try { fq[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); } catch (e) {} } });
             if (!fsDirOk(fq.path || '')) { send(res, 400, 'text/plain', 'not on a USB drive'); return; }
-            var ffs = require('fs');
-            ffs.stat(fq.path, function (se, st) {
-                if (se || !st.isFile()) { send(res, 404, 'text/plain', 'no such file'); return; }
-                var size = st.size, m = /bytes=(\d*)-(\d*)/.exec(req.headers.range || ''), a0 = 0, b0 = size - 1, part = false;
-                if (m) { part = true; if (m[1] !== '') { a0 = +m[1]; if (m[2] !== '') { b0 = Math.min(+m[2], size - 1); } } else if (m[2] !== '') { a0 = Math.max(0, size - (+m[2])); } }
-                if (a0 > b0 || a0 >= size) { res.writeHead(416, { 'Content-Range': 'bytes */' + size }); res.end(); return; }
-                var h = { 'Content-Type': /\.mp4$|\.m4v$/i.test(fq.path) ? 'video/mp4' : 'video/x-matroska', 'Accept-Ranges': 'bytes', 'Content-Length': b0 - a0 + 1, 'Cache-Control': 'no-store' };
-                if (part) { h['Content-Range'] = 'bytes ' + a0 + '-' + b0 + '/' + size; }
-                res.writeHead(part ? 206 : 200, h);
-                var rs = ffs.createReadStream(fq.path, { start: a0, end: b0 });
-                rs.on('error', function () { try { res.end(); } catch (e) {} });
-                res.on('close', function () { try { rs.destroy(); } catch (e) {} });
-                rs.pipe(res);
-            });
+            fsFileServe(req, res, fq.path);
             return;
         }
         if (/^\/fsdl\//.test(path)) {   // (downloads to a USB drive: see dlControl)
@@ -1657,6 +1829,7 @@ function handle(req, res) {
 // channel's User-Agent and Referer. A segment comes back with its sound repacked (liveFix:
 // whole ADTS frames per packet, each packet with its first frame's own time), everything else
 // as it was. &force=1: the relay without the look (StremioK already knows the channel).
+var HLS_MASTER_MAX = 524288;   // (an HLS quality list: /live/master)
 var LIVE_MAX = 4, LIVE_IDLE_MS = 5 * 60 * 1000, LIVE_LINKS = 400, LIVE_LIST_MAX = 1048576, LIVE_SEG_MAX = 32 * 1048576, LIVE_PROBE = 1536 * 1024, LIVE_MS = 20000;
 var ADTS_RATES = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
 var _live = {};
@@ -1699,6 +1872,7 @@ function liveGet(u, who, max, cb, part) {
                 resp.on('error', function (e) { end(e); });
             });
             r.on('error', function (e) { end(e); });
+            guardSelf(r, function () { end(upError('a link to the TV itself', 400)); });
         } catch (e) { end(e); }
     }
     get(u);
@@ -1932,6 +2106,18 @@ function liveControl(req, res, path, query, leaving) {
     livePurge();
     var q = {};
     (query || '').split('&').forEach(function (kv) { var i = kv.indexOf('='); if (i > 0) { try { q[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); } catch (e) {} } });
+    if (path === '/live/master') {   // an HLS stream's quality list, asked with its own User-Agent / Referer (which a web page can't send)
+        if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
+        var mu = q.u || '';
+        if (!/^https?:\/\/[^\s]+$/i.test(mu) || mu.length > 2000) { send(res, 400, 'text/plain', 'bad link'); return; }
+        leaving.push(liveGet(mu, { ua: liveHeader(q.ua), ref: liveHeader(q.ref) }, HLS_MASTER_MAX, function (err, buf) {
+            if (err) { send(res, err.status || 502, 'text/plain', 'failed: ' + (err.message || 'unknown')); return; }
+            var text = buf.toString('utf8').replace(/^\uFEFF/, '');
+            if (text.replace(/^\s+/, '').indexOf('#EXTM3U') !== 0) { send(res, 502, 'text/plain', 'not an HLS playlist'); return; }
+            send(res, 200, 'application/vnd.apple.mpegurl', text);
+        }));
+        return;
+    }
     if (path === '/live/open') {
         if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
         var u = q.u || '', who = { ua: liveHeader(q.ua), ref: liveHeader(q.ref) };
@@ -1967,35 +2153,55 @@ function liveControl(req, res, path, query, leaving) {
 // AIOManager's Connections, with when it last read). Here rather than in the app: an instance
 // only answers the web origins it's set to (CORS_ORIGINS). Nothing is written to AIOManager.
 var AIOM_MS = 20000, AIOM_MAX = 2 * 1048576;
-function hydraReq(method, url, key, body, cb, _hops) {
+// A redirect it follows with the key: the same server only (its name and port; plain HTTP may
+// move to HTTPS on the default ports, never the other way). The key goes nowhere else.
+function sameServerRedirect(from, to) {
+    if (!to || (to.protocol !== 'http:' && to.protocol !== 'https:') || String(to.hostname || '').toLowerCase() !== String(from.hostname || '').toLowerCase()) { return false; }
+    function port(u) { return +(u.port || (u.protocol === 'https:' ? 443 : 80)); }
+    if (from.protocol === to.protocol) { return port(from) === port(to); }
+    return from.protocol === 'http:' && to.protocol === 'https:' && !from.port && !to.port;
+}
+// One request (with its redirects) to an AIOManager instance: one deadline for the whole chain,
+// and the abort it returns stops whichever request is under way.
+function hydraReq(method, url, key, body, cb) {
     cb = once(cb);
-    var pu;
-    try { pu = urllib.parse(url); } catch (e) { cb(upError('bad address', 400)); return noop; }
-    if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !dlHostOk(pu.hostname)) { cb(upError('an address it can\'t reach', 400)); return noop; }
-    var h = { 'X-API-Key': key, 'Accept': 'application/json', 'User-Agent': 'StremioK' }, data = body ? toBuffer(JSON.stringify(body)) : null;
-    if (data) { h['Content-Type'] = 'application/json'; h['Content-Length'] = data.length; }
-    var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, method: method, headers: h };
-    if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
-    var r, done = false, chunks = [], size = 0;
-    var timer = setTimeout(function () { end(upError('AIOManager didn\'t answer', 504)); }, AIOM_MS);
-    function end(err, sc) { if (done) { return; } done = true; clearTimeout(timer); try { r.abort(); } catch (e) {} cb(err, sc, err ? null : Buffer.concat(chunks, size).toString('utf8')); }
-    try {
-        r = (pu.protocol === 'https:' ? https : http).request(opts, function (resp) {
-            var sc = resp.statusCode;
-            if (sc >= 300 && sc < 400 && resp.headers.location && method === 'GET' && (_hops || 0) < 4) {
-                done = true; clearTimeout(timer); resp.resume();
-                hydraReq(method, urllib.resolve(url, resp.headers.location), key, body, cb, (_hops || 0) + 1);
-                return;
-            }
-            resp.on('data', function (c) { if (done) { return; } chunks.push(c); size += c.length; if (size > AIOM_MAX) { end(upError('too large an answer', 502)); } });
-            resp.on('end', function () { if (sc !== 200) { end(upError('HTTP ' + sc, sc === 401 || sc === 403 ? 401 : 502)); return; } end(null, sc); });
-            resp.on('error', function (e) { end(e); });
-        });
-        r.on('error', function (e) { end(upError('couldn\'t reach it (' + (e.code || e.message) + ')', 502)); });
-        if (data) { r.write(data); }
-        r.end();
-    } catch (e) { end(e); }
-    return function () { if (!done) { done = true; clearTimeout(timer); try { r.abort(); } catch (e2) {} } };
+    var ctl = { r: null, done: false }, first = null;
+    try { first = urllib.parse(url); } catch (e) { first = null; }
+    var timer = setTimeout(function () { finish(upError('AIOManager didn\'t answer', 504)); }, AIOM_MS);
+    function finish(err, sc, text) { if (ctl.done) { return; } ctl.done = true; clearTimeout(timer); try { if (ctl.r) { ctl.r.abort(); } } catch (e) {} cb(err, sc, text); }
+    function go(u, hops) {
+        var pu;
+        try { pu = urllib.parse(u); } catch (e) { finish(upError('bad address', 400)); return; }
+        if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !dlHostOk(pu.hostname)) { finish(upError('an address it can\'t reach', 400)); return; }
+        var h = { 'X-API-Key': key, 'Accept': 'application/json', 'User-Agent': 'StremioK' }, data = body ? toBuffer(JSON.stringify(body)) : null;
+        if (data) { h['Content-Type'] = 'application/json'; h['Content-Length'] = data.length; }
+        var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, method: method, headers: h };
+        if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
+        var chunks = [], size = 0;
+        try {
+            var r = ctl.r = (pu.protocol === 'https:' ? https : http).request(opts, function (resp) {
+                if (ctl.done || ctl.r !== r) { resp.resume(); return; }
+                var sc = resp.statusCode;
+                if (sc >= 300 && sc < 400 && resp.headers.location && method === 'GET' && hops < 4) {
+                    resp.resume();
+                    var next = urllib.resolve(u, resp.headers.location), np = null;
+                    try { np = urllib.parse(next); } catch (e) { np = null; }
+                    if (!sameServerRedirect(first, np)) { finish(upError('AIOManager redirected to another server: not followed (your API key stays with it)', 502)); return; }
+                    go(next, hops + 1);
+                    return;
+                }
+                resp.on('data', function (c) { if (ctl.done) { return; } chunks.push(c); size += c.length; if (size > AIOM_MAX) { finish(upError('too large an answer', 502)); } });
+                resp.on('end', function () { if (sc !== 200) { finish(upError('HTTP ' + sc, sc === 401 || sc === 403 ? 401 : 502)); return; } finish(null, sc, Buffer.concat(chunks, size).toString('utf8')); });
+                resp.on('error', function (e) { finish(e); });
+            });
+            r.on('error', function (e) { if (ctl.r === r) { finish(upError('couldn\'t reach it (' + (e.code || e.message) + ')', 502)); } });
+            guardSelf(r, function () { finish(upError('an address it can\'t reach', 400)); });
+            if (data) { r.write(data); }
+            r.end();
+        } catch (e) { finish(e); }
+    }
+    go(url, 0);
+    return function () { if (!ctl.done) { ctl.done = true; clearTimeout(timer); try { if (ctl.r) { ctl.r.abort(); } } catch (e) {} } };
 }
 function aiomControl(req, res, query, leaving) {
     if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
