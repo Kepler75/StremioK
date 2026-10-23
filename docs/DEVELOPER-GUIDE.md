@@ -114,6 +114,7 @@ it.
 | [Privacy and data](PRIVACY.md) | What's kept on the TV, and what's sent where |
 | [Technical reference](TECHNICAL-REFERENCE.md) | How it works inside: limits, timings, rules, TV quirks |
 | [Installation guide](INSTALL.md) | Installing and updating, and what differs between installs |
+| [Security policy](SECURITY.md) | Reporting a vulnerability: how, and what's in scope |
 | This guide | The code |
 | [Changelog](../CHANGELOG.md) | One entry per version |
 
