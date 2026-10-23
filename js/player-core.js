@@ -299,15 +299,29 @@ var PlayerParts = {};
         } catch (er2) {}
         return out;
     }
+    // An IPTV channel's TV guide (js/epg.js): { now, next } or null.
+    function guideNow() { return (typeof EPG !== 'undefined' && S.ctx && /^iptv:/.test(S.ctx.id || '')) ? EPG.now(S.ctx.id) : null; }
+    function clock(sec) { var d = new Date(sec * 1000); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); }
+    if (typeof EPG !== 'undefined' && EPG.onChange) { EPG.onChange(function () { if (S.active && S.isLive) { renderOSD(); } }); }
     function renderOSD() {
         U.byId('osd-title').textContent = S.ctx ? S.ctx.name : '';
+        var ck = U.byId('osd-clock');   // (the time of day, top right while the bar is on screen)
+        if (ck) { ck.textContent = clock(Date.now() / 1000); }
         renderTags();
         renderChapters();
         if (S.isLive) {
-            U.byId('osd-bar').style.display = 'none';
-            var cur = U.byId('osd-cur');
-            cur.textContent = '● LIVE';
+            var cur = U.byId('osd-cur'), g = guideNow();
             cur.className = 'live';
+            if (g && g.now) {   // an IPTV channel with a TV guide: what's on, how far along, and next
+                var t = Date.now() / 1000;
+                U.byId('osd-bar').style.display = '';
+                U.byId('osd-progress').style.width = Math.max(0, Math.min(100, Math.round((t - g.now.start) / (g.now.stop - g.now.start) * 100))) + '%';
+                cur.textContent = '● LIVE   ' + clock(g.now.start) + '–' + clock(g.now.stop) + '   ' + g.now.title;
+                U.byId('osd-dur').textContent = g.next ? 'Next  ' + clock(g.next.start) + '   ' + g.next.title : '';
+                return;
+            }
+            U.byId('osd-bar').style.display = 'none';
+            cur.textContent = '● LIVE';
             U.byId('osd-dur').textContent = '';
             return;
         }
@@ -331,6 +345,41 @@ var PlayerParts = {};
             yt: page, ytLang: lang, type: 'YouTube', id: 'yt_id:' + link.id, parent: 'yt_id:' + link.id, name: link.title || 'YouTube',
             poster: 'https://i.ytimg.com/vi/' + link.id + '/hqdefault.jpg', streams: [], private: !!(S.ctx && S.ctx.private) || undefined }, _onExit);   // (from a private one: private too)
     }
+    // ---------- a live Xtream channel's format ----------
+    // An Xtream server sends a channel as MPEG-TS (…/live/USER/PASS/123.ts) or as HLS (….m3u8).
+    // The menu's Format plays it the other way and keeps that for the channel (FORMAT_KEY, by its
+    // id, the last FORMAT_KEEP), so it starts that way next time; its playlist's own way isn't
+    // kept. ctx._ownUrl: the link as its playlist gives it.
+    var FORMAT_KEY = 'stremiok.liveformat', FORMAT_KEEP = 300;
+    var XT_LIVE = /^(https?:\/\/[^?#]+\/live\/[^\/?#]+\/[^\/?#]+\/[^\/?#.]+)\.(ts|m3u8)([?#].*)?$/i;
+    function liveFormat(url) { var m = XT_LIVE.exec(url || ''); return m ? (m[2].toLowerCase() === 'm3u8' ? 'hls' : 'ts') : ''; }
+    function withFormat(url, fmt) { var m = XT_LIVE.exec(url || ''); return m ? m[1] + '.' + (fmt === 'hls' ? 'm3u8' : 'ts') + (m[3] || '') : url; }
+    function formatStart(ctx) {
+        if (!S.isLive || !ctx.id || !liveFormat(ctx._ownUrl || ctx.url)) { return; }
+        if (!ctx._ownUrl) { ctx._ownUrl = ctx.url; }
+        var want = (U.store.get(FORMAT_KEY, {}) || {})[ctx.id];
+        ctx.url = (want === 'ts' || want === 'hls') ? withFormat(ctx._ownUrl, want) : ctx._ownUrl;
+    }
+    function setLiveFormat(fmt) {
+        var old = S.ctx;
+        if (!S.active || !old || !old._ownUrl || !liveFormat(old.url) || liveFormat(old.url) === fmt) { return; }
+        var all = U.store.get(FORMAT_KEY, {}) || {};
+        delete all[old.id];
+        if (fmt !== liveFormat(old._ownUrl)) {
+            all[old.id] = fmt;
+            var keys = Object.keys(all);
+            keys.slice(0, Math.max(0, keys.length - FORMAT_KEEP)).forEach(function (k) { delete all[k]; });   // (the oldest picked)
+        }
+        U.store.set(FORMAT_KEY, all);
+        var ctx = {};   // (the channel again, without what was learned from the other link: its relay, its look)
+        Object.keys(old).forEach(function (k) { if (!/^_(relay|relayFor|relayCc|ccOffer|liveChecked)$/.test(k)) { ctx[k] = old[k]; } });
+        ctx.switching = true;
+        play(ctx, _onExit);
+        U.spinner(true, 'Opening it as ' + (fmt === 'hls' ? 'HLS' : 'MPEG-TS') + '…');
+    }
+    P.liveFormat = function () { return S.active && S.ctx && S.isLive && S.ctx._ownUrl ? liveFormat(S.ctx.url) : ''; };
+    P.setLiveFormat = setLiveFormat;
+
     // Another source of what's playing (the player's source list): played in its place, at
     // the same point, as a playback of its own — its quality ladder, YouTube details,
     // captions, SponsorBlock sections, headers and file details are the new source's, and so
@@ -375,6 +424,7 @@ var PlayerParts = {};
         S.active = true; S.cur = 0; S.dur = 0; _bg = null; S.actual = null;
         // Stremio "tv" and "radio" types are strong live hints; refined after prepare.
         S.isLive = (ctx.type === 'tv' || ctx.type === 'radio') || /^iptv:/.test(ctx.id || '') || !!ctx.isLive;   // (an IPTV channel: live, a sports one too)
+        formatStart(ctx);
         S.ctx.resumeSec = (ctx.trailer || ctx.fromStart) ? 0 : (ctx.resumeSec || getResume(ctx.type, ctx.id));   // (Play from start: 0:00)
 
         // reset subtitle + audio + quality + on-screen controls state
@@ -1041,6 +1091,11 @@ var PlayerParts = {};
     // cut that way, the channel restarts through the service's relay, which repacks the sound.
     // The answer is kept per link (LIVE_KEY, LIVE_DAYS): a channel known to need it starts
     // through the relay (startLive), one known not to isn't asked about again.
+    // The same look says which closed-caption channels (CC1–CC4) are in its picture (cc, kept
+    // with it once sure). They're offered in the subtitle menu (ctx._ccOffer); turned on (picked
+    // there, remembered for the channel, or in your default subtitle language), the channel plays
+    // through the relay with them as subtitle tracks (ctx._relayCc), the sound as it is unless it
+    // needs repacking too.
     var LIVE_KEY = 'stremiok.livefix', LIVE_KEEP = 300, LIVE_DAYS = 14;
     function liveFixable(ctx) {
         return useAV && S.isLive && !!ctx && !ctx.yt && !ctx.trailer && /^https?:\/\//i.test(ctx.url || '') &&
@@ -1050,22 +1105,45 @@ var PlayerParts = {};
         var k = (U.store.get(LIVE_KEY, {}) || {})[url];
         return (k && Date.now() - k.at < LIVE_DAYS * 86400000) ? k : null;
     }
-    function liveKeep(url, fix) {
+    // The caption channels kept for a link: [{ ch: 'CC1', lang: 'en' }], or null (not known yet).
+    function ccOf(k) {
+        if (!k || !Array.isArray(k.cc)) { return null; }
+        return k.cc.filter(function (c) { return c && /^CC[1-4]$/.test(c.ch) && (!c.lang || /^[a-z]{2,3}$/.test(c.lang)); }).slice(0, 4);
+    }
+    function liveKeep(url, fix, cc) {
         var all = U.store.get(LIVE_KEY, {}) || {};
         all[url] = { fix: fix ? 1 : 0, at: Date.now() };
+        if (cc) { all[url].cc = cc; }
         var keys = Object.keys(all);
         if (keys.length > LIVE_KEEP) {
             keys.sort(function (a, b) { return all[a].at - all[b].at; }).slice(0, keys.length - LIVE_KEEP).forEach(function (k) { delete all[k]; });
         }
         U.store.set(LIVE_KEY, all);
     }
+    // Captions on from the start: your choice for this channel (a closed-caption track picked
+    // there last), else one in your default subtitle language (or second choice).
+    function ccWanted(ctx, cc) {
+        if (!cc || !cc.length) { return false; }
+        var mem = P.recallSub(ctx.id);
+        if (mem) { return !!mem.embedded; }
+        var cfg = P.getSubCfg(), langs = [cfg.lang, cfg.lang2].filter(function (l) { return l && l !== 'off' && l !== 'none'; });
+        return cc.some(function (c) { return c.lang && langs.some(function (l) { return P.langMatches(l, c.lang); }); });
+    }
+    function ccIndex(cc, w) { for (var i = 0; i < cc.length; i++) { if (cc[i].ch === w.ch) { return i; } } return 0; }
+    function relayed(ctx, r, cc) {
+        if (!r || typeof r.url !== 'string' || !/^http:\/\/localhost:\d+\/live\//.test(r.url)) { return false; }
+        ctx._relay = r.url; ctx._relayFor = ctx.url; ctx._relayCc = cc || null; ctx._ccOffer = cc ? null : ctx._ccOffer;
+        return true;
+    }
     function startLive(ctx, settle) {
-        var known = liveFixable(ctx) ? liveKnown(ctx.url) : null;
-        if (!known || !known.fix) { startAV(ctx.url, settle); return; }
-        ctx._liveChecked = true;
-        YTPlay.liveOpen(ctx.url, ctx._headers, true).then(function (r) {
+        var known = liveFixable(ctx) ? liveKnown(ctx.url) : null, cc = ccOf(known);
+        if (cc && cc.length) { ctx._ccOffer = cc; }
+        var withCc = ccWanted(ctx, cc) ? cc : null;
+        if (cc) { ctx._liveChecked = true; }   // (both answers in: not asked again)
+        if (!known || (!known.fix && !withCc)) { startAV(ctx.url, settle); return; }
+        YTPlay.liveOpen(ctx.url, ctx._headers, true, { fix: !!known.fix, cc: withCc }).then(function (r) {
             if (S.ctx !== ctx || !S.active) { return; }
-            if (r && typeof r.url === 'string' && /^http:\/\/localhost:\d+\/live\//.test(r.url)) { ctx._relay = r.url; ctx._relayFor = ctx.url; }
+            relayed(ctx, r, withCc);
             startAV(ctx.url, settle);
         }, function () { if (S.ctx === ctx && S.active) { startAV(ctx.url, settle); } });
     }
@@ -1073,17 +1151,37 @@ var PlayerParts = {};
         var ctx = S.ctx;
         if (!ctx || ctx._liveChecked || !liveFixable(ctx)) { return; }
         ctx._liveChecked = true;
-        if (liveKnown(ctx.url)) { return; }
+        var known = liveKnown(ctx.url);
+        if (known && ccOf(known)) { return; }
         var url = ctx.url;
         YTPlay.liveOpen(url, ctx._headers, false).then(function (r) {
             if (!r || !r.sure) { return; }   // (couldn't tell: asked again next time)
-            liveKeep(url, !!r.fix);
-            if (!r.fix || typeof r.url !== 'string' || !/^http:\/\/localhost:\d+\/live\//.test(r.url) || S.ctx !== ctx || !S.active || ctx.url !== url) { return; }
-            ctx._relay = r.url; ctx._relayFor = url;
+            var cc = (r.ccSure || r.cc === undefined) ? (ccOf(r) || []) : null, fix = known ? !!known.fix : !!r.fix;   // (captions with no text yet: asked again next time; the sound's answer: as first found)
+            liveKeep(url, fix, cc);
+            if (S.ctx !== ctx || !S.active || ctx.url !== url) { return; }
+            if (cc && cc.length && !ctx._relayCc) { ctx._ccOffer = cc; }
+            if (cc && cc.length && ccWanted(ctx, cc)) { ccOn(ctx, 'Adding this channel’s captions…'); return; }
+            if (known || !fix || ctx._relay || !relayed(ctx, r, null)) { return; }   // (the sound: restarted for on its first look only)
             U.log('player', 'Live sound repacked by StremioK\'s service (' + (r.why || '') + ')');
             reopen('Fixing this channel’s sound…');
         }, function () {});
     }
+    // The channel again through the relay with its closed captions as subtitle tracks (the sound
+    // repacked too when it needs it); then: true once it's reopening. want: a caption track to
+    // select once it plays ({ ch, lang }).
+    function ccOn(ctx, message, want) {
+        var known = liveKnown(ctx.url), cc = ccOf(known) || ctx._ccOffer;
+        if (!cc || !cc.length || !liveFixable(ctx)) { return Promise.resolve(false); }
+        return YTPlay.liveOpen(ctx.url, ctx._headers, true, { fix: !!(known && known.fix), cc: cc }).then(function (r) {
+            if (S.ctx !== ctx || !S.active || !relayed(ctx, r, cc)) { return false; }
+            var w = want || cc.filter(function (c) { return ccWanted(ctx, [c]); })[0] || null;
+            U.log('player', 'Live captions through StremioK\'s service (' + cc.map(function (c) { return c.ch; }).join(', ') + ')');
+            reopen(message);
+            if (w && P.wantEmbedded) { P.wantEmbedded({ nth: ccIndex(cc, w), lang: w.lang }); }   // (after the reopen: on its tracks)
+            return true;
+        }, function () { return false; });
+    }
+    P.ccOn = function (want) { return S.ctx ? ccOn(S.ctx, 'Adding this channel’s captions…', want) : Promise.resolve(false); };
     // The relay didn't start (StremioK's service gone): the channel as it is.
     function relayFailed() {
         if (S.playStarted || !S.ctx || !S.ctx._relay) { return false; }
@@ -1181,6 +1279,7 @@ var PlayerParts = {};
     function exit() {
         if (!S.active) { return; }
         if (U.crumb) { U.crumb('player closed'); }
+        if (P.sleepClear) { P.sleepClear(); }   // (the sleep timer: this playback's)
         saveProgress();
         // Record partial progress to Trakt (unfinished VOD) so it shows in Continue Watching. Past
         // 85% (Trakt connected): finished, Trakt's way (it marks it watched), and here as at the credits.
@@ -1227,4 +1326,5 @@ var PlayerParts = {};
     P.sponsorHighlight = sponsorHighlight;
     P.chapters = chapters; P.chapterAt = chapterAt; P.chapterLabel = chapterLabel;
     P.seekTo = seekTo; P.doAVSeek = doAVSeek; P.seekBy = seekBy; P.exit = exit;
+    P.reload = function () { if (S.active && S.ctx) { reopen(S.isLive ? 'Reloading the channel…' : 'Reloading…'); } };   // (the menu's Reload)
 })(PlayerParts);

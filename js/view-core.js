@@ -8,6 +8,7 @@ var ViewParts = {};
 
     // ----- from the other parts -----
     function availableTabs() { return V.availableTabs.apply(null, arguments); }   // home
+    function menuItems() { return V.menuItems.apply(null, arguments); }   // home
     function clearCatalogCache() { return V.clearCatalogCache.apply(null, arguments); }   // home
     function refreshAddonRows() { return V.refreshAddonRows.apply(null, arguments); }   // home
     function epCode() { return V.epCode.apply(null, arguments); }   // detail
@@ -271,6 +272,16 @@ var ViewParts = {};
         var rename = U.el('div', 'pill focusable modal-btn', 'Rename');
         var onoff = U.el('div', 'pill focusable modal-btn', playlist.off ? 'Turn on' : 'Turn off');
         var edit = U.el('div', 'pill focusable modal-btn', 'Edit link');
+        var guide = U.el('div', 'pill focusable modal-btn', 'Guide link');
+        var fmt = IPTV.xtreamFormat ? IPTV.xtreamFormat(playlist.id) : '';   // (an Xtream account: MPEG-TS or HLS)
+        var format = U.el('div', 'pill focusable modal-btn', 'Format: ' + (fmt === 'hls' ? 'HLS' : 'MPEG-TS'));
+        format.__onselect = function () {
+            closeModal();
+            Stremio.iptvSetXtreamFormat(playlist.id, fmt === 'hls' ? 'ts' : 'hls');
+            refreshAddonRows('local:iptv');
+            U.toast('Its channels now play as ' + (fmt === 'hls' ? 'MPEG-TS' : 'HLS') + ' (reading the account again…)', 4000);
+            renderSettings();
+        };
         var reload = U.el('div', 'pill focusable modal-btn', 'Reload');
         var remove = U.el('div', 'pill focusable modal-btn danger', 'Remove');
 
@@ -312,6 +323,20 @@ var ViewParts = {};
                 }
             });
         };
+        guide.__onselect = function () {   // its TV guide: yours, or the playlist's own (empty)
+            closeModal();
+            App.openEntry({
+                title: 'TV guide link', phone: 'playlist',
+                hint: 'An XMLTV guide (.xml or .xml.gz), then Confirm. Empty uses the playlist’s own (the one it names, or an Xtream playlist’s). RETURN cancels.',
+                value: playlist.guide || '', placeholder: 'https://example.com/guide.xml.gz',
+                validate: function (v) { return ('' + v).trim() ? (U.urlProblem(v) || null) : null; },
+                onConfirm: function (v) {
+                    Stremio.iptvSetPlaylistGuide(playlist.id, v);
+                    U.toast(('' + v).trim() ? 'Guide link set: reading it…' : 'Back to the playlist’s own guide', 3000);
+                    App.back(); renderSettings();
+                }
+            });
+        };
         reload.__onselect = function () {
             closeModal();
             U.toast('Reloading playlist…', 4000);
@@ -334,6 +359,8 @@ var ViewParts = {};
         row.appendChild(rename);
         row.appendChild(onoff);
         row.appendChild(edit);
+        if (!playlist.off && typeof EPG !== 'undefined' && EPG.available && EPG.available()) { row.appendChild(guide); }
+        if (!playlist.off && fmt) { row.appendChild(format); }
         if (!playlist.off) { row.appendChild(reload); }
         row.appendChild(remove);
         box.appendChild(row);
@@ -371,33 +398,6 @@ var ViewParts = {};
         document.body.appendChild(overlay);
 
         showModal(overlay, pref);
-    }
-
-    // Switches in a popup (Settings › Appearance › Home tabs): OK on one turns it on or off and
-    // the list stays open (BACK closes it). items: [[key, label, on]]; words: { on, off } (the
-    // state shown after each label); onToggle(key, on).
-    function toggleList(title, items, words, onToggle) {
-        var existing = document.querySelector('.modal-overlay');
-        if (existing) { existing.parentNode.removeChild(existing); }
-        var overlay = U.el('div', 'modal-overlay');
-        var box = U.el('div', 'modal-box pick-box');
-        box.appendChild(U.el('div', 'modal-msg', title));
-        var listEl = U.el('div', 'pick-list'), first = null;
-        items.forEach(function (opt) {
-            var on = !!opt[2], it = U.el('div', 'pick-item focusable');
-            function draw() {
-                it.textContent = opt[1] + ':  ' + (on ? words.on : words.off);
-                if (on) { it.classList.add('sel'); } else { it.classList.remove('sel'); }
-            }
-            draw();
-            it.__onselect = function () { on = !on; draw(); onToggle(opt[0], on); };
-            if (!first) { first = it; }
-            listEl.appendChild(it);
-        });
-        box.appendChild(listEl);
-        overlay.appendChild(box);
-        document.body.appendChild(overlay);
-        showModal(overlay, first);
     }
 
     // Ticks in a popup (what to import): nothing ticked at first; OK on one ticks or unticks it,
@@ -482,7 +482,8 @@ var ViewParts = {};
     }
 
     // The shared top menu, used on Home / Search / Settings so they look and navigate
-    // the same: tab pills + Search + Settings on the left, StremioK on the right.
+    // the same: Watching, then the tabs, Discover and Search in your order (menuItems), then
+    // Settings, on the left; StremioK on the right.
     // `active` is the key of the current view: a tab key, 'search' or 'settings'.
     function buildTopMenu(active) {
         var head = U.el('div', 'header home-header');
@@ -495,34 +496,23 @@ var ViewParts = {};
         };
         function down() { return focusBelowTop(head); }
         var tabbar = U.el('div', 'tabbar-inline');
-        availableTabs().forEach(function (t) {
-            var pill = U.el('div', 'tab-pill focusable' + (t.key === active ? ' active' : ''));
-            pill.appendChild(document.createTextNode(t.label));
-            pill.appendChild(U.el('span', 'tab-ic', t.icon));
-            pill.__onselect = function () { App.goHome(t.key); };
-            pill.__navDOWN = down;
-            tabbar.appendChild(pill);
-        });
-        // Discover: browse any catalog in full, by genre / year (its own screen)
-        var disc = U.el('div', 'tab-pill focusable' + (active === 'discover' ? ' active' : ''));
-        disc.appendChild(document.createTextNode('Discover'));
-        disc.appendChild(U.el('span', 'tab-ic', '🔭'));
-        disc.__onselect = function () { App.openDiscover(); };
-        disc.__navDOWN = down;
-        tabbar.appendChild(disc);
-        head.appendChild(tabbar);
-
-        // Search and Settings: pills like the tabs (name, then icon), after them
-        function chip(key, label, icon, open) {
-            var c = U.el('div', 'hchip focusable' + (active === key ? ' active' : ''));
-            c.appendChild(document.createTextNode(label));
-            c.appendChild(U.el('span', 'tab-ic', icon));
-            c.__onselect = open;
-            c.__navDOWN = down;
-            head.appendChild(c);
+        // a pill: a Home tab, Discover (browse any catalog in full, its own screen), Search;
+        // Settings a chip like them (name, then icon), after them
+        function item(cls, key, label, icon, open, into) {
+            var p = U.el('div', cls + ' focusable' + (key === active ? ' active' : ''));
+            p.appendChild(document.createTextNode(label));
+            p.appendChild(U.el('span', 'tab-ic', icon));
+            p.__onselect = open;
+            p.__navDOWN = down;
+            into.appendChild(p);
         }
-        chip('search', 'Search', '🔍', function () { App.openSearch(); });
-        chip('settings', 'Settings', '⚙', function () { App.openSettings(); });
+        menuItems().forEach(function (m) {
+            if (m.tab) { item('tab-pill', m.key, m.tab.label, m.tab.icon, function () { App.goHome(m.key); }, tabbar); }
+            else if (m.key === 'discover') { item('tab-pill', 'discover', 'Discover', '🔭', function () { App.openDiscover(); }, tabbar); }
+            else if (m.key === 'search') { item('hchip', 'search', 'Search', '🔍', function () { App.openSearch(); }, tabbar); }
+        });
+        head.appendChild(tabbar);
+        item('hchip', 'settings', 'Settings', '⚙', function () { App.openSettings(); }, head);
 
         head.appendChild(U.el('div', 'spacer'));
         var brand = U.el('div', 'brand');
@@ -579,6 +569,10 @@ var ViewParts = {};
         if (rating > 0 && rating <= 10 && Stremio.getPrefs().posterRatings) { c.appendChild(U.el('div', 'card-rating', '★ ' + rating.toFixed(1))); }   // (a series: marked watched whole, see setTitleWatched / the title page)
         if (kind === 'movie' || kind === 'series') { c.__onlongpress = function () { posterActions(meta, kind, c); }; }
         else if (youTubeList(meta.id)) { c.__onlongpress = function () { addYouTubeCatalog(meta); }; }   // (a channel / playlist: to your YouTube)
+        else if (/^iptv:/.test(meta.id || '') && typeof EPG !== 'undefined') {   // an IPTV channel: what's on, and its schedule
+            guideOnCard(c, meta.id);
+            c.__onlongpress = function () { liveSchedule(meta, c); };
+        }
         c.__onselect = function () {
             var t = titleType(meta.type || fallbackType);
             // Live TV catalogs (anything that isn't movies/series) skip the info page and
@@ -595,6 +589,86 @@ var ViewParts = {};
             }
         };
         return c;
+    }
+
+    // ---- TV guide (js/epg.js) on IPTV channel cards ----
+    // What's on now, under the channel's name, with how far along it is; drawn again when the
+    // guide brings more (the cards still on a page; the most recent GUIDE_CARDS).
+    var _guideCards = [], GUIDE_CARDS = 3000;
+    function guideOnCard(card, id) {
+        drawGuide(card, id);
+        _guideCards.push(card);
+        if (_guideCards.length > GUIDE_CARDS) { _guideCards = _guideCards.slice(-GUIDE_CARDS); }
+    }
+    function drawGuide(card, id) {
+        guideLogo(card, id);
+        var g = EPG.now(id), old = card.querySelector('.card-epg');
+        if (!g || !g.now) { if (old) { card.removeChild(old); } return; }
+        var t = Date.now() / 1000, pct = Math.max(0, Math.min(100, Math.round((t - g.now.start) / (g.now.stop - g.now.start) * 100)));
+        var box = old || U.el('div', 'card-epg');
+        U.clear(box);
+        box.appendChild(U.el('div', 'card-epg-t', g.now.title));
+        var bar = U.el('div', 'card-epg-bar'), fill = U.el('i', 'card-epg-fill');
+        fill.setAttribute('style', 'width: ' + pct + '%');
+        bar.appendChild(fill);
+        box.appendChild(bar);
+        if (!old) { card.appendChild(box); }
+    }
+    // A channel card without a picture (no tvg-logo): its guide's logo, once it's known; the
+    // name stays until it has loaded.
+    function guideLogo(card, id) {
+        var src = !card.__guideLogo && !card.querySelector('img.poster') && EPG.logo(id);
+        if (!src) { return; }
+        card.__guideLogo = true;
+        var img = U.el('img', 'poster'), fb = card.querySelector('.fallback');
+        img.style.visibility = 'hidden';
+        img.onload = function () { img.style.visibility = ''; if (fb && fb.parentNode) { fb.parentNode.removeChild(fb); } };
+        img.onerror = function () { if (img.parentNode) { img.parentNode.removeChild(img); } };
+        card.insertBefore(img, card.firstChild);
+        U.deferImage(img, U.cardImage(src, 'landscape'));
+    }
+    function redrawGuideCards() {
+        _guideCards = _guideCards.filter(function (c) { return document.documentElement.contains(c); });
+        _guideCards.forEach(function (c) { drawGuide(c, c.getAttribute('data-id')); });
+    }
+    if (typeof EPG !== 'undefined') {
+        EPG.onChange(redrawGuideCards);
+        // every minute: the cards' progress bars (and what's on, once it changed) along with the time
+        setInterval(function () {
+            if (!_guideCards.length || document.hidden || (typeof Player !== 'undefined' && Player.isActive())) { return; }
+            redrawGuideCards();
+        }, 60000);
+    }
+    // Hold OK on a channel card: ▶ Watch now, ★ Add to / Remove from favorites, and its schedule
+    // from 2 hours ago to tomorrow (what's on now marked, and picked); OK on a program says
+    // what it is. A channel without a guide: the first two.
+    var _schedGen = 0;
+    function liveSchedule(meta, card) {
+        var gen = ++_schedGen;
+        U.spinner(true);
+        EPG.schedule(meta.id).then(null, function () { return []; }).then(function (list) {
+            if (gen !== _schedGen) { return; }   // (held on another card since: its own)
+            U.spinner(false);
+            if (!document.documentElement.contains(card) || (typeof Player !== 'undefined' && Player.isActive())) { return; }   // (left meanwhile)
+            var fav = IPTV.isFavorite(meta.id), t = Date.now() / 1000, at = 'play';
+            var items = [['play', '▶  Watch now'], ['fav', fav ? '★  Remove from favorites' : '★  Add to favorites']];
+            list.forEach(function (p, i) {
+                var on = p.start <= t && t < p.stop;
+                if (on) { at = 'p' + i; }
+                items.push(['p' + i, (on ? '●  ' : '') + EPG.dayTime(p.start) + '   ' + p.title]);
+            });
+            pickList((meta.name || '') + (list.length ? '  ·  TV guide' : ''), items, at, function (v) {
+                if (v === 'play') { card.__onselect(); return; }
+                if (v === 'fav') {
+                    IPTV.setFavorite(meta.id, !fav);
+                    U.toast(fav ? 'Removed from favorites' : 'Added to favorites: ★ Favorites, first on the IPTV tab', 3000);
+                    refreshAddonRows('local:iptv');
+                    return;
+                }
+                var p = list[+v.slice(1)];
+                if (p) { U.toast(EPG.dayTime(p.start) + '–' + EPG.hhmm(p.stop) + '   ' + p.title + (p.desc ? ':  ' + p.desc : ''), 8000); }
+            });
+        });
     }
 
     // The channels of the row a live card sits in, for CH+/CH− while it plays.
@@ -750,7 +824,6 @@ var ViewParts = {};
     V.inNowPlaying = inNowPlaying;
     V.onModalClose = onModalClose;
     V.pickList = pickList;
-    V.toggleList = toggleList;
     V.pickMany = pickMany;
     V.playlistActions = playlistActions;
     V.posterCard = posterCard;

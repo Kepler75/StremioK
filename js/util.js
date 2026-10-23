@@ -430,15 +430,20 @@ var U = (function () {
     /* GET via XHR with a timeout. Returns a Promise of the response text.
        maxBytes: give up as soon as more than that has arrived ("Too large (over …)");
        TEXT_MAX when not given. */
-    // A failed download, in Diagnostics. During a private playback, only its server: its link (a
-    // title's name can be in it) isn't kept, in the log or the copy saved for the next launch.
+    // A failed download, in Diagnostics. One asked during a private playback (when it started:
+    // it may fail after the playback ended) says only that, what kind of failure, and its
+    // server: not its link nor what the server answered (a title's name can be in either), in
+    // the log or the copy saved for the next launch.
     function privateNow() { try { return typeof Player !== 'undefined' && !!Player.privateNow && Player.privateNow(); } catch (e) { return false; } }
-    function logged(err) {
+    function logged(err, priv) {
         var msg = '' + err.message;
-        if (privateNow()) { msg = msg.replace(/(https?:\/\/[^\/\s?#]+)[^\s]*/g, '$1/…'); }
+        if (priv || privateNow()) {
+            var kind = /^(HTTP \d+|Timeout|Network error|Too large|Bad JSON|Redirected into the home network)/.exec(msg), host = /(https?:\/\/[^\/\s?#]+)/.exec(msg);
+            msg = 'Private viewing: a download' + (host ? ' from ' + host[1] : '') + ' failed' + (kind ? ' (' + kind[1] + ')' : '');
+        }
         log('network', msg); err.logged = true; return err;
     }
-    function noteNetwork(err) { return logged(err); }
+    function noteNetwork(err, priv) { return logged(err, priv); }
     // What a server said when it refused (an error answer's own message, e.g. AIOStreams'
     // { error: { message: "Invalid stream expression … Expected :" } }, or short plain text),
     // on one line, links in it masked, a long one kept to its start and end (where the what
@@ -464,8 +469,10 @@ var U = (function () {
     // quiet: a failure isn't noted in Diagnostics (a check that's expected to fail at times, like
     // the YouTube service's while it starts; the caller says so if it matters).
     // headers (optional): { name: value } sent with it.
-    function getText(url, timeoutMs, maxBytes, cancel, quiet, headers) {
-        function logged(err) { return quiet ? err : noteNetwork(err); }
+    // body (optional): sent as a POST (text), else it's a GET.
+    function getText(url, timeoutMs, maxBytes, cancel, quiet, headers, body) {
+        var priv = privateNow();   // (asked during a private playback: logged as one, however late it fails)
+        function logged(err) { return quiet ? err : noteNetwork(err, priv); }
         maxBytes = maxBytes || TEXT_MAX;
         return new Promise(function (resolveP, rejectP) {
             if (cancel && cancel.cancelled) { rejectP(cancelledError(url)); return; }   // (nothing started)
@@ -482,7 +489,7 @@ var U = (function () {
                 });
             }
             try {
-                xhr.open('GET', url, true);
+                xhr.open(body == null ? 'GET' : 'POST', url, true);
                 if (headers) { Object.keys(headers).forEach(function (h) { xhr.setRequestHeader(h, headers[h]); }); }
             } catch (e) { reject(e); return; }
             xhr.timeout = timeoutMs || 15000;
@@ -516,7 +523,7 @@ var U = (function () {
             };
             xhr.ontimeout = function () { if (!done) { done = true; reject(logged(new Error('Timeout: ' + redactUrl(url)))); } };
             xhr.onerror = function () { if (!done) { done = true; reject(logged(new Error('Network error: ' + redactUrl(url)))); } };
-            try { xhr.send(); } catch (e3) { reject(e3); }
+            try { if (body == null) { xhr.send(); } else { xhr.send('' + body); } } catch (e3) { reject(e3); }
         });
     }
 
@@ -557,10 +564,13 @@ var U = (function () {
 
     /* GET JSON via XHR with a timeout. Returns a Promise of the parsed body (JSON_MAX
        unless maxBytes says otherwise). cancel, headers: see getText. */
-    function getJSON(url, timeoutMs, maxBytes, cancel, headers) {
-        return getText(url, timeoutMs, maxBytes || JSON_MAX, cancel, false, headers).then(function (text) {
+    // A POST (body: text), its answer JSON.
+    function postJSON(url, body, timeoutMs, maxBytes, headers) { return getJSON(url, timeoutMs, maxBytes, null, headers, body); }
+    function getJSON(url, timeoutMs, maxBytes, cancel, headers, body) {
+        var priv = privateNow();   // (asked during a private playback: its answer unreadable later is logged as one too)
+        return getText(url, timeoutMs, maxBytes || JSON_MAX, cancel, false, headers, body).then(function (text) {
             try { return JSON.parse(text); }
-            catch (e) { throw logged(new Error('Bad JSON from ' + redactUrl(url))); }
+            catch (e) { throw logged(new Error('Bad JSON from ' + redactUrl(url)), priv); }
         });
     }
 
@@ -1491,7 +1501,8 @@ var U = (function () {
     }
 
     return {
-        byId: byId, el: el, clear: clear, moveIn: moveIn, getJSON: getJSON, getText: getText, redactUrl: redactUrl, problem: problem, problemDetail: problemDetail, listOf: listOf, lru: lru, cachedJSON: cachedJSON,
+        byId: byId, el: el, clear: clear, moveIn: moveIn, getJSON: getJSON, getText: getText,
+        postJSON: postJSON, redactUrl: redactUrl, problem: problem, problemDetail: problemDetail, listOf: listOf, lru: lru, cachedJSON: cachedJSON,
         parseUrl: parseUrl, urlProblem: urlProblem, isPlaylistUrl: isPlaylistUrl, isManifestUrl: isManifestUrl,
         isPrivateHost: isPrivateHost, urlIsPrivate: urlIsPrivate, setLocalPolicy: setLocalPolicy, sanitizeHeaders: sanitizeHeaders, drawable: drawable,
         log: log, logEntries: logEntries, clearLog: clearLog, bigStore: bigStore, diskInfo: diskInfo,

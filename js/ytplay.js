@@ -62,12 +62,16 @@ var YTPlay = (function () {
     }
     // A live HLS channel whose sound the TV's player stutters on (its server cuts the AAC sound
     // mid-frame): the service looks at it and, if so, gives a relay that repacks the sound:
-    // { fix, sure, why, url }. force: the relay at once (the channel's already known to need it).
-    // h: the channel's own User-Agent / Referer ({ ua, ref }).
-    function liveOpen(url, h, force) {
+    // { fix, sure, why, url, cc: [{ ch, lang }] (its closed captions), ccSure }. force: the relay
+    // at once (the channel's already known to need it). h: the channel's own User-Agent /
+    // Referer ({ ua, ref }). opts (with force): { fix: false (the sound as it is), cc: the caption
+    // channels to add as subtitle tracks }.
+    function liveOpen(url, h, force, opts) {
         if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
+        var cc = opts && opts.cc ? opts.cc.map(function (c) { return c.ch + (c.lang ? '-' + c.lang : ''); }).join(',') : '';
         return ensureService().then(entryAuth).then(function (a) {
-            var q = '/live/open?u=' + encodeURIComponent(url) + (h && h.ua ? '&ua=' + encodeURIComponent(h.ua) : '') + (h && h.ref ? '&ref=' + encodeURIComponent(h.ref) : '') + (force ? '&force=1' : '');
+            var q = '/live/open?u=' + encodeURIComponent(url) + (h && h.ua ? '&ua=' + encodeURIComponent(h.ua) : '') + (h && h.ref ? '&ref=' + encodeURIComponent(h.ref) : '') + (force ? '&force=1' : '') +
+                (force && opts && opts.fix === false ? '&fix=0' : '') + (force && cc ? '&cc=' + encodeURIComponent(cc) : '');
             return U.getJSON(PROXY + q + a.q, force ? 5000 : 30000, 65536, null, a.h);
         });
     }
@@ -90,6 +94,50 @@ var YTPlay = (function () {
             if (a.h) { Object.keys(a.h).forEach(function (k) { h[k] = a.h[k]; }); }
             return U.getJSON(PROXY + '/aiom/addons?base=' + encodeURIComponent(base) + a.q, 40000, 1048576, null, h);
         });
+    }
+    // A playlist's TV guide, read and kept by the service (see service/index.js, epgControl):
+    // epgLoad asks it to read it for these channels (k: their keys as a bitset, EPG.bitsFor) ->
+    // { state, at, channels, programmes, partial, error }; epgGet: their programs -> { <key>:
+    // [[start, stop, title, desc]] }. Both POSTs, what's asked in the body: a newer TV's service
+    // reads 8 KB of a request's address and headers, less than thousands of channels' keys.
+    // (a POST refused, a service from before it took them or one without the token: asked
+    // again as a GET, when it fits in the address)
+    // An app that can't read the service's token (its header instead): the guide ticket, asked
+    // for once, given with the POSTs (the TV adds an Origin to them, which the header alone doesn't pass).
+    var _ticket = null;
+    function epgTicket(a) {
+        if (a.q || MODE === 'tizenbrew') { return Promise.resolve(a.q); }   // (the token; TizenBrew's origin passes as it is)
+        if (!_ticket) {
+            _ticket = U.getJSON(PROXY + '/epg/ticket', 8000, 4096, null, a.h).then(function (r) {
+                return r && /^[0-9a-f]{48}$/.test(r.ticket || '') ? '&ticket=' + r.ticket : '';
+            }, function () { _ticket = null; return ''; });
+        }
+        return _ticket;
+    }
+    function epgAsk(path, body, maxBytes) {
+        if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
+        return ensureService().then(entryAuth).then(function (a) {
+            return epgTicket(a).then(function (cred) { return { a: a, cred: cred }; });
+        }).then(function (x) {
+            var a = x.a, q = x.cred ? '?' + x.cred.replace(/^&/, '') : '';
+            return U.postJSON(PROXY + path + q, body, 15000, maxBytes, a.h).then(null, function (err) {
+                if (err && /^HTTP 403\b/.test(err.message || '') && /ticket=/.test(q)) { _ticket = null; }   // (the service started again since: a new ticket next time)
+                if (!(err && /^HTTP (403|405)\b/.test(err.message || '') && body.length < 6000)) { throw err; }
+                return U.getJSON(PROXY + path + (q ? q + '&' : '?') + body, 15000, maxBytes, null, a.h);
+            });
+        });
+    }
+    // Settings › Storage: the saved guides ({ count, bytes }), and deleting them all.
+    function epgFiles() {
+        if (MODE === 'browser') { return Promise.resolve(null); }
+        return ensureService().then(entryAuth).then(function (a) { return U.getJSON(PROXY + '/epg/files' + (a.q ? '?' + a.q.replace(/^&/, '') : ''), 8000, 4096, null, a.h); });
+    }
+    function epgClear() { return epgAsk('/epg/clear', '', 4096); }
+    function epgLoad(u, k, force) {
+        return epgAsk('/epg/load', 'u=' + encodeURIComponent(u) + '&k=' + k + (force ? '&force=1' : ''), 65536);
+    }
+    function epgGet(u, keys, from, to, max) {
+        return epgAsk('/epg/get', 'u=' + encodeURIComponent(u) + '&ids=' + encodeURIComponent(keys.join('|')) + '&from=' + from + '&to=' + to + (max ? '&max=' + max : ''), 4194304);
     }
     // Whether YouTube gives the video out to the service (it refuses some uploads to the player
     // the service asks as): false when it says no; true when it does, or no answer came (the
@@ -181,6 +229,6 @@ var YTPlay = (function () {
         return MODE === 'tizenbrew' ? 'TizenBrew module' : MODE === 'wgt' ? 'Sideloaded app (.wgt)' : 'Browser (development)';
     }
 
-    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, hlsMaster: hlsMaster, aiomAddons: aiomAddons, entryOpen: entryOpen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
+    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, hlsMaster: hlsMaster, aiomAddons: aiomAddons, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
         installLabel: installLabel, unavailableMessage: unavailableMessage, isRunning: isRunning, port: PORT };
 })();

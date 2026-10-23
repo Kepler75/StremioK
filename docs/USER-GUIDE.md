@@ -143,10 +143,12 @@ where it came from.
 | UP / DOWN in the player | The quick bar / the menu ([While it plays](#while-it-plays)). |
 | Red / Green / Yellow / Blue in the player | Audio tracks / subtitles / sources / stream info. |
 | CH+ / CH− | The next / previous channel while one plays. |
+| Guide | The Guide tab (instead of the TV's own guide). |
 
 **Number keys outside the player** (not while typing) pick the top menu's items, left to right:
-**1** Watching, then the other tabs showing, in their order, then Discover and Search; **0**
-Settings. With Watching, Movies, Series and IPTV showing, 5 is Discover and 6 Search.
+**1** Watching, then the rest in the menu's order (Settings › Appearance › *Menu*); **0**
+Settings. With Watching, Movies, Series and IPTV showing, in the usual order, 5 is Discover and 6
+Search.
 
 ### The top menu
 
@@ -189,10 +191,13 @@ and takes one entry (see [Privacy and data](PRIVACY.md#sending-text-from-your-ph
 
 ### Home
 
-- **Tabs:** **Watching**, **Calendar**, **Movies**, **Series**, **IPTV**, **Radio**, **Sports**,
-  **YouTube** and **Local**, each shown when there's something for it (from your addons,
-  playlists, YouTube catalogs or a USB drive). Picking a tab puts focus on its first title. Hide a tab you never use in
-  Settings › Appearance › *Home tabs*; order and hide the rows in *Home feeds*.
+- **Tabs:** **Watching**, **Calendar**, **Movies**, **Series**, **IPTV**, **Guide**, **Radio**,
+  **Sports**, **YouTube** and **Local**, each shown when there's something for it (from your
+  addons, playlists and their TV guides, YouTube catalogs or a USB drive). IPTV has live TV
+  only: an addon's catalog of another kind (a debrid library) goes to Movies or Series by what
+  it lists, or, when that's unclear, to Discover only. Picking a tab puts focus on its first title. Put the
+  menu in your own order, or hide a tab you never use, in Settings › Appearance › *Menu*; order
+  and hide the rows in *Home feeds*.
 - A row shows a catalog's first page; [Discover](#discover) has the rest.
 - A details strip above the rows describes the focused title: its logo (or name), year,
   runtime, rating, genres and synopsis.
@@ -439,13 +444,18 @@ without a key.
 ### The menu (DOWN)
 
 - *Subtitles* and *Audio track*.
-- *Select source*: another source, at the same point. It plays as a playback of its own: its
-  quality list, subtitles and file details are its own; the title and Private viewing stay.
+- *Select source*: another source, at the same point, with its own quality list, subtitles and
+  file details; the title and Private viewing stay.
 - *Video quality* (HLS streams: YouTube, and links to an `.m3u8`); it says so when a stream's
   qualities can't be read.
 - *Playback* (restart, rewind / forward).
-- *Picture*: Fit, Zoom or Stretch, remembered.
+- *Picture*: Fit, Zoom or Stretch, remembered (a live channel keeps its own).
+- *Format* (an Xtream channel): MPEG-TS or HLS, kept for that channel.
 - *Stream info*.
+- *Reload*: opened again (a live channel at the live edge, a video where it is).
+- *Sleep timer*: Off, 30, 60 or 90 minutes, then playback stops (the menu shows what's left).
+
+The time of day shows at the top right of the screen, while the progress bar is on screen.
 
 ### Keys while it plays
 
@@ -514,13 +524,13 @@ Atmos · 5.1 · MKV`).
   the ones timed for that exact release first.
 - **The source's own:** some stream addons send subtitle files with each source; they're listed
   first, "with this source".
-- **Tracks built into the file** (MKV and the like).
+- **Tracks built into the file** (MKV and the like), and a live channel's
+  [closed captions](#iptv-and-radio).
 - **A YouTube video's captions:** the uploader's ("YouTube"), then YouTube's automatic ones.
 - **Your USB drive:** subtitle files on a plugged-in drive for this movie or episode, for any
-  source (*Your USB drive · Film.es.srt*), after the addons'. That's the files next to a video
-  matched to the title, and subtitle files of their own matched when the drive was indexed
-  (see [Your USB drive](#your-usb-drive)). Made for another release, one can be a little early
-  or late: [Timing](#timing) fixes that.
+  source (*Your USB drive · Film.es.srt*), after the addons': those next to a matched video, and
+  ones matched when the drive was indexed (see [Your USB drive](#your-usb-drive)). One made for
+  another release may need [Timing](#timing).
 
 ### Choosing
 
@@ -531,11 +541,10 @@ Atmos · 5.1 · MKV`).
 - **Green** (or *Subtitles* in the DOWN menu) picks a language, then a track. Your choice for a
   title, its timing included, is remembered (the last 50 titles).
 - **A second subtitle** (Settings › Playback › Subtitles; *Off* by default): a second language at
-  the top of the screen at the same time (English below, Spanish above, say), with the same
-  style and timing. Green › *Second subtitle* changes it while something plays.
+  the top of the screen (English below, Spanish above, say), with the same style and timing. Green › *Second subtitle* changes it while something plays.
 - **Skip lines with** (Settings › Playback › Subtitles): lines with one of your words aren't
-  shown, from any track. For example `OPENSUBTITLES` (the subtitle site's ads) and `.SRT` (a
-  line that's just a file's name).
+  shown, from any track: `OPENSUBTITLES` (the site's ads), `.SRT` (a line that's just a file
+  name).
 
 ### Timing
 
@@ -569,29 +578,57 @@ moves up above it.
 ### Your playlists
 
 Settings › Content › **IPTV** › *Add playlist*, or a configuration file. A playlist is named
-after its file (`…/sports.m3u8`: *sports*) or its own name. Each shows its channel and group
-counts, when it was last downloaded, and anything that went wrong (a failed refresh keeps the
-saved copy, and says so).
+after its file (`…/sports.m3u8`: *sports*) or its own name. **An Xtream account** (*Add Xtream
+account*): its server, username and password, a page each; once the server accepts them, its
+channels are a playlist (*Xtream · server*), with its TV guide. Each shows its channel and group
+counts, when it was last downloaded, and what went wrong (a failed refresh keeps the saved copy).
 
 - **▲ / ▼** set the order: a channel in two playlists comes from the first, and rows follow
   the order.
 - OK on one: *Rename*, *Turn off* / *Turn on* (off: its channels hidden, its copy kept), *Edit
-  link*, *Reload*, *Remove*.
+  link*, *Guide link*, *Reload*, *Remove*.
 
 ### Watching
 
-- Channels are grouped into **IPTV** and **Radio** rows, a row per group. A channel's details
-  say which playlist it's from.
+- **★ Favorites:** hold OK on a channel card, then *Add to favorites*. Your favorites are a
+  row of their own, first on the IPTV tab, and come first on the Guide tab.
+- **IPTV** and **Radio** rows, a row per group; a channel's details name its playlist.
 - **Sports:** channels marked `tvg-type="sport"` (or `"sports"`) go to the **Sports** tab instead.
-  This is StremioK's own mark: other players ignore it.
+  StremioK's own mark: other players ignore it.
+- **Guide only:** channels marked `tvg-type="guide"` (no link needed) show on the Guide tab
+  alone; OK on a program finds that film in your addons (else Search).
 - **CH+ / CH−** switch through the row a channel came from; the channel you stop on starts after
   a short pause, and BACK lands on its card.
 - **A channel's number:** type its position in that row (7, or 1 then 2 for 12); it says
   "Channel 1_" while it waits for a second digit.
 - Live streams show **● LIVE**, with no seeking or resume.
-- **YouTube live** channels (`youtube.com`, `youtu.be` links) play too.
-- **Choppy sound** on some channels is fixed on its own: the channel restarts after a moment
-  ("Fixing this channel's sound…") and is remembered for two weeks.
+- **YouTube live** channels (`youtube.com`, `youtu.be` links) play too, and so does an Xtream
+  channel whose link leads to YouTube.
+- **Choppy sound** on some channels is fixed on its own: the channel restarts ("Fixing this
+  channel's sound…"), remembered for two weeks.
+- **Closed captions** in a channel's picture (CC1–CC4, as VLC shows them): Green lists *Closed
+  captions (CC1)*; picking one restarts the channel with them (next time too). Ones in your
+  default subtitle language turn on by themselves. HLS only: on Xtream, switch *Format* to HLS.
+
+### TV guide
+
+- **Where it comes from:** the guide link a playlist names (`url-tvg`), or an Xtream
+  playlist's (`get.php`) own guide. *Guide link* (OK on a playlist) sets another, or puts back
+  the automatic one. The sideloaded app or TizenBrew reads it, again every 6 hours, or at once
+  with the playlist's *Reload*.
+- A channel is matched by its `tvg-id`, else by its name. One without a logo in its playlist
+  gets the guide's.
+- **Channel cards** show what's on now and how far along it is; Home's details strip adds its
+  description and what's next.
+- **While a channel plays,** the bar at the bottom shows Now and Next, with their times.
+- **Hold OK on a channel card** for its schedule, from 2 hours ago to tomorrow: *▶ Watch now*
+  plays it, *★ Add to / Remove from favorites*, and OK on a program shows its description.
+- A guide's **program pictures** show in the details strip (a channel's card, the Guide tab).
+- **The Guide tab** (once a guide is read): your channels with a guide, a row each, across 2½
+  hours from the current half hour, with a line at the time now. ← / → go from program to
+  program (the hours move along past the edge), ↑ / ↓ to the channel above or below at the same
+  time. The details strip describes the focused program; OK on what's on now plays the channel
+  (CH+ / CH− then go through the Guide's channels), on a later one shows its description.
 
 ## YouTube
 

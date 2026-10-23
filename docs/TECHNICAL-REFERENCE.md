@@ -25,10 +25,13 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
 
 ## Starting up and Home rows
 
-- **Which tab a row is on** goes by its catalog: movies, series, sports and radio to their
-  tabs; StremioK's own YouTube catalogs, and other addons' YouTube or channel catalogs
-  (YouTubio's), to **YouTube**; everything else (IPTV playlists, live and TV catalogs) to
-  **IPTV**.
+- **Which tab a row is on** goes by its catalog: movies, series, sports (`sport` / `sports`)
+  and radio to their tabs; StremioK's own YouTube catalogs, and other addons' YouTube or
+  channel catalogs (YouTubio's), to **YouTube**; live ones (`tv`, `events`, `live`, `iptv`, your
+  playlists) to **IPTV**; `anime` (films and series mixed) only to Discover. Another type (a debrid library's, `other`) goes by what it
+  lists: mostly films or series (60% of its items), there; title ids (IMDb, TMDB, TVDB, Kitsu,
+  MAL, AniList) and "anime", "series" or "show" in its name or type: Series ("movie" or
+  "film": Movies). Anything still unclear isn't on Home, only in Discover.
 - The last Home rows and addon manifests are saved on the TV, so a launch shows them at once
   and refreshes them in the background.
 - **Nothing waits on something unrelated:** your addons load without waiting for the IPTV
@@ -286,13 +289,46 @@ channels where it gives one; the rest is read from the source's name and file.
 - **Radio** is recognized by `radio="true"`, `tvg-type="radio"`, a `group-title` containing
   "radio", or an audio file extension (`.mp3`, `.aac`, `.ogg`, `.flac`, `.m4a`).
 - **Sports** counts only `tvg-type="sport"` / `"sports"`, not a group's name.
+- **Guide only** (`tvg-type="guide"`): an `#EXTINF` with or without a link, kept for its guide
+  (in no row, no sources). OK on a program: the guide's original title and year (a `<category>`
+  like `The Book ThiefDrama / 2013 / 7.6`), else its title, looked up on TMDB (with your key,
+  Spanish titles too), else Cinemeta (original titles only). One sure match (the same name, and
+  the year when known) opens its page; anything else, a show included, opens Search.
+- **YouTube behind a link:** an Xtream channel's link (`…/live/user/pass/id.ext`) is looked at
+  first (redirects followed, the answer not read; where it led is kept 5 minutes, or until the
+  playlists reload, as a server can renumber its channels); one ending on YouTube plays through StremioK's
+  YouTube. A YouTube channel's page (`@handle`, `/channel/`, `/c/`, `/user/`, any tab)
+  plays as given; with no live stream there, its `/live` page, then its Featured tab.
+- **Xtream accounts:** checked with `player_api.php` (its `user_info.auth`), then saved as the
+  account's `get.php` link (`type=m3u_plus`, `output=ts`: servers' own HLS tends to stall
+  minutes in; *Format* switches to `m3u8`). A server without `http(s)://` is `http://`; a pasted Xtream link fills in the login.
+  The player's *Format* swaps one channel's `/live/…/123.ts` and `.m3u8`, kept by channel (the
+  last 300).
+- **TV guide (XMLTV):** a playlist's typed *Guide link*, else its `url-tvg` / `x-tvg-url`, else an
+  Xtream `get.php` link's `xmltv.php` (also in place of a guide the playlist names on its own
+  server without the login). The service downloads it (gzipped or not; up to 60 MB,
+  200 MB unpacked, 5 minutes) and keeps only your channels: the app sends their keys (`tvg-id`,
+  else the name, plain) as a bitset, in a POST's body (a newer TV's service reads 8 KB of a
+  request's address and headers: thousands of channels' keys don't fit there). An answer is
+  kept to 2 MB: the Guide tab asks 20 channels at a time. Programs from 2 hours ago to 30 hours ahead, 150 a
+  channel (held to that as it's read), 60,000 in all, each with its picture (`<icon>`); a
+  channel's `<icon>` stands in for a missing `tvg-logo` (none into your home network from a
+  guide on the internet).
+- **Saved guides:** on the sideloaded app they're saved in its folder (written whole, then
+  swapped in) and read again after 6 hours (a playlist's *Reload*: its guide at once,
+  `&force=1`); under TizenBrew, kept in memory. A channel whose programs don't come (no answer,
+  or past the 2 MB) stays on the Guide tab and is asked again 30 seconds later. Four guides are kept: a fifth's arrival deletes
+  the oldest's file, a file older than 2 days is deleted, one over 32 MB isn't read. The Guide
+  tab draws 10 channels at a time, reading their programs (and the next 10's) as you come to
+  them. *Clear saved copies* (Storage) deletes the saved guides too.
 - **Size:** each playlist is downloaded up to 20 MB and keeps its first 30,000 channels. Big ones
   are read in chunks, with a count ("Reading playlists… 12,000 channels"), so the remote stays
   responsive. A channel listed twice is shown once only when it's exactly the same (link, name,
   group and headers). Copies are saved in the TV's database.
-- **Headers:** a channel's `http-user-agent` / `http-referrer` are applied where the TV allows
-  it (only these two, on one line of printable text, within a sane length), and follow the
-  channel when you switch sources in the player.
+- **Headers:** a channel's User-Agent and Referer (`#EXTVLCOPT:http-user-agent=` /
+  `http-referrer=` or `http-referer=`, the same `#EXTINF` attributes, `#EXTHTTP:{…}`, or after
+  a `|` in its link: `…m3u8|Referer=…`) are applied where the TV allows it (these two only,
+  printable, within a sane length) and follow the channel when you switch sources.
 - **CH+ / CH−:** only the latest choice counts: a slower lookup for one you passed doesn't
   replace it, and the spinner and any error are for the channel chosen last. A channel number
   waits a second and a half for a second digit.
@@ -300,8 +336,11 @@ channels where it gives one; the rest is read from the source's name and file.
   whole frame. Once an HLS channel plays, StremioK's service looks at the start of one of its
   segments; when its sound is cut that way, the channel restarts through the service, which
   repacks the sound (whole frames, each with its own time) and passes the picture as it is.
-  Remembered per channel link for two weeks. Not for encrypted streams or a server's sound
-  StremioK can't read.
+  Remembered per channel link for two weeks. Not for encrypted streams or sound it can't read.
+- **Closed captions:** the same look says which caption channels (CC1–CC4) have text, and their
+  language (English, Spanish, Portuguese) from its words; none yet: asked next time. On,
+  the channel plays through the [relay](#live-relay), as subtitle tracks. HLS only: a plain
+  MPEG-TS stream (Xtream's default) has no playlist to add it to.
 - Live addons without a `meta` resource still open, using the catalog entry.
 
 ## Addons
@@ -587,7 +626,8 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 | Downloads | `/fsdl/add`, `list`, `cancel`, `clear`, `space` | Downloads to a USB drive, and a drive's free space | + token or header |
 | Phone page | `/entry/open`, `poll`, `close` | Opens, polls and closes the one-time page | + token or header |
 | AIOManager | `/aiom/addons` | Reads an account's addons | + token or header |
-| Live relay | `/live/open`, then `/live/<id>/…` | Checks a channel's sound; relays it repacked | open: + token or header |
+| TV guide | `/epg/load`, `/epg/get` | Reads a playlist's guide for your channels; their programs | + token or header |
+| Live relay | `/live/open`, then `/live/<id>/…` | Checks a channel's sound and captions; relays it repacked, captions as subtitles | open: + token or header |
 
 ### YouTube
 
@@ -705,6 +745,16 @@ and repacks the sound into whole frames, each with its own time. At most 4 relay
 each dropped after 5 minutes unused; playlists up to 1 MB and segments up to 32 MB, 20 seconds
 each. The channel's User-Agent and Referer are passed on, and the same host rule as downloads
 applies.
+
+Closed captions (CEA-608 in H.264, HEVC or MPEG-2 pictures) at a segment's start: the look reads
+the whole segment, up to 8 MB. Asked for (`&cc=CC1-en`; `&fix=0`: sound as it is), the relay adds
+a WebVTT subtitle track per channel; a plain playlist goes under a quality list of its own.
+
+- **One download** per segment for picture and captions (kept 30 s for the other, two at a time,
+  up to 8 MB); captions kept for the latest 30 segments.
+- **Cues** in showing order: a pop-on caption from when it shows; roll-up, one per finished line
+  with the lines above; one still on at a segment's end goes on in the next.
+- **Timing:** the picture's own clock (`X-TIMESTAMP-MAP`).
 
 ### Every request
 

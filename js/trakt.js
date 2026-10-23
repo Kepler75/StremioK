@@ -375,6 +375,7 @@ var Trakt = (function () {
         function next() {
             return authed('GET', path + (path.indexOf('?') === -1 ? '?' : '&') + 'page=' + page + '&limit=' + perPage, null).then(function (r) {
                 live(g);
+                if (!Array.isArray(r.data)) { var bad = new Error('Trakt sent a page that couldn\'t be read (' + path.split('?')[0] + ', page ' + page + ')'); bad.status = r.status || 0; throw bad; }   // (not the last page: the refresh fails, the copy kept)
                 var items = list(r.data, perPage), first = items.length ? JSON.stringify(items[0]) : '';
                 if (page > 1 && first && first === before) { return out.slice(0, max); }
                 before = first;

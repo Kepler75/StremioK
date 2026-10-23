@@ -113,7 +113,7 @@
                 if (mem.off) { return true; }
                 if (mem.embedded) {
                     if (partial) { return false; }
-                    wantEmbedded({ index: mem.index, lang: mem.lang }); _embDelay = Math.max(0, +mem.delay || 0); return true;
+                    wantEmbedded({ index: mem.index, lang: mem.lang, nth: mem.nth }); _embDelay = Math.max(0, +mem.delay || 0); return true;
                 }
                 var exact =
                     (mem.trackId != null ? _subTracks.find(function (t) { return t.id === mem.trackId; }) : null) ||
@@ -202,6 +202,21 @@
     var WEBVTT_ASIDE = /^(NOTE|STYLE|REGION)([ \t]|$)/;
     // Character codes (&amp; &gt; &#8212; …) as the characters they stand for.
     var CHAR_CODES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', lrm: '\u200e', rlm: '\u200f' };
+    // A subtitle's tags taken out, a stray < with them: one pass, in time with the text's length
+    // however it's made (a run of < with no > after it used to hold the remote for seconds).
+    // Its text is only ever shown as text (textContent): this is for how it reads.
+    function noTags(t) {
+        var out = '', i = 0, n = t.length;
+        while (i < n) {
+            var lt = t.indexOf('<', i);
+            if (lt === -1) { out += t.slice(i); break; }
+            out += t.slice(i, lt);
+            var gt = t.indexOf('>', lt + 1);
+            if (gt === -1) { out += t.slice(lt + 1).split('<').join(''); break; }   // (no tag ends after it: the rest, its < gone)
+            i = gt + 1;
+        }
+        return out;
+    }
     function charCodes(t) {
         if (t.indexOf('&') === -1) { return t; }
         return t.replace(/&(#[xX][0-9a-fA-F]{1,6}|#[0-9]{1,7}|[a-zA-Z]+);/g, function (all, c) {
@@ -213,13 +228,16 @@
             return CHAR_CODES.hasOwnProperty(c) ? CHAR_CODES[c] : all;
         });
     }
+    // A file's cues: CUES_MAX at most, CUE_TEXT_MAX characters of text each (a broken or hostile
+    // file can't hold the remote: the whole parse stays in time with the file's length).
+    var CUES_MAX = 20000, CUE_TEXT_MAX = 1000;
     function parseCues(text) {
         text = ('' + text).replace(/\r/g, '');
         var blocks = text.split(/\n\n+/);
         var cues = [], skip = skipper();   // (Skip lines with: your words)
         var re = /(?:(\d{1,3}):)?(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(?:(\d{1,3}):)?(\d{2}):(\d{2})[,.](\d{1,3})/;
         function ms(x) { return +((x + '00').slice(0, 3)) / 1000; }   // (".5" is half a second)
-        for (var i = 0; i < blocks.length; i++) {
+        for (var i = 0; i < blocks.length && cues.length < CUES_MAX; i++) {
             var lines = blocks[i].replace(/^\n+/, '').split('\n');
             if (WEBVTT_ASIDE.test(lines[0])) { continue; }   // (a WebVTT comment, style or region: not shown)
             var ti = -1;
@@ -229,7 +247,9 @@
             if (!m) { continue; }
             var start = (+(m[1] || 0)) * 3600 + (+m[2]) * 60 + (+m[3]) + ms(m[4]);
             var end = (+(m[5] || 0)) * 3600 + (+m[6]) * 60 + (+m[7]) + ms(m[8]);
-            var txt = skip(charCodes(lines.slice(ti + 1).join('\n').replace(/<[^>]+>/g, '').replace(/\{[^}]+\}/g, '')).replace(/\s+$/, ''));
+            // (tags out, a stray < with them, in one pass; then entities read: one written as &lt; is the file's own text,
+            // "<b>" shown as written. Never a tag: subtitles reach the screen as text only, textContent)
+            var txt = skip(charCodes(noTags(lines.slice(ti + 1).join('\n').slice(0, CUE_TEXT_MAX)).replace(/\{[^}]+\}/g, '')).replace(/\s+$/, ''));
             if (txt) { cues.push({ start: start, end: end, text: txt }); }
         }
         cues.sort(function (a, b) { return a.start - b.start; });
@@ -384,6 +404,7 @@
             pick = tracks.find(function (t) { return t.index === w.index && (!key || langKey(textLang(t)) === key); }) || null;
         }
         if (!pick && key) { pick = tracks.find(function (t) { return langMatches(key, textLang(t)); }) || null; }
+        if (!pick && w.nth != null && S.ctx && S.ctx._relayCc) { pick = tracks[w.nth] || null; }   // (a live channel's closed captions: in the order asked for)
         if (!pick && w.lang2) {   // nothing in the default language anywhere: the second choice, a track to download first
             var key2 = langKey(w.lang2);
             var dl = _subTracks.find(function (t) { return langMatches(key2, t.lang); });
@@ -398,7 +419,7 @@
         try { avplay.setSelectTrack('TEXT', tr.index); }
         catch (e2) { try { avplay.setSelectTrack('TEXT', '' + tr.index); } catch (e3) {} }
         _embSub = tr.index; _embLang = textLang(tr);
-        U.toast('Subtitles: ' + (_embLang || 'on') + ' (built-in)', 1800);
+        U.toast('Subtitles: ' + (_embLang || 'on') + (S.ctx && S.ctx._relayCc ? ' (closed captions)' : ' (built-in)'), 1800);
     }
     function embOff() {
         if (_embSub != null) { try { avplay.setSilentSubtitle(true); } catch (e) {} }
@@ -446,7 +467,7 @@
     function drawEmbedded(text, duration) {
         if (_embSub == null || _subOn) { return; }
         if (_embTimer) { clearTimeout(_embTimer); _embTimer = null; }
-        var t = ('' + (text || '')).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/\{[^}]+\}/g, '').trim();
+        var t = noTags(('' + (text || '')).replace(/<br\s*\/?>/gi, '\n')).replace(/\{[^}]+\}/g, '').trim();
         if (!t) { S.subsEl.className = 'hidden'; return; }
         S.subsEl.className = '';
         var span = S.subsEl.firstChild;
@@ -515,7 +536,7 @@
         replaceTop(timingMenu(topMenu().idx));
         U.toast('Subtitles: ' + fmtDelay(_subDelay) + (_subDelay > 0 ? ' (later)' : _subDelay < 0 ? ' (earlier)' : ' (as in the file)'), 1800);
     }
-    function lineText(c) { return '“' + ('' + c.text).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 70) + '”'; }
+    function lineText(c) { return '“' + noTags('' + c.text).replace(/\s+/g, ' ').trim().slice(0, 70) + '”'; }
     // The next line coming up (as timed now): OK the moment it's said.
     function earMenu() {
         var t = S.cur - _subDelay, next = null;
@@ -569,6 +590,8 @@
             groups[k].push(item);
         }
         getTextTracks().forEach(function (tr, i) { add(langKey(textLang(tr)), { emb: tr, n: i }); });
+        var offer = S.ctx && !S.ctx._relayCc ? S.ctx._ccOffer : null;   // (a live channel's closed captions, not on yet)
+        (offer || []).forEach(function (c, i) { add(langKey(c.lang || ''), { cc: c, n: i, emb: true }); });
         _subTracks.forEach(function (tr) { add(langKey(tr.lang), { track: tr }); });
         var curKey = _subOn ? langKey(_subLabel) : (_embSub != null ? langKey(_embLang) : null);
         var pref = getSubCfg().lang;
@@ -583,7 +606,7 @@
         order.forEach(function (k) {
             var list = groups[k], n = list.length, emb = list.filter(function (x) { return x.emb; }).length;
             items.push({ label: langName(k),
-                detail: n + ' option' + (n > 1 ? 's' : '') + (emb ? (emb === n ? ', in the file' : ', ' + emb + ' in the file') : ''),
+                detail: n + ' option' + (n > 1 ? 's' : '') + (emb ? (emb === n ? ', ' + inFile() : ', ' + emb + ' ' + inFile()) : ''),
                 sel: (k === curKey),
                 run: function () { pushMenu(langTracksMenu(k, list)); } });
         });
@@ -594,6 +617,7 @@
         return { title: 'Subtitle language', items: items, idx: idx, rebuild: langMenu };
     }
 
+    function inFile() { return S.ctx && (S.ctx._relayCc || S.ctx._ccOffer) ? 'closed captions' : 'in the file'; }
     // Level 2: the tracks in one language: the file's own first, then each addon's.
     // Picking a track keeps the menu open, the checkmark on it (an addon's once it loads), so
     // several can be tried in a row: the file's own the same as an addon's.
@@ -601,10 +625,15 @@
         var idx = 0, nAddon = 0;
         list = list.filter(function (x) { return x.emb; }).concat(list.filter(function (x) { return !x.emb; }));
         var items = list.map(function (x, i) {
+            if (x.cc) {   // (turning a live channel's closed captions on: it restarts with them)
+                var c = x.cc;
+                return { label: 'Closed captions (' + c.ch + ')', detail: 'The channel restarts with them',
+                    run: function () { closeMenu(); rememberSub(S.ctx.id, { embedded: true, nth: x.n, lang: c.lang }); P.ccOn(c); } };
+            }
             if (x.emb) {
                 var tr = x.emb, l = textLang(tr);
                 if (_embSub === tr.index) { idx = i; }
-                return { label: 'Built into the file' + (l ? '  (' + l + ')' : '  ·  track ' + (x.n + 1)), sel: _embSub === tr.index,
+                return { label: (S.ctx && S.ctx._relayCc ? 'Closed captions' : 'Built into the file') + (l ? '  (' + l + ')' : '  ·  track ' + (x.n + 1)), sel: _embSub === tr.index,
                     run: function () {
                         _embDelay = 0; _embQueue = []; _embNudge = null; selectEmbeddedSub(tr); rememberSub(S.ctx.id, { embedded: true, index: tr.index, lang: l });
                         if (menuOpen()) { replaceTop(langTracksMenu(key, list)); }
@@ -690,5 +719,6 @@
     P.fileHints = fileHints; P.parseCues = parseCues; P.loadTrack = loadTrack; P.subsOff = subsOff;
     P.resetSubs = resetSubs; P.closeSubs = closeSubs; P.startSubtitles = startSubtitles;
     P.subsBeforeOpen = subsBeforeOpen; P.subsOnTick = subsOnTick; P.subtitleSummary = subtitleSummary;
+    P.wantEmbedded = wantEmbedded;
     P.renderSubs = renderSubs; P.showEmbeddedText = showEmbeddedText; P.subConfigMenu = subConfigMenu; P.langMenu = langMenu;
 })(PlayerParts);

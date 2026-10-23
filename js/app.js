@@ -181,6 +181,7 @@ var App = (function () {
             if (nowb - _lastBackAt < 500) { return true; }
             _lastBackAt = nowb;
         }
+        if (action === 'GUIDE') { guideKey(); return true; }
         if (Player.isActive()) { return Player.handleKey(action); }   // (a held OK too: the player's Cast & more has a menu behind it)
         if (Views.moveKey && Views.moveKey(action)) { return true; }   // (a Continue Watching card being moved)
         switch (action) {
@@ -213,16 +214,27 @@ var App = (function () {
         }
     }
 
-    // Number keys away from the player: 0 Settings, 1–8 Home's tabs as they show (1: Watching).
-    // Not over a popup, nor on a page where something's being typed.
+    // The remote's GUIDE key: the Guide tab (once a TV guide is read: it's in the top menu), the
+    // player closed first. Not over a popup, nor while an addon's link is typed.
+    function guideKey() {
+        var on = (Views.menuItems ? Views.menuItems() : []).some(function (m) { return m.key === 'guide'; });
+        if (!on) { U.toast('No TV guide yet (Settings › Content › IPTV › Guide link)', 3000); return; }
+        if (Player.isActive()) { Player.exit(); }
+        else if (Views.isModalOpen() || _current === 'addaddon') { return; }
+        goHome('guide');
+    }
+
+    // Number keys away from the player: 0 Settings, 1–9 the top menu's items as they show (1:
+    // Watching, the rest in your order: Views.menuItems). Not over a popup, nor on a page where
+    // something's being typed.
     function numberKey(n) {
         if (Views.isModalOpen() || _current === 'addaddon') { return; }
         if (n === 0) { if (_current !== 'settings') { openSettings(); } return; }
-        // the top menu's items, left to right: the tabs showing, then Discover, then Search
-        var tabs = Views.availableTabs ? Views.availableTabs() : [], t = tabs[n - 1];
-        if (t) { goHome(t.key); }
-        else if (n === tabs.length + 1) { if (_current !== 'discover') { openDiscover(); } }
-        else if (n === tabs.length + 2) { if (_current !== 'search') { openSearch(); } }
+        var m = (Views.menuItems ? Views.menuItems() : [])[n - 1];
+        if (!m) { return; }
+        if (m.key === 'discover') { if (_current !== 'discover') { openDiscover(); } }
+        else if (m.key === 'search') { if (_current !== 'search') { openSearch(); } }
+        else { goHome(m.key); }
     }
 
     function actualStart() {

@@ -26,49 +26,116 @@
         { key: 'movie', icon: '🎬', label: 'Movies' },
         { key: 'series', icon: '📺', label: 'Series' },
         { key: 'tv', icon: '📡', label: 'IPTV' },
+        { key: 'guide', icon: '☰', label: 'Guide' },   // (the IPTV channels' TV guide as a grid, once one is read: see js/view-guide.js)
         { key: 'radio', icon: '📻', label: 'Radio' },
         { key: 'sport', icon: '⚽', label: 'Sports' },
         { key: 'youtube', icon: '📹', label: 'YouTube' },   // (StremioK's YouTube catalogs, an addon's YouTube / channel ones: see isYouTubeCat)
         { key: 'local', icon: '💾', label: 'Local' }   // (a USB drive plugged in: see LocalMedia)
     ];
     function hasLocal() { return typeof LocalMedia !== 'undefined' && LocalMedia.present(); }
+    function hasGuide() { return typeof EPG !== 'undefined' && !!EPG.hasAny && EPG.hasAny(); }
+
+    // The top menu's order (Settings › Appearance › Menu): Watching first and Settings last, the
+    // rest (the tabs, Discover, Search) in yours. A saved order is kept as far as it goes: an
+    // item it doesn't have (one added since) goes after the one it usually follows, and one
+    // that no longer exists is dropped.
+    var MENU_ITEMS = HOME_TABS.filter(function (t) { return t.key !== 'continue'; }).map(function (t) { return t.key; }).concat(['discover', 'search']);
+    function menuOrder() {
+        var out = [];
+        (Stremio.getPrefs().menuOrder || []).forEach(function (k) { if (MENU_ITEMS.indexOf(k) !== -1 && out.indexOf(k) === -1) { out.push(k); } });
+        MENU_ITEMS.forEach(function (k, i) {
+            if (out.indexOf(k) !== -1) { return; }
+            var at = 0;
+            for (var j = i - 1; j >= 0; j--) { var p = out.indexOf(MENU_ITEMS[j]); if (p !== -1) { at = p + 1; break; } }
+            out.splice(at, 0, k);
+        });
+        return out;
+    }
+    function moveMenuItem(key, dir) {
+        var o = menuOrder();
+        if (!U.moveIn(o, o.indexOf(key), dir)) { return false; }
+        Stremio.setPref('menuOrder', o);
+        return true;
+    }
+    // What the top menu shows, left to right, before Settings: Watching, then in your order the
+    // tabs showing (availableTabs), Discover and Search. [{ key, tab }] (tab: a Home tab's entry).
+    function menuItems() {
+        var tabs = availableTabs(), byKey = {}, out = [];
+        tabs.forEach(function (t) { byKey[t.key] = t; });
+        if (byKey['continue']) { out.push({ key: 'continue', tab: byKey['continue'] }); }
+        menuOrder().forEach(function (k) {
+            if (k === 'discover' || k === 'search') { out.push({ key: k }); }
+            else if (byKey[k]) { out.push({ key: k, tab: byKey[k] }); }
+        });
+        return out;
+    }
 
     // Which tabs to show in the top menu (needs the home catalogs; falls back to the
     // standard set before they've loaded so the menu is consistent everywhere).
-    // Tabs you hid (Settings › Appearance › Home tabs) aren't shown; Watching always is.
+    // Tabs you hid (Settings › Appearance › Menu) aren't shown; Watching always is.
     function availableTabs() {
         var hidden = Stremio.getPrefs().hiddenTabs || [];
-        function shown(t) { return t.key === 'continue' || hidden.indexOf(t.key) === -1; }
+        function shown(t) { return t.key === 'continue' || (hidden.indexOf(t.key) === -1 && (t.key !== 'guide' || hasGuide())); }
         if (_homeCatalogs === null || _homeFirstLoad) {   // first load still running
             return HOME_TABS.filter(function (t) { return shown(t) && (t.key !== 'local' || hasLocal()); });
         }
         return HOME_TABS.filter(function (t) {
-            return shown(t) && (t.key === 'continue' || t.key === 'calendar' || (t.key === 'local' ? hasLocal() : catsForTab(t.key).length > 0));
+            return shown(t) && (t.key === 'continue' || t.key === 'calendar' || t.key === 'guide' || (t.key === 'local' ? hasLocal() : catsForTab(t.key).length > 0));
         });
     }
 
     // YouTube's tab: StremioK's own YouTube catalogs (whatever type you gave one: "Podcasts"),
     // and another addon's YouTube or channel catalogs (YouTubio's "YouTube", Stremio's "channel").
+    // (Home's copies of a catalog, and the ones saved for the next launch, keep only its name,
+    // type and titles: a YouTube one carries yt, as its addon isn't kept with them)
     function isYouTubeCat(c) {
         var m = c.addon && c.addon.manifest;
-        return !!(m && m.id === 'org.stremiok.youtube') || /^(youtube|channel)$/i.test('' + c.type);
+        return !!c.yt || !!(m && m.id === 'org.stremiok.youtube') || /^(youtube|channel)$/i.test('' + c.type);
     }
-    // Which cached catalogs belong to a tab. Sports, radio and YouTube have dedicated tabs;
-    // IPTV is the catch-all for every other live source (tv, …).
-    function catsForTab(key) {
-        return (_homeCatalogs || []).filter(function (c) {
-            if (key === 'youtube') { return isYouTubeCat(c); }
-            if (isYouTubeCat(c)) { return false; }
-            if (key === 'movie') { return c.type === 'movie'; }
-            if (key === 'series') { return c.type === 'series'; }
-            if (key === 'sport') { return c.type === 'sport'; }
-            if (key === 'radio') { return c.type === 'radio'; }
-            if (key === 'tv') {
-                return c.type !== 'movie' && c.type !== 'series' &&
-                    c.type !== 'sport' && c.type !== 'radio';
-            }
-            return false;
+    function copyCat(c, metas, more) {   // (name, type, titles: and yt when it's one)
+        var o = { name: c.name, type: c.type, metas: metas };
+        if (c.yt) { o.yt = true; }
+        if (more) { Object.keys(more).forEach(function (k) { o[k] = more[k]; }); }
+        return o;
+    }
+    // Which cached catalogs belong to a tab (tabOf). Movies, series, sports, radio and YouTube go
+    // to their own tabs, live TV (LIVE_TYPES, IPTV playlists) to IPTV. Another type (a debrid
+    // library's "RealDebrid", "other") goes by what it lists (byItems); anything still unclear
+    // isn't on Home ('': Discover has it). ("anime" never gets here: see Stremio's discoverOnly.)
+    var LIVE_TYPES = { tv: 1, events: 1, event: 1, live: 1, livetv: 1, iptv: 1 };
+    var TITLE_IDS = /^(tt\d+|tmdb:|tvdb:|kitsu:|mal:|anilist:|anidb:)/i;
+    function tabOf(c) {
+        var n = (c.metas || []).length;
+        if (c._tab !== undefined && c._tabN === n) { return c._tab; }   // (worked out again once it has titles)
+        var t = ('' + (c.type || '')).toLowerCase(), tab;
+        if (isYouTubeCat(c)) { tab = 'youtube'; }
+        else if (t === 'movie' || t === 'series' || t === 'radio') { tab = t; }
+        else if (t === 'sport' || t === 'sports') { tab = 'sport'; }
+        else if (LIVE_TYPES[t]) { tab = 'tv'; }
+        else { tab = byItems(c); }
+        c._tab = tab; c._tabN = n;
+        return tab;
+    }
+    // Mostly films or series (60% of its first 50 titles): that tab. Title ids, and "anime",
+    // "series" or "show" in its name or type: Series ("movie" / "film": Movies). Else ''.
+    function byItems(c) {
+        var ms = (c.metas || []).slice(0, 50), mv = 0, sr = 0, ids = 0;
+        if (!ms.length) { return ''; }
+        ms.forEach(function (m) {
+            var mt = ('' + ((m && m.type) || '')).toLowerCase();
+            if (mt === 'movie') { mv++; } else if (mt === 'series') { sr++; }
+            if (TITLE_IDS.test('' + ((m && m.id) || ''))) { ids++; }
         });
+        if (mv + sr >= ms.length * 0.6) { return mv > sr ? 'movie' : 'series'; }
+        if (ids >= ms.length * 0.6) {
+            var hint = (c.type + ' ' + (c.name || '') + ' ' + ((c.def && c.def.name) || '')).toLowerCase();
+            if (/movie|film|pel[ií]cula/.test(hint)) { return 'movie'; }
+            if (/anime|series|show|serie/.test(hint)) { return 'series'; }
+        }
+        return '';
+    }
+    function catsForTab(key) {
+        return (_homeCatalogs || []).filter(function (c) { return tabOf(c) === key; });
     }
     var _homeCatalogs = null;   // [{name,type,metas}] — fetched once per session, filtered per tab
     var _homeTab = null;        // active tab key
@@ -98,8 +165,11 @@
     // url: the addon ('local:iptv' for IPTV); none: nothing to fetch (only the set / order
     // of rows changed). Calls before the reload runs add up.
     var _reloadOnly = null;   // { addon url: 1 } for the next reload, else a full one
+    var _homeAddons = {};     // { addon url: 1 } the addons Home's last load had catalogs from
     function refreshAddonRows(url) {
         if (_homeCatalogs === null) { clearCatalogCache(); return; }   // nothing loaded yet: a full load anyway
+        // an addon Home didn't load rows from (the first playlist added: IPTV): a full load, its tab with it
+        if (url && !_homeAddons[url]) { clearCatalogCache(); return; }
         _reloadOnly = _reloadOnly || {};
         if (url) { _reloadOnly[url] = 1; }
         _homeDirty = true;
@@ -148,17 +218,17 @@
             if (bytes > _homeBytesMax) { return; }
             var metas = c.metas.map(trimMeta);
             metas.forEach(function (m) { bytes += sizeOf(m); });
-            if (bytes <= _homeBytesMax) { cats.push({ name: c.name, type: c.type, metas: metas }); }
+            if (bytes <= _homeBytesMax) { cats.push(copyCat(c, metas)); }
         });
         if (U.bigStore && !_homeSaveFailed) {
             U.bigStore.set(HOME_CACHE_KEY, { sig: sig, cats: cats }).then(function (ok) { if (ok === false) { _homeSaveFailed = true; } });
         }
         U.store.set(HOME_SNAP_KEY, { sig: sig, cats: cats.slice(0, SNAP_ROWS).map(function (c) {
-            return { name: c.name, type: c.type, metas: c.metas.slice(0, SNAP_CARDS).map(function (m) {
+            return copyCat(c, c.metas.slice(0, SNAP_CARDS).map(function (m) {
                 var o = { id: m.id, type: m.type, name: m.name };
                 SNAP_FIELDS.forEach(function (k) { if (m[k] != null) { o[k] = m[k]; } });
                 return o;
-            }) };
+            }));
         }) });
     }
     function useHomeCache() {
@@ -1150,7 +1220,7 @@
         // Rows for the active tab, from the once-per-session catalog cache. Catalog tabs
         // keep their built rows, so switching back doesn't rebuild every card; Continue
         // Watching is small and changes after every playback, so it's always rebuilt.
-        var rows = (_homeTab !== 'continue' && _homeTab !== 'local' && _homeTab !== 'calendar') ? _tabRows[_homeTab] : null;
+        var rows = (_homeTab !== 'continue' && _homeTab !== 'local' && _homeTab !== 'calendar' && _homeTab !== 'guide') ? _tabRows[_homeTab] : null;
         if (_homeTab !== 'calendar' && _calCancel) { _calCancel.cancel(); _calCancel = null; }   // (its titles' details still coming: not wanted)
         if (rows) {
             s.appendChild(rows);
@@ -1162,6 +1232,8 @@
                 localRows(rows);
             } else if (_homeTab === 'calendar') {
                 calendarRows(rows);
+            } else if (_homeTab === 'guide') {
+                V.guideGrid(rows);
             } else if (_homeTab === 'continue') {
                 var entries = continueEntries();
                 if (entries.length) {
@@ -1194,12 +1266,15 @@
         var again = keep ? findCard(s, keep) : null;
         var landed = false;
         var sameItem = (!firstCard && inMenu) ? menuItem(s, cur.textContent) : null;   // the menu item focus was on
-        if (again || sameItem) { Focus.setScope(s, again || sameItem); } else { landed = focusHome(s, !firstCard && inMenu); }
+        var rowsEl = s.querySelector('.rows'), fc = Focus.current();
+        if (_homeTab === 'guide' && fc && rowsEl && rowsEl.contains(fc)) { landed = true; }   // (the Guide drawn from what it had put focus back on its program)
+        else if (again || sameItem) { Focus.setScope(s, again || sameItem); } else { landed = focusHome(s, !firstCard && inMenu); }
         if (_homeCatalogs === null || homeStale() || _reloadOnly) { loadHomeCatalogs(); }
         // No title to focus yet: try again when the rows arrive (Continue Watching and a
         // tab with no catalogs have nothing coming, so focus simply stays on the pill).
-        _focusFirstCard = (firstCard && !landed && _homeLoading && _homeTab !== 'continue' && _homeTab !== 'calendar') ? 'pending' : false;
+        _focusFirstCard = (firstCard && !landed && _homeLoading && _homeTab !== 'continue' && _homeTab !== 'calendar' && _homeTab !== 'guide') ? 'pending' : false;
         _renderedSig = tabSig();
+        _renderedMenu = menuSig();
         if (s.querySelector('.rows .card')) { U.mark('firstCard'); }
         // the strip describes the focused title only (empty while focus is in the menu)
         clearTimeout(_homeInfoTimer); _homeInfoTimer = null;
@@ -1214,6 +1289,7 @@
     function fillInfoBox(box, m) {
         if (!box) { return; }
         m = m || {};
+        if (!m.logo && /^iptv:/.test(m.id || '') && typeof EPG !== 'undefined' && EPG.logo && EPG.logo(m.id)) { m = Object.assign({}, m, { logo: EPG.logo(m.id) }); }   // (a channel: its guide's logo)
         var bits = [];
         if (m.releaseInfo) { bits.push(m.releaseInfo); } else if (m.year) { bits.push('' + m.year); }
         if (m.runtime) { bits.push(m.runtime); }
@@ -1231,8 +1307,34 @@
         } else {
             t.textContent = name;
         }
+        var desc = m.description || '';
+        var g = /^iptv:/.test(m.id || '') && typeof EPG !== 'undefined' ? EPG.now(m.id) : null;   // a channel: what's on, from its TV guide
+        if (g && g.now) {
+            bits = ['Now  ' + EPG.hhmm(g.now.start) + '–' + EPG.hhmm(g.now.stop) + '   ' + g.now.title];
+            desc = (g.now.desc ? g.now.desc + '   ' : '') + (g.next ? 'Next  ' + EPG.hhmm(g.next.start) + '   ' + g.next.title : '');
+        }
         box.children[1].textContent = bits.join('   ·   ');
-        box.children[2].textContent = m.description || '';
+        box.children[2].textContent = desc;
+        // a program's picture from the TV guide (the Guide tab's focused one, a channel's now)
+        var picSrc = m.picture || (g && g.now && g.now.picture) || '', pic = box.querySelector('.home-info-pic');
+        if (!picSrc) { if (pic) { pic.className = 'home-info-pic hidden'; } box.classList.remove('has-pic'); return; }
+        if (!pic) { pic = U.el('img', 'home-info-pic'); pic.onerror = function () { pic.className = 'home-info-pic hidden'; box.classList.remove('has-pic'); }; box.appendChild(pic); }
+        pic.className = 'home-info-pic';
+        box.classList.add('has-pic');
+        if (pic.__src !== picSrc) { pic.__src = picSrc; U.deferImage(pic, U.cardImage(picSrc, 'still'), true); }
+    }
+    if (typeof EPG !== 'undefined') {   // (the focused channel's: drawn again when its guide arrives)
+        var _hadGuide = false;
+        EPG.onChange(function () {
+            var n = Focus.current();
+            if (n && n.__meta && /^iptv:/.test(n.__meta.id || '') && scr('home').contains(n)) { fillHomeInfo(n.__meta); }
+            // a guide read (or gone): the Guide tab comes (or goes) in the menu, at once
+            var has = hasGuide();
+            if (has !== _hadGuide) {
+                _hadGuide = has;
+                if (_current() === scr('home') && !isModalOpen() && !Player.isActive()) { renderHome(); }
+            }
+        });
     }
     Focus.onFocus(function (node) {
         if (!node || !scr('home').contains(node)) { return; }
@@ -1263,12 +1365,18 @@
     // Everything the tab on screen shows from the catalogs (which titles, in which rows),
     // to tell whether a refresh changed it. Continue Watching shows none of it.
     function shownSig() {
-        if (_homeTab === 'continue' || _homeTab === 'calendar') { return _homeTab; }
+        if (_homeTab === 'continue' || _homeTab === 'calendar' || _homeTab === 'guide') { return _homeTab; }
         return _homeTab + '#' + catsForTab(_homeTab).map(function (c) {
             return c.name + ':' + c.metas.map(function (m) { return m.id + '/' + (m.poster || ''); }).join(',');
         }).join('|');
     }
-    var _renderedSig = '';
+    var _renderedSig = '', _renderedMenu = '';
+    // The tabs that aren't drawn from catalogs (Watching, Calendar, Guide, Local): catalogs that
+    // arrive don't change them, only the top menu might (a tab coming). Redrawing one rebuilds it
+    // whole (the Guide asks for its programs again): a flicker, so not unless the menu changed.
+    function ownTab(t) { return t === 'continue' || t === 'calendar' || t === 'guide' || t === 'local'; }
+    function menuSig() { return availableTabs().map(function (t) { return t.key; }).join(','); }
+    function ownTabStill() { return ownTab(_homeTab) && menuSig() === _renderedMenu; }
     function tabSig() {
         return _homeTab + '#' + catsForTab(_homeTab).map(function (c) { return c.name + ':' + c.metas.length; }).join('|');
     }
@@ -1312,7 +1420,9 @@
         }
         function onHome() { return _current() === s && !isModalOpen() && !Player.isActive(); }
         Stremio.catalogsForHome().then(function (cats) {
-            var acc = cats.map(function (cat) { return { name: cat.name, type: cat.type, metas: [] }; });
+            _homeAddons = {};
+            cats.forEach(function (cat) { if (cat.addon && cat.addon.url) { _homeAddons[cat.addon.url] = 1; } });
+            var acc = cats.map(function (cat) { return copyCat({ name: cat.name, type: cat.type, yt: isYouTubeCat(cat) }, []); });
             var arrived = cats.map(function () { return false; }), shown = 0, partialTimer = null;
             // First load: publish each row as soon as it arrives, in its own place (a slower one above
             // it held by a "Loading…" placeholder, so nothing jumps when it comes), and redraw when
@@ -1321,12 +1431,13 @@
                 var n = arrived.filter(Boolean).length, last = arrived.lastIndexOf(true);
                 if (!first || n <= shown) { return; }
                 shown = n;
-                var now = acc.slice(0, last + 1).map(function (c, i) { return arrived[i] ? c : { name: c.name, type: c.type, metas: [], loading: true }; });
+                var now = acc.slice(0, last + 1).map(function (c, i) { return arrived[i] ? c : copyCat(c, [], { loading: true }); });
                 _homeCatalogs = splitOtherCatalogs(now).filter(function (c) { return c.loading || (c.metas && c.metas.length); });
                 if (partialTimer) { return; }
                 partialTimer = setTimeout(function () {
                     partialTimer = null;
                     if (!_homeFirstLoad) { return; }   // everything arrived meanwhile: drawn below
+                    if (ownTabStill()) { _tabRows = {}; return; }   // (Watching, the Guide…: as they are)
                     var keep = {};
                     if (tabSig() === _renderedSig) { keep[_homeTab] = _tabRows[_homeTab]; }
                     _tabRows = keep;   // other tabs rebuild from the new rows when opened
@@ -1351,7 +1462,7 @@
                 // The tab on screen is redrawn only if what it shows changed: redrawing rebuilds
                 // every card (and reloads its artwork), which shows as a flicker. Continue
                 // Watching doesn't come from catalogs at all. Other tabs rebuild when opened.
-                var same = before !== null && shownSig() === before;
+                var same = (before !== null && shownSig() === before) || ownTabStill();
                 var keep = {};
                 if (same && _tabRows[_homeTab]) { keep[_homeTab] = _tabRows[_homeTab]; }
                 _tabRows = keep;
@@ -1375,8 +1486,8 @@
     function splitOtherCatalogs(list) {
         var out = [];
         list.forEach(function (c) {
-            if (c.loading) { if (c.type !== 'other') { out.push({ name: c.name, type: c.type, metas: [], loading: true }); } return; }   // (a placeholder: still loading)
-            if (c.type !== 'other') { out.push({ name: c.name, type: c.type, metas: c.metas.slice(0, ROW_CARDS) }); return; }
+            if (c.loading) { if (c.type !== 'other' || c.yt) { out.push(copyCat(c, [], { loading: true })); } return; }   // (a placeholder: still loading)
+            if (c.type !== 'other' || c.yt) { out.push(copyCat(c, c.metas.slice(0, ROW_CARDS))); return; }   // (a YouTube one as it is, whatever its type)
             var movies = [], series = [];
             c.metas.forEach(function (m) { (SERIES_NAME.test(m.name || '') ? series : movies).push(m); });
             out.push({ name: otherRowName('Movies', c.name), type: 'movie', metas: movies.slice(0, ROW_CARDS) });
@@ -1435,6 +1546,10 @@
     // ----- published for the other parts (and js/views.js) -----
     V.fillInfoBox = fillInfoBox;
     V.availableTabs = availableTabs;
+    V.menuOrder = menuOrder;
+    V.moveMenuItem = moveMenuItem;
+    V.menuItems = menuItems;
+    V.MENU_ITEMS = MENU_ITEMS;
     V.HOME_TABS = HOME_TABS;
     V.buildRow = buildRow;
     V.clearCatalogCache = clearCatalogCache;

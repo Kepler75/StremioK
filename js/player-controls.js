@@ -638,10 +638,41 @@
         if (!S.isLive) {
             items.push({ label: 'Playback', run: function () { pushMenu(playbackMenu()); } });
         }
-        items.push({ label: 'Picture', detail: aspectDef(playerCfg().aspect)[1].split(' (')[0], run: function () { pushMenu(pictureMenu()); } });
+        items.push({ label: 'Picture', detail: aspectDef(P.aspectNow())[1].split(' (')[0], run: function () { pushMenu(pictureMenu()); } });
+        if (P.liveFormat()) { items.push({ label: 'Format', detail: P.liveFormat() === 'hls' ? 'HLS' : 'MPEG-TS', run: function () { pushMenu(formatMenu()); } }); }
         items.push({ label: streamInfoOn() ? 'Hide stream info' : 'Stream info', run: function () { toggleStreamInfo(); closeMenu(); } });
+        items.push({ label: 'Reload', detail: S.isLive ? 'Open the channel again' : 'Open it again, where it is', run: function () { closeMenu(); P.reload(); } });
+        items.push({ label: 'Sleep timer', detail: sleepLeft(), run: function () { pushMenu(sleepMenu()); } });
         return { title: 'Menu', items: items, idx: 0 };
     }
+
+    // ---- Sleep timer: playback stops after 30, 60 or 90 minutes (said, then the player closes);
+    // for this playback session, cleared when the player closes ----
+    var SLEEP_MINUTES = [30, 60, 90], _sleep = null;   // { at, timer }
+    function sleepLeft() {
+        if (!_sleep) { return 'Off'; }
+        return Math.max(1, Math.ceil((_sleep.at - Date.now()) / 60000)) + ' min left';
+    }
+    function sleepClear() { if (_sleep) { clearTimeout(_sleep.timer); _sleep = null; } }
+    function sleepSet(min) {
+        sleepClear();
+        if (!min) { return; }
+        var at = Date.now() + min * 60000;
+        _sleep = { at: at, timer: setTimeout(function () {
+            _sleep = null;
+            if (!S.active) { return; }
+            U.toast('Sleep timer: playback stopped', 5000);
+            exit();
+        }, min * 60000) };
+    }
+    function sleepMenu() {
+        var items = [{ label: 'Off', sel: !_sleep, run: function () { sleepSet(0); closeMenu(); U.toast('Sleep timer off', 2000); } }];
+        SLEEP_MINUTES.forEach(function (m) {
+            items.push({ label: m + ' minutes', run: function () { sleepSet(m); closeMenu(); U.toast('Sleep timer: playback stops in ' + m + ' minutes', 3000); } });
+        });
+        return { title: 'Sleep timer', items: items, idx: 0 };
+    }
+    P.sleepClear = sleepClear;
 
     // Continue on phone: the link playing, or '' (a file on a USB drive: no link to give)…
     function streamLink() {
@@ -717,9 +748,10 @@
     }
 
     // ---------- picture mode ----------
-    // Apply the saved mode; a mode this TV rejects falls back to Fit (quiet = at stream start).
+    // Apply the saved mode (a live channel's own, else the usual one: player-store's aspectNow); a
+    // mode this TV rejects falls back to Fit (quiet = at stream start).
     function applyAspect(quiet) {
-        var a = aspectDef(playerCfg().aspect);
+        var a = aspectDef(P.aspectNow());
         if (!useAV) { if (S.videoEl) { S.videoEl.style.objectFit = a[3]; } return true; }
         try { avplay.setDisplayMethod(a[2]); return true; } catch (e) {
             try { avplay.setDisplayMethod(aspectDef('fit')[2]); } catch (e2) {}
@@ -728,17 +760,26 @@
         }
     }
     function pictureMenu() {
-        var cur = playerCfg().aspect, idx = 0;
+        var cur = P.aspectNow(), idx = 0;
         var items = P.ASPECTS.map(function (a, i) {
             if (a[0] === cur) { idx = i; }
             return { label: a[1], sel: a[0] === cur, run: function () {
-                var prev = playerCfg().aspect;
-                setPlayerCfg({ aspect: a[0] });
-                if (!applyAspect(false)) { setPlayerCfg({ aspect: prev === a[0] ? 'fit' : prev }); applyAspect(true); }
+                var prev = P.aspectNow();
+                P.setAspectNow(a[0]);
+                if (!applyAspect(false)) { P.setAspectNow(prev === a[0] ? 'fit' : prev); applyAspect(true); }
                 replaceTop(pictureMenu());
             } };
         });
-        return { title: 'Picture', items: items, idx: idx };
+        return { title: S.isLive && S.ctx && S.ctx.id ? 'Picture (this channel)' : 'Picture', items: items, idx: idx };
+    }
+
+    // An Xtream channel's format (player-core's setLiveFormat): it opens again the other way.
+    function formatMenu() {
+        var now = P.liveFormat();
+        var items = [['ts', 'MPEG-TS'], ['hls', 'HLS']].map(function (f) {
+            return { label: f[1], sel: f[0] === now, run: function () { closeMenu(); if (f[0] !== now) { P.setLiveFormat(f[0]); } } };
+        });
+        return { title: 'Format (this channel)', items: items, idx: now === 'hls' ? 1 : 0 };
     }
 
     // ---------- stream info overlay ----------
@@ -962,6 +1003,7 @@
     // ----- for the other parts (and js/player.js) -----
     P.barShown = function () { return _barOpen; };
     P.menuOpen = menuOpen; P.scrubbing = scrubbing; P.skipShown = skipShown; P.resetControls = resetControls;
+    P.rootMenu = rootMenu;
     P.closeControls = closeControls; P.showSkip = showSkip; P.skipTick = skipTick; P.renderScrub = renderScrub; P.topMenu = topMenu;
     P.closeMenu = closeMenu; P.pushMenu = pushMenu; P.popMenu = popMenu; P.replaceTop = replaceTop; P.applyAspect = applyAspect;
     P.handleKey = handleKey; P.ytLinksTick = ytLinksTick; P.phoneLink = phoneLink;

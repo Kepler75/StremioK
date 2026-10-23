@@ -255,6 +255,26 @@
         U.store.set(PLAYERCFG_KEY, d);
     }
     function aspectDef(id) { for (var i = 0; i < ASPECTS.length; i++) { if (ASPECTS[i][0] === id) { return ASPECTS[i]; } } return ASPECTS[0]; }
+    // A live channel's own picture mode (picked while it played): { channel id: mode }, the last
+    // ASPECTS_KEEP; one set back to the usual mode isn't kept apart. Anything else: the usual one.
+    var ASPECTS_KEY = 'stremiok.aspects', ASPECTS_KEEP = 300;
+    function aspectChannel() { var S = P.S; return (S && S.isLive && S.ctx && S.ctx.id) ? S.ctx.id : ''; }
+    function aspectNow() {
+        var ch = aspectChannel(), own = ch ? (U.store.get(ASPECTS_KEY, {}) || {})[ch] : '';
+        return own && aspectDef(own)[0] === own ? own : playerCfg().aspect;
+    }
+    function setAspectNow(mode) {
+        var ch = aspectChannel();
+        if (!ch) { setPlayerCfg({ aspect: mode }); return; }
+        var all = U.store.get(ASPECTS_KEY, {}) || {};
+        delete all[ch];
+        if (mode !== playerCfg().aspect) {
+            all[ch] = mode;
+            var keys = Object.keys(all);
+            keys.slice(0, Math.max(0, keys.length - ASPECTS_KEEP)).forEach(function (k) { delete all[k]; });   // (the oldest picked)
+        }
+        U.store.set(ASPECTS_KEY, all);
+    }
 
     // ----- for the other parts (and js/player.js) -----
     P.watchedState = watchedState; P.isWatched = isWatched; P.watchedAt = watchedAt; P.watchedSince = watchedSince;
@@ -265,7 +285,7 @@
     P.getResume = getResume; P.removeProgress = removeProgress; P.continueList = continueList;
     P.rememberSub = rememberSub; P.recallSub = recallSub; P.rememberAudio = rememberAudio;
     P.recallAudio = recallAudio; P.playerCfg = playerCfg; P.setPlayerCfg = setPlayerCfg;
-    P.aspectDef = aspectDef; P.SUB_FONTS = SUB_FONTS; P.SUB_COLORS = SUB_COLORS; P.SUB_BGS = SUB_BGS;
+    P.aspectDef = aspectDef; P.aspectNow = aspectNow; P.setAspectNow = setAspectNow; P.SUB_FONTS = SUB_FONTS; P.SUB_COLORS = SUB_COLORS; P.SUB_BGS = SUB_BGS;
     P.SUB_EDGES = SUB_EDGES; P.SUB_POSITIONS = SUB_POSITIONS; P.ASPECTS = ASPECTS;
     P.isPrivate = isPrivate; P.setPrivate = setPrivate; P.privateNow = privateNow; P.subCfgVersion = subCfgVersion;
 })(PlayerParts);

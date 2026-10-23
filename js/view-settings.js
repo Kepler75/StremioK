@@ -17,7 +17,6 @@
     function markHomeDirty() { return V.markHomeDirty.apply(null, arguments); }   // home
     function onModalClose() { return V.onModalClose.apply(null, arguments); }   // core
     function pickList() { return V.pickList.apply(null, arguments); }   // core
-    function toggleList() { return V.toggleList.apply(null, arguments); }   // core
     function playlistActions() { return V.playlistActions.apply(null, arguments); }   // core
     function scr() { return V.scr.apply(null, arguments); }   // core
     function showModal() { return V.showModal.apply(null, arguments); }   // core
@@ -207,14 +206,16 @@
             get: function () { return { spoilers: Stremio.getPrefs().spoilers }; },
             set: function (cfg) { Stremio.setPref('spoilers', cfg.spoilers); }
         }));
-        wrap.appendChild(homeTabsRow());
+        var menu = sectionRow('Menu  ›', 'Order the top menu, and show or hide its tabs', 'menuorder');
+        menu.className += ' cfg-row';
+        wrap.appendChild(menu);
         var feeds = sectionRow('Home feeds  ›', 'Order the Home rows, and show or hide each one', 'feeds');
         feeds.className += ' cfg-row';
         wrap.appendChild(feeds);
         var sfeeds = sectionRow('Search results  ›', 'Order the Search rows (one per catalog that can search), and show or hide each one', 'searchfeeds');
         sfeeds.className += ' cfg-row';
         wrap.appendChild(sfeeds);
-        var back = _focusChild === 'feeds' ? feeds : _focusChild === 'searchfeeds' ? sfeeds : null;
+        var back = _focusChild === 'menuorder' ? menu : _focusChild === 'feeds' ? feeds : _focusChild === 'searchfeeds' ? sfeeds : null;
         _focusChild = null;
         if (back) { Focus.setScope(scr('settings'), back); } else { focusSettings(); }
     }
@@ -337,7 +338,7 @@
     // BACK goes up one level, onto the row it came from: from a section to its group (on
     // that section, not the first one), from Home feeds / Search results to Appearance,
     // from a group to the Settings list (on that group).
-    var SECTION_PARENT = { feeds: 'appearance', searchfeeds: 'appearance', aiomanager: 'addons' };
+    var SECTION_PARENT = { menuorder: 'appearance', feeds: 'appearance', searchfeeds: 'appearance', aiomanager: 'addons' };
     Object.keys(SETTINGS_GROUPS).forEach(function (g) {
         SETTINGS_GROUPS[g].rows.forEach(function (row) { SECTION_PARENT[row[2]] = g; });
     });
@@ -366,6 +367,7 @@
         else if (_settingsSection === 'subtitles') { settingsSubtitles(wrap); }
         else if (_settingsSection === 'skipping') { settingsSkipping(wrap); }
         else if (_settingsSection === 'seeking') { settingsSeeking(wrap); }
+        else if (_settingsSection === 'menuorder') { settingsFeeds(wrap, 'menu'); }
         else if (_settingsSection === 'feeds') { settingsFeeds(wrap, 'home'); }
         else if (_settingsSection === 'searchfeeds') { settingsFeeds(wrap, 'search'); }
         else if (_settingsSection === 'ranking') { settingsFeeds(wrap, 'ranking'); }
@@ -867,6 +869,15 @@
     var _iptvFocus = null;   // { id, ctl } to focus once the page is drawn again
     function two(n) { return (n < 10 ? '0' : '') + n; }
     function thousands(n) { return ('' + n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+    // The playlist rows IPTV Settings drew last: their guide lines kept current by one listener
+    // (one added each time it was drawn used to pile up, each holding its rows).
+    var _guideRows = [];
+    if (typeof EPG !== 'undefined' && EPG.onChange) {
+        EPG.onChange(function () {
+            _guideRows = _guideRows.filter(function (r) { return document.documentElement.contains(r.info); });
+            _guideRows.forEach(function (r) { r.info.textContent = playlistInfo(r.p); });
+        });
+    }
     function playlistInfo(p) {
         if (p.off) { return 'Off — its channels aren’t shown'; }
         var st = Stremio.iptvStatus(p.id), parts = [];
@@ -875,12 +886,64 @@
         if (st.fetchedAt) { var d = new Date(st.fetchedAt); parts.push('downloaded ' + U.dayLabel(st.fetchedAt) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes())); }
         if (st.dropped) { parts.push(thousands(st.dropped) + ' more left out (a playlist keeps its first 30,000)'); }
         if (st.uncached) { parts.push('too large to save on the TV: downloaded each launch'); }
+        var g = guideInfo(p);
+        if (g) { parts.push(g); }
         return parts.join('   ·   ');
+    }
+    // Its TV guide (js/epg.js): being read, read (for how many of its channels), or why not.
+    function guideInfo(p) {
+        var g = typeof EPG !== 'undefined' && EPG.status ? EPG.status(p.id) : null;
+        if (!g) { return typeof EPG !== 'undefined' && EPG.available && EPG.available() ? 'no TV guide' : ''; }
+        if (g.state === 'ready') {
+            var d = new Date(g.at);
+            return 'TV guide: ' + thousands(g.channels) + ' channel' + (g.channels === 1 ? '' : 's') + ', ' + thousands(g.programmes) + ' programs' + (g.partial ? ' (part of it: too large)' : '') +
+                (g.at ? ', read ' + U.dayLabel(g.at) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes()) : '') + (g.error ? ' (the last read failed: ' + g.error + ')' : '');
+        }
+        if (g.state === 'failed') { return '⚠ TV guide: ' + (g.error || 'couldn’t be read'); }
+        return 'TV guide: reading…';
     }
     function playlistProblem(p) {
         var st = Stremio.iptvStatus(p.id);
         if (p.off || !st.error) { return ''; }
         return '⚠ ' + (st.stale ? 'Couldn’t refresh it (showing the saved copy): ' : '') + st.error;
+    }
+    // + Add Xtream account: its server, username and password, a page each (a whole Xtream link
+    // in the server's fills the rest); checked with the server, then added (Stremio.iptvAddXtream).
+    function addXtream() {
+        function done(base, user, pass) {
+            U.toast('Checking the account…', 15000);
+            IPTV.xtreamCheck(base, user, pass).then(function (r) {
+                if (r.unreachable) { U.toast('Couldn’t reach the server: check its address (nothing was saved)', 5000); return; }
+                if (r.refused) { U.toast('The server refused that username and password' + (r.status ? ' (' + r.status + ')' : '') + ': nothing was saved', 5000); return; }
+                Stremio.iptvAddXtream(base, user, pass);
+                refreshAddonRows('local:iptv');
+                U.toast('Xtream account added: reading its channels and TV guide…', 4000);
+                renderSettings();
+            });
+        }
+        App.openEntry({
+            title: 'Xtream account: server', phone: 'playlist',
+            hint: 'The server address your provider gave you (http://line.example.com:8080), or a whole Xtream link. RETURN cancels.',
+            value: 'http://', placeholder: 'http://line.example.com:8080',
+            validate: function (v) { return IPTV.xtreamParts(v) ? null : 'That isn’t a server address'; },
+            onConfirm: function (v) {
+                var x = IPTV.xtreamParts(v);
+                App.back();
+                if (x.user && x.pass) { done(x.base, x.user, x.pass); return; }
+                App.openEntry({
+                    title: 'Xtream account: username', hint: 'Your account’s username. RETURN cancels.', value: x.user, placeholder: 'username',
+                    validate: function (u) { return ('' + u).trim() ? null : 'Type the username'; },
+                    onConfirm: function (u) {
+                        App.back();
+                        App.openEntry({
+                            title: 'Xtream account: password', hint: 'Your account’s password (kept on the TV, in the playlist’s link). RETURN cancels.', value: '', placeholder: 'password', secret: true,
+                            validate: function (p) { return ('' + p) ? null : 'Type the password'; },
+                            onConfirm: function (p) { App.back(); done(x.base, ('' + u).trim(), '' + p); }
+                        });
+                    }
+                });
+            }
+        });
     }
     function settingsIptv(wrap) {
         wrap.appendChild(U.el('h2', null, 'IPTV'));
@@ -925,6 +988,7 @@
             rows.push({ p: playlist, info: info, problem: problem, idx: idx });
         });
 
+        _guideRows = rows;   // (their guide lines kept current as guides are read: _guideRows)
         if (statusEl) {
             Stremio.iptvLoad().then(function () {
                 var channels = 0, groups = 0, failed = 0, on = 0;
@@ -962,6 +1026,11 @@
             });
         };
         wrap.appendChild(add);
+        var xt = U.el('div', 'addon-item focusable add-row');
+        xt.appendChild(U.el('div', 'a-name', '+  Add Xtream account'));
+        xt.appendChild(U.el('div', 'a-url', 'Its server, username and password: its channels and TV guide added'));
+        xt.__onselect = addXtream;
+        wrap.appendChild(xt);
 
         wrap.appendChild(U.el('div', 'hint',
             'Channels are grouped into IPTV and Radio rows on Home. ▲ / ▼ set the playlists\' order: a channel in two playlists comes from the first.'));
@@ -1386,34 +1455,6 @@
         focusSettings();
     }
 
-    // Home tabs: hide the ones you never use (Watching always stays: it's where Home opens). A
-    // row like the ones above it; OK opens the tabs, OK on one shows or hides it (the list
-    // stays open). A hidden tab's rows are back when it's shown again.
-    function homeTabsRow() {
-        function hiddenNow() { return Stremio.getPrefs().hiddenTabs || []; }
-        var r = U.el('div', 'addon-item focusable cfg-row'), name = U.el('div', 'a-name');
-        var tabs = (V.HOME_TABS || []).filter(function (t) { return t.key !== 'continue'; });
-        function draw() {
-            var hidden = hiddenNow().filter(function (k) { return tabs.some(function (t) { return t.key === k; }); });
-            name.textContent = 'Home tabs:  ' + (hidden.length ? hidden.length + ' hidden' : 'All shown');
-        }
-        draw();
-        r.appendChild(name);
-        r.appendChild(U.el('div', 'a-url', 'Press OK to choose'));
-        r.__onselect = function () {
-            var hidden = hiddenNow();
-            toggleList('Home tabs', tabs.map(function (t) { return [t.key, t.label + (t.key === 'local' ? ' (with a USB drive in)' : ''), hidden.indexOf(t.key) === -1]; }),
-                { on: 'Shown', off: 'Hidden' }, function (key, on) {
-                    var now = hiddenNow().filter(function (k) { return k !== key; });
-                    if (!on) { now.push(key); }
-                    Stremio.setPref('hiddenTabs', now);
-                    markHomeDirty();
-                    draw();
-                });
-        };
-        return r;
-    }
-
     var POSTER_SHAPES = [['portrait', 'Portrait'], ['landscape', 'Landscape']];
     // ----- Diagnostics › Logs: the recent problems U.log kept (in memory, URLs masked), and
     // how long launches took -----
@@ -1630,14 +1671,17 @@
             if (!inf.entries.length) { line(dbOn ? 'Nothing in the TV’s database.' : 'The TV’s database isn’t used (turned off above).'); }
             line('Settings storage: ' + fmtBytes(inf.ls) + ' (progress, watched marks, settings…)' + (inf.lsTop.length ? '; the largest:' : ''));
             inf.lsTop.forEach(function (e) { line('   ' + fmtBytes(e.bytes) + '   ' + e.key); });
+            if (inf.guides && inf.guides.count) { line('Saved TV guides (in StremioK’s folder): ' + fmtBytes(inf.guides.bytes) + ' in ' + inf.guides.count + (inf.guides.count === 1 ? ' file' : ' files')); }
             if (inf.disk) { line('The TV’s own disk: ' + fmtBytes(inf.disk.free) + ' free of ' + fmtBytes(inf.disk.total) + '  (what the TV allows StremioK follows it: freeing space, unused apps for one, raises it)'); }
         }
         r.__onselect = function () {
             if (!U.bigStore || !U.bigStore.info || _storageInfo === 'busy') { return; }
             _storageInfo = 'busy'; renderSettings();
-            Promise.all([U.bigStore.info(), U.diskInfo ? U.diskInfo() : null]).then(function (both) {
+            var guides = (typeof YTPlay !== 'undefined' && YTPlay.epgFiles) ? YTPlay.epgFiles().then(null, function () { return null; }) : null;
+            Promise.all([U.bigStore.info(), U.diskInfo ? U.diskInfo() : null, guides]).then(function (both) {
                 var inf = both[0], ls = 0, lsAll = [];
                 inf.disk = both[1];
+                inf.guides = both[2];   // ({ count, bytes }: the TV guides StremioK's service saved)
                 inf.lsKeys = {};
                 try {
                     for (var i = 0; i < window.localStorage.length; i++) {
@@ -1669,12 +1713,15 @@
         }
         var clr = U.el('div', 'addon-item focusable');
         clr.appendChild(U.el('div', 'a-name', 'Clear saved copies'));
-        clr.appendChild(U.el('div', 'a-url', 'Home’s saved rows, IPTV playlist copies, the USB index: made again when needed (playlists download again)'));
+        clr.appendChild(U.el('div', 'a-url', 'Home’s saved rows, IPTV playlist copies, saved TV guides, the USB index: made again when needed (playlists and guides download again)'));
         clr.__onselect = function () {
-            confirm('Clear the copies StremioK can make again (Home rows, playlist copies, USB index)?', 'Clear', function () {
+            confirm('Clear the copies StremioK can make again (Home rows, playlist copies, TV guides, USB index)?', 'Clear', function () {
                 U.bigStore.keys().then(function (ks) {
                     return Promise.all(ks.filter(function (k) { return /^stremiok\.(homecache|local\.index|iptv\.cache\.)/.test(k); }).map(function (k) { return U.bigStore.remove(k); }));
                 }).then(function () {
+                    return (typeof YTPlay !== 'undefined' && YTPlay.epgClear) ? YTPlay.epgClear().then(null, function () {}) : null;   // (the saved guides: read again as they're needed)
+                }).then(function () {
+                    if (typeof EPG !== 'undefined' && EPG.reset) { EPG.reset(); }
                     if (typeof LocalMedia !== 'undefined') { LocalMedia.clearIndex(); }
                     _storageInfo = null;
                     U.toast('Saved copies cleared');
@@ -1846,7 +1893,28 @@
     // ----- Home feeds and Search results (Settings > Appearance): order, show / hide -----
     // kind 'home': the Home rows (every catalog); 'search': the Search rows (every catalog
     // that can search, IPTV as one per type). ▲/▼ moves one; OK on its name shows / hides it.
+    // 'menu': the top menu between Watching and Settings (the tabs, Discover, Search: ViewParts'
+    // menuOrder); OK on a tab shows / hides it, Discover and Search always show.
+    var MENU_FIXED = { discover: 'Discover', search: 'Search' };
+    function menuHidden(k) { return !MENU_FIXED[k] && (Stremio.getPrefs().hiddenTabs || []).indexOf(k) !== -1; }
     var FEED_KINDS = {
+        menu: { section: 'menuorder', title: 'Appearance  ›  Menu', hint: 'Watching comes first and Settings last: ⇈ ▲ ▼ ⇊ put the rest in your order · OK on a tab shows/hides it.',
+            list: function () {
+                return Promise.resolve(V.menuOrder().map(function (k) {
+                    var t = (V.HOME_TABS || []).filter(function (x) { return x.key === k; })[0];
+                    return { key: k, name: MENU_FIXED[k] || (t ? t.label : k) + (k === 'local' ? ' (with a USB drive in)' : k === 'guide' ? ' (once a TV guide is read)' : '') };
+                }));
+            },
+            keyOf: function (x) { return x.key; },
+            move: function (k, d) { V.moveMenuItem(k, d); markHomeDirty(); return Promise.resolve(); },
+            toggle: function (k) {
+                if (MENU_FIXED[k]) { U.toast(MENU_FIXED[k] + ' is always in the menu'); return; }
+                var now = (Stremio.getPrefs().hiddenTabs || []).filter(function (x) { return x !== k; });
+                if (!menuHidden(k)) { now.push(k); }
+                Stremio.setPref('hiddenTabs', now);
+                markHomeDirty();
+            },
+            hidden: menuHidden },
         home: { section: 'feeds', title: 'Appearance  ›  Home feeds', hint: '▲/▼ reorder a feed · OK on the name shows/hides it on Home.',
             list: function () { return Stremio.listCatalogsOrdered(); }, keyOf: function (c) { return Stremio.catalogKey(c); },
             move: function (k, d) { return Stremio.moveFeed(k, d); }, toggle: function (k) { Stremio.toggleFeed(k); },

@@ -22,7 +22,7 @@ video through Samsung's AVPlay API.
 - **Your addons:** catalogs, details, sources and subtitles from the Stremio addons you add
   (Cinemeta and OpenSubtitles to start with), in the order you choose.
 - **Home** with Watching (Continue Watching, synced with **Trakt** if you connect it), Movies,
-  Series, IPTV, Radio, Sports and Local tabs; **Discover** to browse any catalog in full;
+  Series, IPTV, Guide, Radio, Sports, YouTube and Local tabs; **Discover** to browse any catalog in full;
   **Search** across every addon that can search, and people by name.
 - **Title pages:** ranked sources with **▶ Play best**, trailers, ratings (IMDb, Rotten
   Tomatoes, Metacritic… with your own API keys), seasons and episodes with their own pages,
@@ -30,7 +30,7 @@ video through Samsung's AVPlay API.
 - **The player:** resume where you stopped, skip intros, recaps and credits, next episode,
   subtitles (addons', the file's own, and your own files on a USB drive) with your choice of look, audio
   tracks remembered, switching source mid-playback, private viewing.
-- **IPTV and radio** from your M3U playlists, with CH+ / CH−.
+- **IPTV and radio** from your M3U playlists and Xtream accounts, with CH+ / CH−.
 - **YouTube:** live channels, trailers, and your own YouTube channels, playlists and searches,
   with SponsorBlock, DeArrow, chapters and captions.
 - **Local:** the videos on a USB drive, matched to their titles.
@@ -55,7 +55,8 @@ Three ways, all covered step by step in the **[installation guide](docs/INSTALL.
 2. **API keys**, optional: your own TMDB, OMDb and MDBList keys add ratings, *Cast & more*,
    *where to watch* and episode trailers.
 3. **Trakt**, optional: connect your account to share watched marks and Continue Watching.
-4. **IPTV**, optional: your M3U playlist links.
+4. **IPTV**, optional: your M3U playlist links, or an Xtream account (its server, username and
+   password).
 5. **A USB drive**, optional: plug it in and the Local tab appears.
 
 [Getting started](docs/USER-GUIDE.md#getting-started) in the user guide walks through each.
@@ -73,17 +74,16 @@ a direct HTTP(S)/HLS/DASH URL, and this app embeds no torrent or debrid engine.
 > shows that notice on it); its results are rent/buy/subscription *links to external
 > services*, not video URLs. Add stream addons that return HTTP/HLS URLs for actual playback.
 
-The **IPTV** feature likewise hosts no content: you supply your own M3U playlist URLs. For
-YouTube entries, the bundled service finds the video's stream; the video itself comes
-straight from YouTube. No video or audio is kept: everything plays straight from its source,
-unless you download it to your own USB drive. What StremioK does keep, on the TV, is your
-progress, settings and copies that let it start faster (see
+The **IPTV** feature likewise hosts no content: you supply your own M3U playlist URLs or Xtream
+accounts. For YouTube entries, the bundled service finds the video's stream; the video itself
+comes straight from YouTube. No video or audio is kept: everything plays straight from its
+source, unless you download it to your own USB drive. What StremioK does keep, on the TV, is
+your progress, settings and copies that let it start faster (see
 [Privacy and data](docs/PRIVACY.md#what-stays-on-the-tv)).
 
 ## Known limitations
 
 - AVPlay behavior varies by TV generation, codec and HLS provider.
-- No TV guide (now / next) for IPTV channels yet.
 - No torrent playback: sources need a direct HTTP(S)/HLS/DASH URL (e.g. through a debrid
   addon).
 - Home rows show a catalog's first page (up to 30 titles); Discover pages through the rest.

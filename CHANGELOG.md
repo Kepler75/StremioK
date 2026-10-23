@@ -3,6 +3,33 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.2.0 — 2026-10-23
+- **A TV guide for your IPTV channels:** what's on now and next on each channel's card, in
+  Home's details strip and while a channel plays, and its schedule when you hold OK on it. From
+  the guide a playlist names, an Xtream account's own, or a *Guide link* you set (Settings ›
+  Content › IPTV).
+- **A Guide tab:** your channels as a grid across 2½ hours that follows the clock; OK on what's
+  on now plays it, and CH+ / CH− then go through the Guide's channels. The remote's GUIDE key
+  opens it.
+- **Guide-only channels** (`tvg-type="guide"`): a channel you watch elsewhere (a cable box, say)
+  on the Guide tab with its schedule; OK on a film finds it in your addons.
+- **Xtream accounts:** add one with its server, username and password (checked with the server
+  first). Its channels play as MPEG-TS; *Format* switches the account to HLS, or one channel
+  while it plays (the player's menu), kept for that channel.
+- **★ Favorite channels:** hold OK on a channel card, *Add to favorites*: a row of their own,
+  first on the IPTV and Guide tabs.
+- **Closed captions on live channels:** captions inside an HLS channel's picture (CC1–CC4, the
+  kind VLC shows) are offered in the subtitle menu, and turn into subtitles when you pick them.
+  On an Xtream channel, switch *Format* to HLS for them.
+- **In the player:** picture mode kept per channel; *Reload* and a *Sleep timer* in the menu;
+  the time of day at the top right.
+- **More channels play:** more ways a playlist gives a channel's User-Agent and Referer, Xtream
+  channels that lead to YouTube, and channel logos from the TV guide.
+- **Put the top menu in your own order:** Settings › Appearance › *Menu*.
+- **The IPTV tab has live TV only:** a catalog of films or series sits on Movies or Series.
+- **Fixes:** USB downloads checked part by part; a broken subtitle file or TV guide can't hold
+  the remote; a first playlist shows the IPTV tab at once.
+
 ## 2.1.0 — 2026-10-20
 - **Live channels reconnect** when their connection drops, as often as *Reconnect live channels*
   says (Settings › Playback › Seeking & buffering): Off, A few times or Keep trying.

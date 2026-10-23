@@ -38,6 +38,7 @@ locally, use a wrapper package, or use the
 | `js/qrcode.js` | qrcode-generator (Kazuhiko Arase, MIT), unchanged: every QR code the TV draws (Trakt and Stremio sign-in, From your phone, Continue on phone, an addon's Share and Configure) |
 | `js/util.js` | DOM helpers, XHR (text / JSON), bounded caches, `localStorage`, toast / spinner, image queue, appearance themes, QR codes drawn on a canvas |
 | `js/iptv.js` | M3U parsing, TV / radio classification, the synthetic IPTV addon |
+| `js/epg.js` | The TV guide: which guide a playlist has, its channels' keys for the service, the programs cards, the player, schedules and the Guide tab ask for |
 | `js/youtube.js` | StremioK's own YouTube: your YouTube catalogs (Settings › Content › YouTube), YouTube in Search, the built-in YouTube addon (catalogs, channel / playlist / video pages, streams), SponsorBlock and DeArrow settings and lookups |
 | `js/stremio.js` | Addon client (manifests, catalog / meta / stream / subtitles), source cache and de-duplication, source details (resolution, codec, HDR, audio…), Formats (learning, allowed resolutions), TMDB / OMDb / MDBList / TheIntroDB / SkipDB / IntroDB |
 | `js/stremio-account.js` | Importing addons from your Stremio account: the link.stremio.com sign-in code, reading the account's addons, signing out at once |
@@ -59,18 +60,19 @@ locally, use a wrapper package, or use the
 | `js/hubpreview.js` | Continue Watching on the TV's home bar: sends the tiles to `service/preview.js` (the sideloaded app, Tizen 4 and later) |
 | `js/view-core.js` | Shared view pieces: dialogs, pick lists, the top menu (Home, Discover, Search, Settings and title pages), poster cards, Add to Continue Watching, poster long-press actions |
 | `js/view-home.js` | Home: tabs, catalog rows (loading, saved copy, refresh), details strip, Continue Watching, NEW badges |
+| `js/view-guide.js` | The Guide tab: the TV guide as a grid (channels by hours), its D-pad moves |
 | `js/view-detail.js` | Title pages: ranked sources (Play best, Played before), seasons / episodes, Cast & more, person pages, ratings grid, trailers, bulk watched, playback launch, CH+/CH−, next-episode matching |
 | `js/view-search.js` | Search: one row per searchable catalog (loads more as you scroll right), a People row (TMDB), recent searches |
 | `js/view-settings.js` | Settings sections (incl. Formats) and the text-entry pages (add addon / playlist) |
 | `js/view-discover.js` | Discover: browse a catalog in full by type, catalog and genre / year, page by page; People (TMDB) by name |
 | `js/views.js` | Assembles the public `Views` API from the view parts (which share the `ViewParts` namespace) |
 | `js/app.js` | Bootstrap, navigation history, key routing |
-| `service/index.js` | StremioK's service: YouTube, USB drives, downloads, the phone page, AIOManager, live relays (see [the service](TECHNICAL-REFERENCE.md#the-service)) |
+| `service/index.js` | StremioK's service: YouTube, USB drives, downloads, the phone page, AIOManager, live relays, TV guides (see [the service](TECHNICAL-REFERENCE.md#the-service)) |
 | `service/preview.js` | The home bar preview service: sets the tiles `js/hubpreview.js` sends, and sets them again when the TV asks (the sideloaded app only) |
 | `service/cacert.pem` | The trusted certificates downloads use (the 2017 TV's own list is too old for many servers) |
 
-The views are split into six parts (`view-core`, `view-home`, `view-detail`, `view-search`,
-`view-settings`, `view-discover`) that share one namespace, `ViewParts`: each publishes the
+The views are split into seven parts (`view-core`, `view-home`, `view-guide`, `view-detail`,
+`view-search`, `view-settings`, `view-discover`) that share one namespace, `ViewParts`: each publishes the
 functions the others use and reaches theirs through small forwarders, resolved when called,
 so the parts can load in any order. `views.js` loads after them (see `index.html`) and
 assembles the public `Views` API that `app.js` calls.

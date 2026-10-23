@@ -175,7 +175,8 @@ var Stremio = (function () {
             posterRatings: p.posterRatings === true,   // Settings > Appearance: IMDb rating on cards
             homePreview: p.homePreview !== false,      // Settings > Appearance: Continue Watching on the TV's home bar (js/hubpreview.js)
             homePreviewOrder: p.homePreviewOrder === 'watching' ? 'watching' : 'recent',   // ...its tiles: the latest first, or as in Watching
-            hiddenTabs: wordList(p.hiddenTabs, 20, 20),   // Settings > Appearance > Home tabs
+            hiddenTabs: wordList(p.hiddenTabs, 20, 20),   // Settings > Appearance > Menu: tabs hidden
+            menuOrder: wordList(p.menuOrder, 20, 20),     // ...and the menu's order (see ViewParts.menuOrder)
             hideWords: wordList(p.hideWords, 30, 40),     // Settings > Source ranking: sources with these words at the bottom
             watchRegion: /^[A-Z]{2}$/.test(p.watchRegion || '') ? p.watchRegion : '' };   // Settings > Integrations ('' = automatic)
     }
@@ -481,7 +482,18 @@ var Stremio = (function () {
         if (_hasIptv) { IPTV.removePlaylist(id); }
         configChanged();
     }
+    function iptvAddXtream(base, user, pass) {   // (as any playlist added: the addons' list made again)
+        var id = _hasIptv ? IPTV.addXtream(base, user, pass) : false;
+        configChanged();
+        return id;
+    }
+    function iptvSetXtreamFormat(id, fmt) {
+        var changed = _hasIptv ? IPTV.setXtreamFormat(id, fmt) : false;
+        configChanged();
+        return changed;
+    }
     function iptvRenamePlaylist(id, name) { return _hasIptv ? IPTV.renamePlaylist(id, name) : false; }
+    function iptvSetPlaylistGuide(id, url) { return _hasIptv && IPTV.setPlaylistGuide ? IPTV.setPlaylistGuide(id, url) : false; }
     function iptvSetPlaylistOff(id, off) { var ok = _hasIptv ? IPTV.setPlaylistOff(id, off) : false; configChanged(); return ok; }
     function iptvMovePlaylist(id, dir) { var ok = _hasIptv ? IPTV.movePlaylist(id, dir) : false; configChanged(); return ok; }
     function iptvLabel(id) { return _hasIptv ? IPTV.label(id) : ''; }
@@ -685,7 +697,8 @@ var Stremio = (function () {
     // ---- Feed lists: order + show / hide, as the user sets them ----
     // Home feeds (the Home rows: every catalog) and search sources (the Search rows:
     // every catalog that can search) each keep their own { order: [keys], hidden: [keys] }.
-    // Anything new (an addon added later) goes after the ordered ones, in addon order.
+    // Anything new (an addon added later) goes after the ordered ones, in addon order, but for a
+    // catalog that asks to come first (def._first: IPTV's Favorites) until you place it.
     var FEEDS_KEY = 'stremiok.feeds', SEARCH_FEEDS_KEY = 'stremiok.searchfeeds';
     function catalogKey(cat) {
         var aid = (cat.addon.manifest && cat.addon.manifest.id) || cat.addon.url;
@@ -698,8 +711,8 @@ var Stremio = (function () {
             var pos = {};
             cfg().order.forEach(function (k, i) { pos[k] = i; });
             return items.map(function (c, i) { return { c: c, i: i, k: keyOf(c) }; }).sort(function (a, b) {
-                var pa = (pos[a.k] !== undefined) ? pos[a.k] : (100000 + a.i);
-                var pb = (pos[b.k] !== undefined) ? pos[b.k] : (100000 + b.i);
+                var pa = (pos[a.k] !== undefined) ? pos[a.k] : (a.c && a.c.def && a.c.def._first) ? -1 : (100000 + a.i);
+                var pb = (pos[b.k] !== undefined) ? pos[b.k] : (b.c && b.c.def && b.c.def._first) ? -1 : (100000 + b.i);
                 return pa - pb;
             }).map(function (x) { return x.c; });
         }
@@ -1455,6 +1468,57 @@ var Stremio = (function () {
         return tmdbGet('/' + kind + '/' + tmdbId + '/external_ids', '', cancel).then(function (r) { return (r && r.imdb_id) || null; });
     }
 
+    // A film known only by a TV guide's program (the Guide's guide-only channels): { title (as
+    // shown, Spanish say), orig (its original title), year } -> Promise of { type, id (IMDb), name,
+    // poster } when exactly one film has that name (and that year, when known), else null.
+    // TMDB with your key (the original title, else the shown one in Spanish), else Cinemeta
+    // (original titles only).
+    function plainTitle(s) {   // ("El Señor de los Anillos:" -> "elsenordelosanillos")
+        var t = ('' + (s || '')).toLowerCase();
+        if (t.normalize) { try { t = t.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (e) {} }
+        return t.replace(/[^a-z0-9]+/g, '');
+    }
+    function findFilm(p, cancel) {
+        var year = +p.year || 0;
+        function near(y) { return !year || (y && Math.abs(y - year) <= 1); }
+        function one(list, names) {
+            var want = names.map(plainTitle).filter(Boolean), hits = (list || []).filter(function (r) {
+                return near(r.year) && want.some(function (w) { return w === plainTitle(r.name) || w === plainTitle(r.orig); });
+            });
+            return hits.length === 1 ? hits[0] : null;
+        }
+        function tmdb(query, spanish) {
+            var extra = '&query=' + encodeURIComponent(query) + (year ? '&year=' + year : '') + (spanish ? '&language=es-AR' : '');
+            return tmdbGet('/search/movie', extra, cancel).then(function (r) {
+                return ((r && r.results) || []).map(function (x) {
+                    return { tmdbId: x.id, name: x.title || '', orig: x.original_title || '', year: +('' + (x.release_date || '')).slice(0, 4) || 0, poster: tmdbImg(x.poster_path, 'w342') };
+                });
+            }, function () { return []; });
+        }
+        function viaTmdb() {
+            if (!tmdbKey()) { return Promise.resolve(null); }
+            var first = p.orig ? tmdb(p.orig, false).then(function (l) { return one(l, [p.orig]); }) : Promise.resolve(null);
+            return first.then(function (hit) {
+                return hit || (p.title ? tmdb(p.title, true).then(function (l) { return one(l, [p.title]); }) : null);
+            }).then(function (hit) {
+                if (!hit) { return null; }
+                return tmdbImdbId('movie', hit.tmdbId, cancel).then(function (imdb) {
+                    return imdb ? { type: 'movie', id: imdb, name: hit.name || p.title, poster: hit.poster } : null;
+                }, function () { return null; });
+            });
+        }
+        function viaCinemeta() {
+            if (!p.orig) { return Promise.resolve(null); }
+            return U.getJSON('https://v3-cinemeta.strem.io/catalog/movie/top/search=' + encodeURIComponent(p.orig) + '.json', 10000, null, cancel).then(function (r) {
+                var hit = one(((r && r.metas) || []).map(function (m) {
+                    return { id: m.id, name: m.name || '', year: parseInt(m.releaseInfo || m.year || '', 10) || 0, poster: m.poster || '' };
+                }), [p.orig]);
+                return hit && /^tt\d+$/.test(hit.id) ? { type: 'movie', id: hit.id, name: p.title || hit.name, poster: hit.poster } : null;
+            }, function () { return null; });
+        }
+        return viaTmdb().then(function (hit) { return hit || viaCinemeta(); });
+    }
+
     // ---- MDBList ratings (Settings > Integrations > MDBList) ----
     // -> [{ key, label, text }] in a fixed order, only the ones the title has.
     var MDB_SOURCES = [['imdb', 'IMDb'], ['tomatoes', 'Rotten Tomatoes'], ['popcorn', 'Audience'],
@@ -2012,7 +2076,7 @@ var Stremio = (function () {
         getIntroSegments: getIntroSegments,
         tmdbValidate: tmdbValidate, mdblistValidate: mdblistValidate, omdbValidate: omdbValidate,
         tmdbFindTvId: tmdbFindTvId, tmdbSeasonEpisodes: tmdbSeasonEpisodes, tmdbImg: tmdbImg,
-        tmdbTitleExtras: tmdbTitleExtras, tmdbExtrasById: tmdbExtrasById, tmdbEpisodeCast: tmdbEpisodeCast, tmdbEpisodeTrailer: tmdbEpisodeTrailer, setHideWords: setHideWords, hideWordHit: hideWordHit, normalizeAddonUrl: normalizeManifestUrl, debridOf: debridOf, addonOrigin: addonOrigin, setAddonOrigin: setAddonOrigin, parseSetupList: parseSetupList, applySetupEntries: applySetupEntries, sizeLimitHit: sizeLimitHit, setSizeLimit: setSizeLimit, gbText: gbText, runtimeMinutes: runtimeMinutes, tmdbPeople: tmdbPeople, tmdbPerson: tmdbPerson, tmdbBrowse: tmdbBrowse, tmdbTitleTrailers: tmdbTitleTrailers, tmdbProviders: tmdbProviders, tmdbProvidersKept: tmdbProvidersKept, tmdbGenres: tmdbGenres, tmdbWhereToWatch: tmdbWhereToWatch, watchRegion: watchRegion, autoWatchRegion: autoWatchRegion, tmdbImdbId: tmdbImdbId, hasTmdb: function () { return !!tmdbKey(); },
+        tmdbTitleExtras: tmdbTitleExtras, tmdbExtrasById: tmdbExtrasById, tmdbEpisodeCast: tmdbEpisodeCast, tmdbEpisodeTrailer: tmdbEpisodeTrailer, setHideWords: setHideWords, hideWordHit: hideWordHit, normalizeAddonUrl: normalizeManifestUrl, debridOf: debridOf, addonOrigin: addonOrigin, setAddonOrigin: setAddonOrigin, parseSetupList: parseSetupList, applySetupEntries: applySetupEntries, sizeLimitHit: sizeLimitHit, setSizeLimit: setSizeLimit, gbText: gbText, runtimeMinutes: runtimeMinutes, tmdbPeople: tmdbPeople, tmdbPerson: tmdbPerson, tmdbBrowse: tmdbBrowse, tmdbTitleTrailers: tmdbTitleTrailers, tmdbProviders: tmdbProviders, tmdbProvidersKept: tmdbProvidersKept, tmdbGenres: tmdbGenres, tmdbWhereToWatch: tmdbWhereToWatch, watchRegion: watchRegion, autoWatchRegion: autoWatchRegion, tmdbImdbId: tmdbImdbId, findFilm: findFilm, hasTmdb: function () { return !!tmdbKey(); },
         mdblistRatings: mdblistRatings,
         omdbSeasonRatings: omdbSeasonRatings,
         loadAddons: loadAddons, listCatalogs: listCatalogs, getCatalog: getCatalog,
@@ -2042,7 +2106,7 @@ var Stremio = (function () {
         importSetupList: importSetupList, savedManifest: savedManifest, isAddonOff: isAddonOff, setAddonOff: setAddonOff, onIptvReady: onIptvReady, streamListenerCount: function (type, id) { var e = _streamCache[type + ':' + id]; return e ? e.listeners.length : 0; },
         iptvGetPlaylists: iptvGetPlaylists, iptvAddPlaylist: iptvAddPlaylist,
         iptvUpdatePlaylist: iptvUpdatePlaylist, iptvRemovePlaylist: iptvRemovePlaylist,
-        iptvRenamePlaylist: iptvRenamePlaylist, iptvSetPlaylistOff: iptvSetPlaylistOff, iptvMovePlaylist: iptvMovePlaylist, iptvLabel: iptvLabel,
+        iptvRenamePlaylist: iptvRenamePlaylist, iptvSetPlaylistGuide: iptvSetPlaylistGuide, iptvAddXtream: iptvAddXtream, iptvSetXtreamFormat: iptvSetXtreamFormat, iptvSetPlaylistOff: iptvSetPlaylistOff, iptvMovePlaylist: iptvMovePlaylist, iptvLabel: iptvLabel,
         iptvLoad: iptvLoad, iptvStatus: iptvStatus, iptvReload: iptvReload
     };
 })();

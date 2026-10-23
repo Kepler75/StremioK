@@ -98,7 +98,7 @@ sources. Try again later.
 | It stalls | A stalled stream reloads at the same position; if it keeps stalling, you're back on the source list. Try another source, or *Buffer: More* or *Most* (Settings › Playback › Seeking & buffering) on a slow connection. |
 | An HLS quality won't start | It steps down a quality, then falls back to *Auto*. |
 | A live channel keeps reconnecting | Its connection drops, or its server stops the stream; StremioK opens it again ("Connection lost — reconnecting…"). How often is up to *Reconnect live channels* (Settings › Playback › Seeking & buffering). |
-| A live channel closes when it drops | *Reconnect live channels* is Off, or set to A few times and it dropped 3 times in 5 minutes ("This channel keeps dropping"). Choose *Keep trying* for a channel whose connection comes and goes. |
+| A live channel closes when it drops | *Reconnect live channels* is Off, or it dropped 3 times in 5 minutes ("This channel keeps dropping"). *Keep trying* never gives up. |
 | After a pause, it jumps ahead | The TV's player sometimes does this. StremioK takes it back on its own and notes it in Diagnostics (see the [technical reference](TECHNICAL-REFERENCE.md#playback)). |
 | No speed control, no HDR / frame-rate switching | Not available: the TV's player mutes audio at other speeds, and web apps can't switch modes on Tizen 3. |
 
@@ -140,6 +140,7 @@ sources. Try again later.
 | A channel's sound stutters | Some servers cut a channel's sound into pieces the TV's player stutters on. StremioK detects it and restarts the channel through its service ("Fixing this channel's sound…"); not for encrypted streams, and not in a desktop browser. |
 | A big playlist is missing channels | A playlist keeps its first 30,000 channels (up to 20 MB); the status line says when channels were left out. |
 | A playlist didn't refresh | The saved copy keeps showing, and the playlist says what went wrong. *Reload* tries again. |
+| No TV guide on the cards | The playlist's line says why. Not every channel is in a guide; set another with *Guide link*. |
 
 ## Trakt
 

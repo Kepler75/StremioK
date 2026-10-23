@@ -3,7 +3,7 @@
 Every setting, where it is, its choices and what it does. Defaults are in **bold**. For how to
 use the features, see the [user guide](USER-GUIDE.md).
 
-Settings (**Settings ⚙**, after Search in the top menu, or **0** on the remote) has four groups:
+Settings (**Settings ⚙**, at the end of the top menu, or **0** on the remote) has four groups:
 [Content](#content), [Playback](#playback), [Appearance](#appearance) and
 [Diagnostics](#diagnostics). Each opens a page of its sections. BACK goes up a level, onto the
 row you came from. Wherever a setting asks for a link or text, **▣ From your phone** sends it
@@ -62,8 +62,11 @@ Settings › Content › Addons › *AIOManager* (the sideloaded app or TizenBre
 
 ### IPTV
 
-Your M3U playlists: *Add playlist*, ▲ / ▼ to order them, and OK on one for *Rename*, *Turn off* /
-*Turn on*, *Edit link*, *Reload*, *Remove*. See [IPTV and radio](USER-GUIDE.md#iptv-and-radio).
+Your M3U playlists: *Add playlist*, *Add Xtream account* (server, username, password: checked,
+then its channels and guide added; OK on it for *Format*: **MPEG-TS** or HLS), ▲ / ▼ to order
+them, and OK on one for *Rename*, *Turn off* /
+*Turn on*, *Edit link*, *Guide link* (empty: the playlist's own TV guide), *Reload*, *Remove*.
+Each says whether its guide was read. See [IPTV and radio](USER-GUIDE.md#iptv-and-radio).
 
 ### YouTube
 
@@ -206,7 +209,7 @@ them.
 | *Poster orientation* | **Portrait**, Landscape | |
 | *Ratings on posters* | **Off**, On | A title's IMDb rating on its card (★ 7.8), when the catalog gives it. Nothing extra is downloaded. |
 | *Home bar preview* | **Most recent first**, As in Watching, Off | Continue Watching on the TV's own home bar (StremioK must be on it: Apps › StremioK › *Add to Home*): up to 8 tiles of movies and series you can play now. The sideloaded app on Tizen 4 and later only. |
-| *Home tabs* | each shown or hidden | Hide tabs you never use. Watching always stays. |
+| *Menu ›* | ⇈ ▲ ▼ ⇊, OK to show or hide | The order of the top menu between Watching (always first) and Settings (always last), and which Home tabs show. Discover and Search always show. |
 | *Hide spoilers* | **Off**, Pictures, Pictures and synopses | Blurs the stills of episodes you haven't watched (and leaves out their synopses: *Synopsis hidden: not watched yet*). |
 | *Home feeds ›* | ▲ / ▼, OK to show or hide | The order of the Home rows, and which show. |
 | *Search results ›* | ▲ / ▼, OK to show or hide | The same for Search's rows. A hidden one isn't asked at all. |
@@ -229,9 +232,9 @@ with its last steps. *Startup* shows how long this launch and the one before too
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Use the TV's database* | **On**, Off | The database holds StremioK's big copies (Home's saved rows, IPTV playlist copies, USB drive indexes, your Trakt history). Off, they're kept in the settings storage instead (about 5 MB in all) and the database is deleted. |
-| *TV storage* | | What StremioK keeps, item by item, with sizes, and the TV's free disk space. |
+| *TV storage* | | What StremioK keeps, item by item, with sizes (its saved TV guides too), and the TV's free disk space. |
 | *Tidy up the TV's database* | | Gives back the space of old versions the TV hasn't cleared out. |
-| *Clear saved copies* | | Gives up the copies that can be made again (Home's saved rows, IPTV playlist copies, the USB index). |
+| *Clear saved copies* | | Gives up the copies that can be made again (Home's saved rows, IPTV playlist copies, saved TV guides, the USB index). |
 
 ### Installed apps
 

@@ -20,6 +20,14 @@
  *   /aiom/addons?base=<AIOManager address> (+ X-AIOM-Key: the account's API key) -> JSON
  *                       { addons: [{ url, name, enabled }] }: the account's addons (its Hydra
  *                       API), StremioK registered as a Pull app; StremioK only (entryAllowed)
+ *   /epg/load?u=<guide>&k=<bitset>[&force=1] (or POSTed: the same in its body, as StremioK
+ *                       asks) -> JSON { state, at, channels, programmes, partial,
+ *                       error }: a playlist's TV guide (XMLTV) read for StremioK's channels
+ *                       only; /epg/get?u=<guide>&ids=<key>|<key>&from&to[&max] -> JSON { <key>:
+ *                       [[start, stop, title, desc, picture?, about?]], _icons: { <key>: logo } }: their programs and
+ *                       the guide's logos for them (see epgControl)
+ *   /epg/ticket -> JSON { ticket }: for guide POSTs from an app without the token (see hasTicket)
+ *   /epg/files -> JSON { count, bytes }: the saved guides; /epg/clear (POST) -> { cleared }: deleted
  *   /live/open?u=<playlist>[&ua=&ref=&force=1] -> JSON { fix, sure, why, url }: is a live HLS
  *                       channel's AAC sound cut mid-frame (the TV's player stutters on it)?
  *                       If so, url: a relay that repacks it (/live/<id>/m|s?n=, see liveControl)
@@ -57,6 +65,7 @@ var tls = require('tls');
 var zlib = require('zlib');
 var crypto = require('crypto');
 var urllib = require('url');
+var StringDecoder = require('string_decoder').StringDecoder;
 
 var UNDER_TIZENBREW = typeof __filename === 'undefined';   // TizenBrew's sandbox has no module paths
 var PORT = UNDER_TIZENBREW ? 8098 : 8099;
@@ -332,6 +341,27 @@ function cacheSet(page, master, links) {
     _ytCache[page] = { master: master, links: links || [], exp: now + 240000 };   // 4 min
 }
 
+// A YouTube channel's other pages to try for its live stream (@handle, /channel/, /c/, /user/,
+// on any tab): its /live, then its Featured tab, leaving out the one given. A video's link: none.
+function ytLivePages(u) {
+    var m = /^(https?:\/\/(?:www\.|m\.)?youtube\.com\/(?:@[^\/?#]+|(?:channel|c|user)\/[^\/?#]+))(\/[^?#]*)?(?:[?#].*)?$/i.exec(String(u || ''));
+    if (!m) { return []; }
+    var tab = (m[2] || '').replace(/\/+$/, '').toLowerCase();
+    return ['/live', '/featured'].filter(function (t) { return t !== tab; }).map(function (t) { return m[1] + t; });
+}
+// The page as given first; with no live stream there, the channel's others in turn (ytLivePages).
+// Which one leads to the stream on now varies: a channel's /live can point at one that isn't on
+// while its Featured tab leads with the live one, or the other way round.
+function resolveYtLive(page, fresh, cb) {
+    var tries = [page].concat(ytLivePages(page)), first = null;
+    (function next(i) {
+        resolveYtMaster(tries[i], fresh, function (err, master, links) {
+            if (!err) { cb(null, master, links); return; }
+            first = first || err;
+            if (i + 1 < tries.length) { next(i + 1); } else { cb(first); }
+        });
+    })(0);
+}
 function resolveYtMaster(ytPage, fresh, cb) {
     cb = once(cb);
     var hit = _ytCache[ytPage];
@@ -398,7 +428,7 @@ function limitedResolve(page, fresh, cb) {
     _inflight[key] = [cb];
     function run() {
         _active++; _recent.push(Date.now());
-        resolveYtMaster(page, fresh, function (err, master, links) {
+        resolveYtLive(page, fresh, function (err, master, links) {
             _active--;
             var waiting = _inflight[key] || [];
             delete _inflight[key];
@@ -593,10 +623,24 @@ function vttTime(sec) {
 // YouTube's caption file (its "srv1" form: <text start dur>…</text>) as WebVTT. Automatic
 // captions roll (each line stays up while the next comes): each ends when the next starts,
 // one line at a time.
+// Tags taken out, a stray < with them: one pass, in time with the text's length however it's
+// made (a run of < with no > after it used to take seconds); nothing left can start a tag.
+function noTags(t) {
+    var out = '', i = 0, n = t.length;
+    while (i < n) {
+        var lt = t.indexOf('<', i);
+        if (lt === -1) { out += t.slice(i); break; }
+        out += t.slice(i, lt);
+        var gt = t.indexOf('>', lt + 1);
+        if (gt === -1) { out += t.slice(lt + 1).split('<').join(''); break; }   // (no tag ends after it: the rest, its < gone)
+        i = gt + 1;
+    }
+    return out;
+}
 function srv1ToVtt(xml, auto) {
     var cues = [], re = /<text start="([\d.]+)"(?: dur="([\d.]+)")?[^>]*>([\s\S]*?)<\/text>/g, m;
     while ((m = re.exec(xml)) && cues.length < 20000) {
-        var text = decodeEntities(decodeEntities(m[3])).replace(/<[^>]*>/g, '').replace(/\r/g, '').trim();   // (YouTube escapes them twice)
+        var text = noTags(decodeEntities(decodeEntities(m[3]))).replace(/\r/g, '').trim();   // (YouTube escapes them twice)
         if (!text) { continue; }
         var st = +m[1], en = st + (+m[2] || 2);
         cues.push({ st: st, en: en, text: text });
@@ -606,7 +650,7 @@ function srv1ToVtt(xml, auto) {
         var next = cues[i + 1], en = c.en;
         if (auto && next && next.st < en) { en = next.st; }
         if (en <= c.st) { en = c.st + 0.5; }
-        out.push(vttTime(c.st) + ' --> ' + vttTime(en), c.text.replace(/-->/g, '->'), '');
+        out.push(vttTime(c.st) + ' --> ' + vttTime(en), c.text.replace(/--!?>/g, '->'), '');
     });
     return out.join('\n');
 }
@@ -1508,10 +1552,18 @@ function dlFinishedBefore(e, cb) {
         });
     });
 }
-// A resumed answer must go on exactly where the partial file ends: "bytes <have>-…/…".
-function resumeOk(have, contentRange) {
+// A partial answer's range ("bytes <first>-<last>/<total or *>"): { first, last, total (0:
+// unknown) }, or null when it isn't one that can be (last before first, past the total).
+function rangeOf(contentRange) {
     var m = /^bytes (\d+)-(\d+)\/(\d+|\*)$/.exec(String(contentRange || '').trim());
-    return !!m && +m[1] === have && +m[2] >= have;
+    if (!m) { return null; }
+    var r = { first: +m[1], last: +m[2], total: m[3] === '*' ? 0 : +m[3] };
+    return (r.last < r.first || (r.total && r.last >= r.total)) ? null : r;
+}
+// A partial answer must go on exactly where the file so far ends (have: 0 for a new one).
+function resumeOk(have, contentRange) {
+    var r = rangeOf(contentRange);
+    return !!r && r.first === have;
 }
 // A streamed playlist (HLS, DASH) isn't a file to download: by its type, or its first bytes.
 function isPlaylistAnswer(type, first) {
@@ -1551,10 +1603,15 @@ function dlRun(e) {
             if (bad) { dlEnd(e, 'failed', 'the folder: ' + bad.message); return; }
             fs.stat(part, function (se, st) {
                 var have = se ? 0 : st.size;
-                get(e.url, 0, have);
+                if (!have || e.answered) { get(e.url, 0, have); return; }   // (this one's own, from this run: picked up as it was)
+                fs.readFile(part + '.v', 'utf8', function (ve, v) {   // (a partial file from before a restart: resumed only with its validator)
+                    e.validator = ve ? '' : String(v).trim().slice(0, 300);
+                    if (e.validator) { get(e.url, 0, have); } else { dropPart(function () { get(e.url, 0, 0); }); }
+                });
             });
         });
     });
+    function dropPart(then) { fs.unlink(part + '.v', function () { fs.unlink(part, function () { then(); }); }); }
     function get(u, hops, have) {
         if (e.state !== 'downloading') { return; }
         var pu = urllib.parse(u), mod = pu.protocol === 'https:' ? https : http;
@@ -1577,14 +1634,21 @@ function dlRun(e) {
             if (sc >= 400 && sc < 500) { resp.resume(); closed = true; dlEnd(e, 'failed', 'the server refused it (HTTP ' + sc + '): the link may have expired'); return; }
             if (sc >= 500) { resp.resume(); closed = true; again('the server: HTTP ' + sc); return; }
             if (sc !== 200 && sc !== 206) { resp.resume(); closed = true; dlEnd(e, 'failed', 'HTTP ' + sc); return; }
-            if (sc === 206 && have > 0 && !resumeOk(have, resp.headers['content-range'])) {   // (not where the partial file ends: started over)
+            if (sc === 206 && !resumeOk(have, resp.headers['content-range'])) {   // (not where the file so far ends, or a range that can't be)
                 resp.resume(); closed = true;
-                fs.unlink(part, function () { if (e.state === 'downloading') { get(e.url, 0, 0); } });
+                if (have > 0) { dropPart(function () { if (e.state === 'downloading') { get(e.url, 0, 0); } }); }   // (started over)
+                else { dlEnd(e, 'failed', 'the server sent part of the file, not from its start'); }
                 return;
             }
+            var range = sc === 206 ? rangeOf(resp.headers['content-range']) : null, expect = range ? range.last - range.first + 1 : 0, came = 0;
             var resumed = sc === 206 && have > 0;
             if (!resumed) { have = 0; }
-            if (!resumed) { var et = resp.headers.etag; e.validator = et && !/^W\//.test(et) ? et : (resp.headers['last-modified'] || ''); }   // (asked again on a resume: If-Range)
+            e.answered = true;   // (its partial file is this run's: see dlRun)
+            if (!resumed) {   // (asked again on a resume: If-Range; kept beside the partial file, for one after a restart)
+                var et = resp.headers.etag;
+                e.validator = et && !/^W\//.test(et) ? et : (resp.headers['last-modified'] || '');
+                fs.writeFile(part + '.v', e.validator, { mode: 384 }, function () {});
+            }
             if (isPlaylistAnswer(resp.headers['content-type'], '')) { resp.resume(); closed = true; dlEnd(e, 'failed', 'a streamed playlist (HLS or DASH), not a file: it can\'t be downloaded'); return; }
             var total = 0, cr = /\/(\d+)\s*$/.exec(resp.headers['content-range'] || '');
             if (cr) { total = +cr[1]; } else if (resp.headers['content-length']) { total = have + (+resp.headers['content-length']); }
@@ -1604,11 +1668,17 @@ function dlRun(e) {
             try { ws = fs.createWriteStream(part, { fd: fd }); }
             catch (er) { resp.resume(); closed = true; dlEnd(e, 'failed', 'can\'t write to the drive: ' + (er.code || er.message)); return; }
             e.got = have;
-            var firstSeen = resumed;
-            resp.on('data', function (c) {   // (a playlist's first bytes, where its type didn't say: refused)
-                if (firstSeen) { return; }
-                firstSeen = true;
-                if (isPlaylistAnswer('', c.slice(0, 600).toString('utf8'))) { stop(); fs.unlink(part, function () {}); dlEnd(e, 'failed', 'a streamed playlist (HLS or DASH), not a file: it can\'t be downloaded'); }
+            var seen = resumed, head = [], headLen = 0;   // (a playlist's first bytes, where its type didn't say: refused; up to 600, however they come)
+            function lookAtHead() {
+                seen = true;
+                if (isPlaylistAnswer('', Buffer.concat(head).slice(0, 600).toString('utf8'))) { stop(); dropPart(function () {}); dlEnd(e, 'failed', 'a streamed playlist (HLS or DASH), not a file: it can\'t be downloaded'); }
+                head = null;
+            }
+            resp.on('data', function (c) {
+                came += c.length;
+                if (seen) { return; }
+                head.push(c); headLen += c.length;
+                if (headLen >= 600) { lookAtHead(); }
             });
             var tick = { at: Date.now(), got: have };
             ws.on('error', function (er) { if (!closed) { stop(); dlEnd(e, 'failed', 'can\'t write to the drive: ' + (er.code || er.message)); } });
@@ -1619,7 +1689,7 @@ function dlRun(e) {
             });
             // (the server closing before the end: a dropped connection, picked up where it stopped)
             var ended = false;
-            resp.on('end', function () { ended = true; });
+            resp.on('end', function () { ended = true; if (!seen) { lookAtHead(); } });
             function dropped() {
                 // (all of it came: on the 2017 TV's Node a small answer without a size — a
                 // subtitle, sent chunked — can report its connection closed before its end
@@ -1636,14 +1706,16 @@ function dlRun(e) {
             ws.on('finish', function () {
                 if (closed || e.state !== 'downloading') { return; }
                 closed = true;
+                if (expect && came > expect) { dropPart(function () {}); dlEnd(e, 'failed', 'more came than the server said it sent: started again it may work'); return; }
                 if (e.size && e.got < e.size) { again('the connection dropped'); return; }   // (picked up where it stopped)
-                if (e.size && e.got > e.size) { fs.unlink(part, function () {}); dlEnd(e, 'failed', 'more came than the file\'s size: started again it may work'); return; }
+                if (e.size && e.got > e.size) { dropPart(function () {}); dlEnd(e, 'failed', 'more came than the file\'s size: started again it may work'); return; }
                 var final = e.dir + '/' + e.name;
                 fs.lstat(final, function (fe) {   // (anything there, a link too: not replaced)
                     if (!fe) { final = e.dir + '/' + e.name.replace(/(\.[^.]+)?$/, ' (' + Date.now().toString(36) + ')$1'); }   // (one already there: not overwritten)
                     fs.rename(part, final, function (re) {
                         if (re) { dlEnd(e, 'failed', 'couldn\'t finish the file: ' + (re.code || re.message)); return; }
                         e.name = final.split('/').pop(); e.tries = 0;
+                        fs.unlink(part + '.v', function () {});
                         dlEnd(e, 'done');
                     });
                 });
@@ -1674,17 +1746,22 @@ function handle(req, res) {
         res.__noCors = isFs;
         if (!isFs) {
             res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
             res.setHeader('Access-Control-Allow-Headers', 'X-StremioK, X-AIOM-Key, *');   // (named: older engines don't take *)
         }
         res.setHeader('Cache-Control', 'no-store');
         res.setHeader('X-Content-Type-Options', 'nosniff');
         if (path === '/health' && req.method === 'GET') { send(res, 200, 'text/plain', 'ok'); return; }
         var who = callerProblem(req);
+        // The app's own guide POSTs: a browser sends an Origin with every POST (the app's page is
+        // file://: "null"); let through with the token, or the guide ticket (for an app that can't
+        // read the token: see /epg/ticket), which no web page has (/epg/ only).
+        if (who === 'origin' && req.method === 'POST' && /^\/epg\/(load|get|clear)$/.test(path) && /^(null|file:\/\/)$/.test(String(req.headers.origin || '')) && (hasToken(parts[1]) || hasTicket(parts[1]))) { who = null; }
         if (who) { send(res, 403, 'text/plain', 'not allowed (' + who + ')'); return; }
         if (req.method === 'OPTIONS') { if (isFs) { send(res, 403, 'text/plain', 'not allowed'); return; } res.writeHead(200); res.end(); return; }
-        if (req.method !== 'GET') { send(res, 405, 'text/plain', 'GET only'); return; }   // (before any work)
-        if (req.url.length > (/^\/fsdl\/add$/.test(path) ? 8192 : 2048)) { send(res, 414, 'text/plain', 'request too long'); return; }   // (a download's link can be long)
+        var epgPost = req.method === 'POST' && /^\/epg\/(load|get|clear)$/.test(path);   // (a guide's channels: in the body, see epgControl)
+        if (req.method !== 'GET' && !epgPost) { send(res, 405, 'text/plain', 'GET only'); return; }   // (before any work)
+        if (req.url.length > (/^\/epg\//.test(path) ? 32768 : /^\/fsdl\/add$/.test(path) ? 8192 : 2048)) { send(res, 414, 'text/plain', 'request too long'); return; }   // (a download's link can be long; a guide's channels, a bitset)
         // (StremioK gave up on it — a screen left, the player closed: what it still waits for is
         // dropped; 'close' before the response finished means that on every Node)
         var leaving = [];
@@ -1697,6 +1774,15 @@ function handle(req, res) {
 
         if (/^\/entry\//.test(path)) { entryControl(req, res, path, parts[1]); return; }
         if (/^\/live\//.test(path)) { liveControl(req, res, path, parts[1], leaving); return; }
+        if (epgPost) {   // what's asked, in the body (to EPG_BODY_MAX), after the address's own (its token)
+            if (+(req.headers['content-length'] || 0) > EPG_BODY_MAX) { send(res, 413, 'text/plain', 'too much asked'); req.resume(); return; }
+            var body = '', over = false;
+            req.setEncoding('utf8');
+            req.on('data', function (c) { if (over) { return; } body += c; if (body.length > EPG_BODY_MAX) { over = true; send(res, 413, 'text/plain', 'too much asked'); } });
+            req.on('end', function () { if (!over) { epgControl(req, res, path, (parts[1] ? parts[1] + '&' : '') + body); } });
+            return;
+        }
+        if (/^\/epg\//.test(path)) { epgControl(req, res, path, parts[1]); return; }   // (a playlist's TV guide: see epgControl)
         if (path === '/aiom/addons') { aiomControl(req, res, parts[1], leaving); return; }   // (AIOManager's addons: see aiomControl)   // (a live channel's sound repacked: see liveControl)   // (the phone's one-time page: see below)
         if (path === '/fsfile') {   // a USB file over HTTP, with Range: the player reads a big one from here (see fsfile in the header)
             var whyF = fsAllowed(req, parts[1]);
@@ -1828,15 +1914,25 @@ function handle(req, res) {
 // its segments, only the links its own playlists named (by number), each fetched with the
 // channel's User-Agent and Referer. A segment comes back with its sound repacked (liveFix:
 // whole ADTS frames per packet, each packet with its first frame's own time), everything else
-// as it was. &force=1: the relay without the look (StremioK already knows the channel).
+// as it was. &force=1: the relay without the look (StremioK already knows the channel); &fix=0
+// with it: the sound as it is. &cc=: the relay with closed captions too (see ccSegment).
 var HLS_MASTER_MAX = 524288;   // (an HLS quality list: /live/master)
 var LIVE_MAX = 4, LIVE_IDLE_MS = 5 * 60 * 1000, LIVE_LINKS = 400, LIVE_LIST_MAX = 1048576, LIVE_SEG_MAX = 32 * 1048576, LIVE_PROBE = 1536 * 1024, LIVE_MS = 20000;
 var ADTS_RATES = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
-var _live = {};
+var _live = Object.create(null);   // (no prototype: whatever key it's asked for, nothing shared is reached)
 // A link's body: cb(err, Buffer, the link it ended at). part: stop at max and keep what came
 // (the look at a segment's start), else more than max is an error. Returns abort().
+// For all the relay's downloads together: LIVE_ACTIVE_MAX at once, LIVE_HELD_MAX bytes held
+// between them (a segment can be 32 MB; four channels' sessions don't mean four downloads):
+// past either, "busy" (503), which the TV's player asks again; one let go stops at once.
+var LIVE_ACTIVE_MAX = 6, LIVE_HELD_MAX = 64 * 1048576, _liveActive = 0, _liveHeld = 0;
 function liveGet(u, who, max, cb, part) {
-    cb = once(cb);
+    if (_liveActive >= LIVE_ACTIVE_MAX) { cb(upError('busy: too many at once', 503)); return function () {}; }
+    _liveActive++;
+    var held = 0, freed = false;
+    function free() { if (freed) { return; } freed = true; _liveActive--; _liveHeld -= held; held = 0; }
+    var answer = cb;
+    cb = once(function (err, body, at) { free(); answer(err, body, at); });
     var hops = 0, r = null, gone = false;
     function get(url) {
         var pu;
@@ -1865,8 +1961,9 @@ function liveGet(u, who, max, cb, part) {
                 if (sc !== 200) { resp.resume(); end(upError('HTTP ' + sc, sc >= 400 && sc < 600 ? sc : 502)); return; }
                 resp.on('data', function (c) {
                     if (done) { return; }
-                    chunks.push(c); size += c.length;
+                    chunks.push(c); size += c.length; held += c.length; _liveHeld += c.length;
                     if (size >= max) { if (part) { end(null); } else { end(upError('too large', 502)); } }
+                    else if (_liveHeld > LIVE_HELD_MAX) { end(upError('busy: too much at once', 503)); }
                 });
                 resp.on('end', function () { end(null); });
                 resp.on('error', function (e) { end(e); });
@@ -1876,7 +1973,7 @@ function liveGet(u, who, max, cb, part) {
         } catch (e) { end(e); }
     }
     get(u);
-    return function () { gone = true; try { if (r) { r.abort(); } } catch (e) {} };
+    return function () { gone = true; try { if (r) { r.abort(); } } catch (e) {} free(); };
 }
 
 // MPEG-TS: a packet's PID, where its payload starts (-1: none).
@@ -1887,8 +1984,8 @@ function tsPayload(b, i) {
     if (afc & 2) { o += 1 + b[i + 4]; }
     return o < i + 188 ? o : -1;
 }
-// The program's first AAC (ADTS) stream and the PID its clock is on: { audio, pcr } or null.
-function tsAudio(b) {
+// The program's streams and the PID its clock is on: { pcr, list: [{ type, pid }] } or null.
+function tsProgram(b) {
     var pmt = -1;
     for (var i = 0; i + 188 <= b.length; i += 188) {
         if (b[i] !== 0x47 || !(b[i + 1] & 0x40)) { continue; }
@@ -1898,14 +1995,21 @@ function tsAudio(b) {
         if (pid === 0 && b[o] === 0) {
             for (k = o + 8; k + 4 <= last; k += 4) { if ((b[k] << 8 | b[k + 1]) !== 0) { pmt = ((b[k + 2] & 0x1f) << 8) | b[k + 3]; break; } }
         } else if (pid === pmt && b[o] === 2) {
-            var pcr = ((b[o + 8] & 0x1f) << 8) | b[o + 9], audio = null;
+            var list = [];
             for (k = o + 12 + (((b[o + 10] & 15) << 8) | b[o + 11]); k + 5 <= last; k += 5 + (((b[k + 3] & 15) << 8) | b[k + 4])) {
-                if (b[k] === 0x0f && audio === null) { audio = ((b[k + 1] & 0x1f) << 8) | b[k + 2]; }
+                list.push({ type: b[k], pid: ((b[k + 1] & 0x1f) << 8) | b[k + 2] });
             }
-            return { audio: audio, pcr: pcr };
+            return { pcr: ((b[o + 8] & 0x1f) << 8) | b[o + 9], list: list };
         }
     }
     return null;
+}
+// The program's first AAC (ADTS) stream and the PID its clock is on: { audio, pcr } or null.
+function tsAudio(b) {
+    var pr = tsProgram(b), audio = null;
+    if (!pr) { return null; }
+    for (var k = 0; k < pr.list.length && audio === null; k++) { if (pr.list[k].type === 0x0f) { audio = pr.list[k].pid; } }
+    return { audio: audio, pcr: pr.pcr };
 }
 function readPts(b, o) { return ((b[o] >> 1) & 7) * 1073741824 + ((b[o + 1] << 7) | (b[o + 2] >> 1)) * 32768 + ((b[o + 3] << 7) | (b[o + 4] >> 1)); }
 function writePts(b, o, v) {
@@ -2029,17 +2133,307 @@ function liveFix(s, b, seq) {
     if (group.length) { out.push(livePes(a, group)); }
     return Buffer.concat(out);
 }
+
+// ---- A live channel's closed captions (CEA-608, inside its picture) ----
+// Some channels carry their subtitles as closed captions in the video itself (ATSC A/53: in each
+// picture's own data, 'GA94'), which the TV's player doesn't show. The look (/live/open) says
+// which caption channels have text (cc: [{ ch: 'CC1', lang }]); asked for (&cc=CC1-en,CC3), the
+// relay adds a subtitle track for each: a WebVTT playlist (/live/<id>/c?n=) whose segments
+// (/live/<id>/v?n=) hold the captions of the picture's own segments, read from them as they pass
+// (one download for both: liveShared). CC1/CC2 are the first field's two channels, CC3/CC4 the
+// second's. Pop-on captions (films) become a cue each; roll-up ones (live shows) a cue per
+// finished line, with the lines above it.
+var CC_KEEP = 30, CC_BODIES = 2, CC_BODY_MAX = 8 * 1048576, CC_BODY_MS = 30000, CC_PROBE = 8 * 1048576;
+var CC_VIDEO = { 0x1b: true, 0x24: true, 0x02: false };   // (H.264, HEVC: their bytes escaped; MPEG-2 video: not)
+var CC_ROW = [11, 1, 3, 12, 14, 5, 7, 9];   // (a row code's first byte, low 3 bits: its row, 1–15; the next one down with 0x20 in the second)
+var CC_BASIC = { 0x2a: 'á', 0x5c: 'é', 0x5e: 'í', 0x5f: 'ó', 0x60: 'ú', 0x7b: 'ç', 0x7c: '÷', 0x7d: 'Ñ', 0x7e: 'ñ', 0x7f: '█' };
+var CC_SPECIAL = '®°½¿™¢£♪à èâêîôû';
+var CC_EXT = ['ÁÉÓÚÜü‘¡*’—©℠•“”ÀÂÇÈÊËëÎÏïÔÙùÛ«»',
+    'ÃãÍÌìÒòÕõ{}\\^_|~ÄäÖöß¥¤¦ÅåØø┌┐└┘'];
+var CC_WORDS = { en: / (the|you|and|that|what|this|it|is|to|of|don't|i'm|we|are)(?= )/g, es: / (que|el|los|las|es|por|una|con|para|está|qué|no|lo|se|del)(?= )/g, pt: / (não|você|uma|com|para|isso|está|que|o|é|do|da)(?= )/g };
+var GA94 = toBuffer('GA94');
+var _ccTag = 0;
+// A picture's caption pairs: [field, b1, b2, …] (parity off; empty ones left out).
+function ccPairs(d, esc) {
+    var out = [], k = 0;
+    while ((k = d.indexOf(GA94, k)) >= 0) {
+        var at = k, w, i;
+        k += 4;
+        if (!((at >= 3 && d[at - 3] === 0xb5 && d[at - 2] === 0 && d[at - 1] === 0x31) || (at >= 4 && d[at - 4] === 0 && d[at - 3] === 0 && d[at - 2] === 1 && d[at - 1] === 0xb2))) { continue; }
+        if (d[k] !== 3) { continue; }
+        w = d.slice(k + 1, k + 1 + 2 + 31 * 3 + 12);
+        if (esc) {   // (H.264 / HEVC: a 3 after two zeros is only there to break a start code)
+            var raw = w, z = 0;
+            w = [];
+            for (i = 0; i < raw.length; i++) { if (z >= 2 && raw[i] === 3) { z = 0; continue; } w.push(raw[i]); z = raw[i] === 0 ? z + 1 : 0; }
+        }
+        if (w.length < 2 || !(w[0] & 0x40)) { continue; }
+        for (i = 0; i < (w[0] & 0x1f) && 2 + 3 * i + 2 < w.length; i++) {
+            var m = w[2 + 3 * i], b1 = w[3 + 3 * i] & 0x7f, b2 = w[4 + 3 * i] & 0x7f;
+            if ((m & 4) && (m & 3) < 2 && (b1 || b2)) { out.push(m & 3, b1, b2); }
+        }
+    }
+    return out;
+}
+// A segment's pictures with captions, in the order they're shown: { start, end, frames: [{ pts,
+// pairs }] } (times unwrapped from the first picture's), or null (no video it can read).
+function ccFrames(b) {
+    var pr = tsProgram(b), v = null, i;
+    if (!pr) { return null; }
+    for (i = 0; i < pr.list.length && !v; i++) { if (CC_VIDEO[pr.list[i].type] !== undefined) { v = pr.list[i]; } }
+    if (!v) { return null; }
+    var esc = CC_VIDEO[v.type], frames = [], cur = null, base = null, lo = null, hi = null, n = 0;
+    function done() {
+        if (!cur) { return; }
+        var d = Buffer.concat(cur.parts);
+        cur.parts = null;
+        if (cur.pts !== null) {
+            if (base === null) { base = cur.pts; }
+            var r = cur.pts - base;
+            if (r > 4294967296) { r -= 8589934592; } else if (r < -4294967296) { r += 8589934592; }
+            cur.pts = base + r; n++;
+            if (lo === null || cur.pts < lo) { lo = cur.pts; }
+            if (hi === null || cur.pts > hi) { hi = cur.pts; }
+            cur.pairs = ccPairs(d, esc);
+            if (cur.pairs.length) { frames.push(cur); }
+        }
+        cur = null;
+    }
+    for (i = 0; i + 188 <= b.length; i += 188) {
+        if (b[i] !== 0x47) { break; }
+        if (tsPid(b, i) !== v.pid) { continue; }
+        var p = tsPayload(b, i);
+        if (p < 0) { continue; }
+        if (b[i + 1] & 0x40) {
+            done();
+            if (b[p] !== 0 || b[p + 1] !== 0 || b[p + 2] !== 1 || p + 9 + b[p + 8] > i + 188) { continue; }
+            cur = { pts: (b[p + 7] & 0x80) ? readPts(b, p + 9) : null, parts: [b.slice(p + 9 + b[p + 8], i + 188)] };
+        } else if (cur) { cur.parts.push(b.slice(p, i + 188)); }
+    }
+    done();
+    if (lo === null) { return null; }
+    frames.sort(function (x, y) { return x.pts - y.pts; });
+    return { start: lo, end: hi + (n > 1 ? (hi - lo) / (n - 1) : 3003), frames: frames };
+}
+function ccRows() { var r = []; for (var i = 0; i < 15; i++) { r.push([]); } return r; }
+// One caption channel: what's on screen (rows) and what's being written off it (back, pop-on),
+// the cursor, and the cue it shows since when.
+function ccChan() { return { mode: 'pop', rows: ccRows(), back: ccRows(), roll: 2, row: 14, col: 0, shown: '', since: 0, out: null, seen: '' }; }
+function ccField() { return { ch: 0, last: -1, xds: false }; }
+function ccState() { return { f: [ccField(), ccField()], d: [ccChan(), ccChan(), ccChan(), ccChan()], seq: null, segs: Object.create(null), order: [] }; }
+function ccText(rows) {
+    var out = [];
+    for (var r = 0; r < rows.length; r++) { var s = rows[r].join('').replace(/^\s+|\s+$/g, ''); if (s) { out.push(s); } }
+    return out.join('\n');
+}
+// The screen changed (or may have): the cue up to now out, a new one from now.
+function ccCommit(c, t) {
+    var s = ccText(c.rows);
+    if (s === c.shown) { return; }
+    if (c.shown && c.out && t > c.since) { c.out.push({ from: c.since, to: t, text: c.shown }); }
+    c.shown = s; c.since = t;
+}
+function ccPut(c, ch) {
+    if (c.mode === 'text') { return; }
+    var line = (c.mode === 'pop' ? c.back : c.rows)[c.row];
+    while (line.length < c.col) { line.push(' '); }
+    line[c.col] = ch;
+    if (c.col < 31) { c.col++; }
+    if (c.seen.length < 4000) { c.seen += ch; }
+}
+function ccRoll(c) {   // (roll-up: the lines move up one, the bottom one starts empty)
+    var top = c.row - c.roll + 1, r;
+    for (r = 0; r < 15; r++) { if (r < top || r > c.row) { c.rows[r] = []; } }
+    for (r = Math.max(top, 0); r < c.row; r++) { c.rows[r] = c.rows[r + 1]; }
+    c.rows[c.row] = []; c.col = 0;
+}
+// A control code (its channel bit off: 0x10–0x17 first).
+function ccControl(c, b1, b2, t) {
+    if ((b1 === 0x14 || b1 === 0x15) && b2 >= 0x20 && b2 <= 0x2f) {
+        var line = (c.mode === 'pop' ? c.back : c.rows)[c.row];
+        if (b2 === 0x20) { c.mode = 'pop'; }   // (resume loading: pop-on)
+        else if (b2 === 0x21) { if (c.col > 0) { c.col--; if (line.length > c.col) { line[c.col] = ' '; } } }   // (backspace)
+        else if (b2 === 0x24) { if (line.length > c.col) { line.length = c.col; } }   // (delete to the end of the row)
+        else if (b2 >= 0x25 && b2 <= 0x27) {   // (roll-up, 2–4 rows)
+            if (c.mode !== 'roll') { c.rows = ccRows(); c.back = ccRows(); c.row = 14; c.col = 0; }
+            c.mode = 'roll'; c.roll = b2 - 0x23;
+            ccCommit(c, t);
+        }
+        else if (b2 === 0x29) { c.mode = 'paint'; }   // (paint-on)
+        else if (b2 === 0x2a || b2 === 0x2b) { c.mode = 'text'; }   // (text mode: not captions)
+        else if (b2 === 0x2c) { c.rows = ccRows(); ccCommit(c, t); }   // (erase what's shown)
+        else if (b2 === 0x2d) { if (c.mode === 'roll') { ccCommit(c, t); ccRoll(c); } else { if (c.mode === 'paint') { ccCommit(c, t); } c.col = 0; } }   // (carriage return: roll-up shows the lines as they stand once one's finished)
+        else if (b2 === 0x2e) { c.back = ccRows(); }   // (erase what's being written)
+        else if (b2 === 0x2f) { var x = c.rows; c.rows = c.back; c.back = x; c.mode = 'pop'; ccCommit(c, t); }   // (end of caption: it shows)
+        return;
+    }
+    if (b1 === 0x17 && b2 >= 0x21 && b2 <= 0x23) { c.col = Math.min(31, c.col + b2 - 0x20); return; }   // (tab)
+    if (b1 === 0x11 && b2 >= 0x20 && b2 <= 0x2f) { ccPut(c, ' '); return; }   // (a style change: shows as a space)
+    if (b1 === 0x11 && b2 >= 0x30 && b2 <= 0x3f) { ccPut(c, CC_SPECIAL.charAt(b2 - 0x30)); return; }
+    if ((b1 === 0x12 || b1 === 0x13) && b2 >= 0x20 && b2 <= 0x3f) {   // (an accented letter: in place of the plain one sent before it)
+        if (c.col > 0) { c.col--; }
+        ccPut(c, CC_EXT[b1 - 0x12].charAt(b2 - 0x20));
+        return;
+    }
+    if (b2 >= 0x40 && b2 <= 0x7f && !(b1 === 0x10 && b2 >= 0x60)) {   // (a row and indent)
+        var row = CC_ROW[b1 & 7] + ((b2 & 0x20) ? 1 : 0) - 1;
+        if (c.mode === 'roll' && row !== c.row) {   // (the roll-up lines move to it)
+            var moved = ccRows();
+            for (var k = 0; k < c.roll; k++) { if (c.row - k >= 0 && row - k >= 0) { moved[row - k] = c.rows[c.row - k]; } }
+            c.rows = moved;
+        }
+        if (c.mode === 'paint') { ccCommit(c, t); }
+        c.row = row; c.col = (b2 & 0x10) ? ((b2 & 0x0e) >> 1) * 4 : 0;
+    }
+}
+function ccFeed(st, field, b1, b2, t) {
+    var f = st.f[field], c;
+    if (b1 >= 0x01 && b1 <= 0x0f) { f.xds = b1 !== 0x0f; f.last = -1; return; }   // (programme data, not captions)
+    if (b1 >= 0x10 && b1 <= 0x1f) {
+        f.xds = false;
+        var code = (b1 << 8) | b2;
+        if (code === f.last) { f.last = -1; return; }   // (each control code is sent twice)
+        f.last = code; f.ch = (b1 & 0x08) ? 1 : 0;
+        ccControl(st.d[field * 2 + f.ch], b1 & 0xf7, b2, t);
+        return;
+    }
+    if (f.xds) { return; }
+    f.last = -1; c = st.d[field * 2 + f.ch];
+    if (b1 >= 0x20) { ccPut(c, CC_BASIC[b1] || String.fromCharCode(b1)); }
+    if (b2 >= 0x20) { ccPut(c, CC_BASIC[b2] || String.fromCharCode(b2)); }
+}
+// A segment's cues per caption channel ({ start, cues: [[…CC1], …] }), read once (by number:
+// asked again, the same), the channels going on from the segment before when it's the next one.
+function ccSegment(st, b, seq) {
+    if (st.segs[seq]) { return st.segs[seq]; }
+    var fr = ccFrames(b), seg = { start: fr ? fr.start : 0, cues: [[], [], [], []] }, k;
+    if (!fr || st.seq === null || seq !== st.seq + 1) { st.f = [ccField(), ccField()]; st.d = [ccChan(), ccChan(), ccChan(), ccChan()]; }
+    st.seq = fr ? seq : null;
+    if (fr) {
+        for (k = 0; k < 4; k++) { st.d[k].out = seg.cues[k]; st.d[k].since = fr.start; }
+        fr.frames.forEach(function (f) { for (var j = 0; j + 2 < f.pairs.length; j += 3) { ccFeed(st, f.pairs[j], f.pairs[j + 1], f.pairs[j + 2], f.pts); } });
+        for (k = 0; k < 4; k++) {   // (what's still on: up to the segment's end, and on from the next one's start)
+            var c = st.d[k];
+            if (c.shown && fr.end > c.since) { c.out.push({ from: c.since, to: fr.end, text: c.shown }); }
+            c.out = null;
+        }
+    }
+    st.segs[seq] = seg; st.order.push(seq);
+    while (st.order.length > CC_KEEP) { delete st.segs[st.order.shift()]; }
+    return seg;
+}
+// Which caption channels have text in a segment, and their language when the words say it:
+// [{ ch: 'CC1', lang: 'en' }] (null: no captions in it at all).
+function ccFound(b) {
+    var fr = ccFrames(b);
+    if (!fr || !fr.frames.length) { return null; }
+    var st = ccState(), out = [];
+    fr.frames.forEach(function (f) { for (var j = 0; j + 2 < f.pairs.length; j += 3) { ccFeed(st, f.pairs[j], f.pairs[j + 1], f.pairs[j + 2], f.pts); } });
+    st.d.forEach(function (c, k) {
+        var words = ' ' + c.seen.replace(/[^A-Za-zÀ-ÿ']+/g, ' ').toLowerCase() + ' ';
+        if (!/[a-zà-ÿ]{2}/.test(words)) { return; }
+        var best = '', n1 = 0, n2 = 0;
+        Object.keys(CC_WORDS).forEach(function (l) {
+            var n = (words.match(CC_WORDS[l]) || []).length;
+            if (n > n1) { n2 = n1; n1 = n; best = l; } else if (n > n2) { n2 = n; }
+        });
+        out.push({ ch: 'CC' + (k + 1), lang: n1 >= 3 && n1 >= n2 * 1.5 ? best : '' });
+    });
+    return out;
+}
+function ccTime(v) {
+    v = Math.max(0, Math.round(v / 90));
+    function two(x) { return (x < 10 ? '0' : '') + x; }
+    var ms = v % 1000;
+    return two(Math.floor(v / 3600000)) + ':' + two(Math.floor(v / 60000) % 60) + ':' + two(Math.floor(v / 1000) % 60) + '.' + (ms < 100 ? (ms < 10 ? '00' : '0') : '') + ms;
+}
+// A segment's WebVTT for caption channel k (0–3): its times on the picture's own clock.
+function ccVtt(seg, k) {
+    var out = ['WEBVTT', 'X-TIMESTAMP-MAP=MPEGTS:' + ((Math.round(seg.start) % 8589934592) + 8589934592) % 8589934592 + ',LOCAL:00:00:00.000', ''];
+    seg.cues[k].forEach(function (q) {
+        out.push(ccTime(q.from - seg.start) + ' --> ' + ccTime(q.to - seg.start), q.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'), '');
+    });
+    return out.join('\n');
+}
+// The caption channels asked for: [{ k: 0–3, lang }] from 'CC1-en,CC3' (others left out).
+function ccAsked(v) {
+    var out = [];
+    String(v || '').split(',').forEach(function (x) {
+        var m = /^CC([1-4])(?:-([a-z]{2,3}))?$/.exec(x);
+        if (m && !out.some(function (o) { return o.k === m[1] - 1; })) { out.push({ k: m[1] - 1, lang: m[2] || '' }); }
+    });
+    return out;
+}
+// A segment downloaded once for its picture and its captions, whichever asks first: kept a
+// little (CC_BODIES, each up to CC_BODY_MAX, CC_BODY_MS) for the other. Returns its leave():
+// the download stops when no one waits for it any more.
+function liveShared(url, s, max, cb) {   // (as liveGet: s, the relay, is who asks)
+    var now = Date.now(), e = s.got[url];
+    Object.keys(s.got).forEach(function (u) { var x = s.got[u]; if (x.body && now - x.t > CC_BODY_MS) { delete s.got[u]; } });
+    e = s.got[url];
+    if (e && e.body) { cb(null, e.body, e.at); return function () {}; }
+    if (!e) {
+        e = s.got[url] = { cbs: [], tag: ++_ccTag };
+        e.stop = liveGet(url, s, max, function (err, body, at) {
+            var cbs = e.cbs;
+            e.cbs = [];
+            if (s.got[url] === e) {
+                if (err || body.length > CC_BODY_MAX) { delete s.got[url]; }
+                else {
+                    e.body = body; e.at = at; e.t = Date.now();
+                    var kept = Object.keys(s.got).filter(function (u) { return s.got[u].body; }).sort(function (x, y) { return s.got[x].tag - s.got[y].tag; });
+                    while (kept.length > CC_BODIES) { delete s.got[kept.shift()]; }
+                }
+            }
+            cbs.forEach(function (f) { f(err, body, at); });
+        });
+    }
+    e.cbs.push(cb);
+    return function () {
+        var i = e.cbs.indexOf(cb);
+        if (i >= 0) { e.cbs.splice(i, 1); }
+        if (!e.cbs.length && !e.body) { if (s.got[url] === e) { delete s.got[url]; } e.stop(); }
+    };
+}
+// The top playlist with the captions as subtitle tracks: a quality list gets them added (each
+// quality naming them); a plain one is put under a made-up quality list of its own (p).
+function ccMaster(s, text, base) {
+    var pre = liveBase(s), lines = String(text).split(/\r?\n/), uris = lines.map(function (l) { return l.trim(); }).filter(function (l) { return l && l.charAt(0) !== '#'; });
+    if (!uris.length || /#EXT-X-STREAM-INF:[^\n]*SUBTITLES=|#EXT-X-KEY:METHOD=(?!NONE)|#EXT-X-MAP/.test(text)) { return liveRewrite(s, text, base); }
+    var master = /#EXT-X-STREAM-INF/.test(text), media = master ? urllib.resolve(base, uris[0]) : base;
+    var tracks = s.cc.map(function (c) {
+        var name = 'Closed captions (CC' + (c.k + 1) + ')';
+        return '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="cc",NAME="' + name + '",' + (c.lang ? 'LANGUAGE="' + c.lang + '",' : '') + 'DEFAULT=NO,AUTOSELECT=YES,FORCED=NO,URI="' + pre + 'c?n=' + liveLink(s, media, 'c', undefined, c.k) + '"';
+    });
+    if (!master) {
+        return ['#EXTM3U'].concat(tracks, ['#EXT-X-STREAM-INF:BANDWIDTH=2000000,SUBTITLES="cc"', pre + 'p?n=' + liveLink(s, base, 'p')]).join('\n') + '\n';
+    }
+    var out = liveRewrite(s, text, base).split('\n').map(function (l) { return /^#EXT-X-STREAM-INF:/.test(l.trim()) ? l.replace(/\s+$/, '') + ',SUBTITLES="cc"' : l; });
+    var head = 0;
+    while (head < out.length && !/^#EXTM3U/.test(out[head].trim())) { head++; }
+    return out.slice(0, head + 1).concat(tracks, out.slice(head + 1)).join('\n');
+}
+// A caption track's playlist: the picture's own segments, each as its captions (v).
+function ccList(s, text, base, k) {
+    var sq = /#EXT-X-MEDIA-SEQUENCE:\s*(\d+)/.exec(text), seq = sq ? +sq[1] : 0, pre = liveBase(s);
+    return String(text).split(/\r?\n/).filter(function (ln) { return !/^#EXT-X-(KEY|MAP|BYTERANGE|STREAM-INF|MEDIA:|I-FRAME)/.test(ln.trim()); }).map(function (ln) {
+        var t = ln.trim();
+        if (!t || t.charAt(0) === '#') { return ln; }
+        return pre + 'v?n=' + liveLink(s, urllib.resolve(base, t), 'v', seq++, k);
+    }).join('\n');
+}
+
 // A playlist with its links through the relay: a master's variants and renditions (m), a media
 // playlist's segments (s, numbered from its media sequence); encrypted or fMP4 segments, keys:
 // fetched directly (their absolute links).
-function liveLink(s, url, kind, seq) {
-    var key = kind + ' ' + url;
+function liveLink(s, url, kind, seq, ch) {
+    var key = kind + (ch !== undefined ? ch : '') + ' ' + url;
     if (s.at[key] !== undefined) { return s.at[key]; }
     var n = s.next++;
-    s.links[n] = { url: url, kind: kind, seq: seq };
+    s.links[n] = { url: url, kind: kind, seq: seq, ch: ch, key: key };
     s.at[key] = n;
     var old = s.links[n - LIVE_LINKS];
-    if (old) { delete s.at[old.kind + ' ' + old.url]; delete s.links[n - LIVE_LINKS]; }
+    if (old) { delete s.at[old.key]; delete s.links[n - LIVE_LINKS]; }
     return n;
 }
 function liveBase(s) { return 'http://localhost:' + PORT + '/live/' + s.id + '/'; }
@@ -2061,13 +2455,15 @@ function liveRewrite(s, text, base) {
         return pre + 's?n=' + liveLink(s, abs, 's', seq++);
     }).join('\n');
 }
-function liveSession(u, who) {
+// opts: { fix: the sound repacked, cc: the caption channels added (ccAsked) }.
+function liveSession(u, who, opts) {
     var ids = Object.keys(_live);
     if (ids.length >= LIVE_MAX) {   // (the one asked for longest ago goes)
         ids.sort(function (x, y) { return _live[x].last - _live[y].last; });
         delete _live[ids[0]];
     }
-    var s = { id: crypto.randomBytes(16).toString('hex'), ua: who.ua, ref: who.ref, links: {}, at: {}, next: 0, last: Date.now(), a: liveAudio() };
+    var s = { id: crypto.randomBytes(16).toString('hex'), ua: who.ua, ref: who.ref, links: {}, at: {}, next: 0, last: Date.now(), a: liveAudio(),
+        fix: opts.fix !== false, cc: opts.cc && opts.cc.length ? opts.cc : null, c: ccState(), got: Object.create(null) };
     _live[s.id] = s;
     s.top = liveLink(s, u, 'm');
     return s;
@@ -2077,7 +2473,8 @@ function livePurge() {
     Object.keys(_live).forEach(function (id) { if (now - _live[id].last > LIVE_IDLE_MS) { delete _live[id]; } });
 }
 // The look: the playlist (a master's first variant), then the start of the segment a player
-// starts with (the third from the end).
+// starts with (the third from the end); with captions in that start, the whole segment (up to
+// CC_PROBE) for which caption channels have text: cc, ccSure (false: none had text in it).
 function liveProbe(u, who, cb, leaving) {
     var depth = 0;
     function list(url) {
@@ -2093,9 +2490,17 @@ function liveProbe(u, who, cb, leaving) {
             }
             if (/#EXT-X-KEY:METHOD=(?!NONE)|#EXT-X-MAP/.test(text)) { cb(null, { fix: false, sure: true, why: 'encrypted or fMP4 segments' }); return; }
             if (!uris.length) { cb(null, { fix: false, sure: false, why: 'no segments yet' }); return; }
-            leaving.push(liveGet(urllib.resolve(at, uris[Math.max(0, uris.length - 3)]), who, LIVE_PROBE, function (e2, seg) {
+            var su = urllib.resolve(at, uris[Math.max(0, uris.length - 3)]);
+            leaving.push(liveGet(su, who, LIVE_PROBE, function (e2, seg) {
                 if (e2) { cb(e2); return; }
-                cb(null, liveCut(seg));
+                var v = liveCut(seg), found = null;
+                try { found = ccFound(seg); } catch (e) { found = null; }
+                if (!found) { v.cc = []; v.ccSure = true; cb(null, v); return; }
+                leaving.push(liveGet(su, who, CC_PROBE, function (e3, whole) {
+                    try { found = e3 ? found : (ccFound(whole) || found); } catch (e) {}
+                    v.cc = found; v.ccSure = found.length > 0;
+                    cb(null, v);
+                }, true));
             }, true));
         }));
     }
@@ -2122,26 +2527,37 @@ function liveControl(req, res, path, query, leaving) {
         if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
         var u = q.u || '', who = { ua: liveHeader(q.ua), ref: liveHeader(q.ref) };
         if (!/^https?:\/\/[^\s]+$/i.test(u) || u.length > 2000) { send(res, 400, 'text/plain', 'bad link'); return; }
+        var cc = ccAsked(q.cc);
         if (q.force === '1') {
-            var sf = liveSession(u, who);
+            var sf = liveSession(u, who, { fix: q.fix !== '0', cc: cc });
             send(res, 200, 'application/json', JSON.stringify({ fix: true, sure: true, why: 'asked for', url: liveBase(sf) + 'm?n=' + sf.top }));
             return;
         }
         liveProbe(u, who, function (err, v) {
             if (err) { send(res, 200, 'application/json', JSON.stringify({ fix: false, sure: false, why: 'couldn\'t check: ' + (err.message || 'unknown') })); return; }
-            if (v.fix) { var s = liveSession(u, who); v.url = liveBase(s) + 'm?n=' + s.top; }
+            if (v.fix) { var s = liveSession(u, who, { fix: true, cc: cc }); v.url = liveBase(s) + 'm?n=' + s.top; }
             send(res, 200, 'application/json', JSON.stringify(v));
         }, leaving);
         return;
     }
-    var m = /^\/live\/([0-9a-f]{32})\/(m|s)$/.exec(path), s = m && _live[m[1]], link = s && /^\d+$/.test(q.n || '') ? s.links[+q.n] : null;
+    // (m: a playlist; p: the top one under its made-up quality list; s: a segment; c: a caption
+    // track's playlist; v: a segment's captions)
+    var m = /^\/live\/([0-9a-f]{32})\/(m|p|s|c|v)$/.exec(path), s = m && _live[m[1]], link = s && /^\d+$/.test(q.n || '') ? s.links[+q.n] : null;
     if (!link || link.kind !== m[2]) { send(res, 404, 'text/plain', 'not found'); return; }
     s.last = Date.now();
-    leaving.push(liveGet(link.url, s, m[2] === 'm' ? LIVE_LIST_MAX : LIVE_SEG_MAX, function (err, body, at) {
+    var kind = m[2], seg = kind === 's' || kind === 'v';
+    function captions(body) {
+        try { return ccSegment(s.c, body, link.seq); } catch (e) { log('live captions: ' + (e && e.message)); s.c = ccState(); return null; }
+    }
+    if (kind === 'v' && s.c.segs[link.seq]) { send(res, 200, 'text/vtt; charset=utf-8', ccVtt(s.c.segs[link.seq], link.ch)); return; }
+    leaving.push((seg && s.cc ? liveShared : liveGet)(link.url, s, seg ? LIVE_SEG_MAX : LIVE_LIST_MAX, function (err, body, at) {
         if (err) { send(res, err.status || 502, 'text/plain', 'failed: ' + (err.message || 'unknown')); return; }
-        if (m[2] === 'm') { send(res, 200, 'application/vnd.apple.mpegurl', liveRewrite(s, body.toString('utf8'), at)); return; }
+        if (kind === 'v') { var cs = captions(body); send(res, 200, 'text/vtt; charset=utf-8', cs ? ccVtt(cs, link.ch) : 'WEBVTT\n'); return; }
+        if (kind === 'c') { send(res, 200, 'application/vnd.apple.mpegurl', ccList(s, body.toString('utf8'), at, link.ch)); return; }
+        if (kind !== 's') { send(res, 200, 'application/vnd.apple.mpegurl', s.cc && kind === 'm' && +q.n === s.top ? ccMaster(s, body.toString('utf8'), at) : liveRewrite(s, body.toString('utf8'), at)); return; }
         var out = body;
-        try { out = liveFix(s, body, link.seq); } catch (e) { log('live: ' + (e && e.message)); s.a = liveAudio(); }
+        if (s.cc) { captions(body); }
+        if (s.fix) { try { out = liveFix(s, body, link.seq); } catch (e) { log('live: ' + (e && e.message)); s.a = liveAudio(); } }
         send(res, 200, 'video/mp2t', out);
     }));
 }
@@ -2228,6 +2644,407 @@ function aiomControl(req, res, query, leaving) {
     }));
 }
 
+// ---- TV guide (/epg/load, /epg/get) ----
+// A playlist's XMLTV guide, read for StremioK's channels only. The app sends their keys (epgKey:
+// "i:" and a tvg-id, "n:" and a name without capitals, accents, spaces or HD / FHD / 4K tags) as
+// a bitset (k: base64url; a key's FNV-1a hash picks its bit), and a guide's channel is kept when
+// its id or one of its names is in it (a few others may slip through: harmless). Downloaded
+// (gzipped or not) up to EPG_MAX, read a piece at a time up to EPG_XML_MAX unpacked, within
+// EPG_MS (past a limit: what was read, "partial"); programs from EPG_BEFORE ago to EPG_AFTER
+// ahead, EPG_PER a channel, EPG_TOTAL in all. One guide read at a time, EPG_GUIDES kept. On the
+// sideloaded app saved in its folder (epg-<hash>.json), read again after EPG_FRESH_MS; under
+// TizenBrew (no folder) kept in memory. While a guide is read again, the last one still answers.
+var EPG_MAX = 60 * 1048576, EPG_XML_MAX = 200 * 1048576, EPG_MS = 5 * 60000, EPG_BEFORE = 2 * 3600, EPG_AFTER = 30 * 3600;
+var EPG_GET_BYTES = 2 * 1048576, EPG_BODY_MAX = 65536;   // (an /epg/get answer; a POST's body: the channels' keys)
+var EPG_PER = 150, EPG_TOTAL = 60000, EPG_TITLE = 120, EPG_DESC = 200, EPG_GUIDES = 4, EPG_FRESH_MS = 6 * 3600000, EPG_RETRY_MS = 10 * 60000;
+var _epg = Object.create(null), _epgQueue = [], _epgBusy = false;
+var EPG_ACCENTS = { 'á': 'a', 'à': 'a', 'â': 'a', 'ä': 'a', 'ã': 'a', 'å': 'a', 'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
+    'ó': 'o', 'ò': 'o', 'ô': 'o', 'ö': 'o', 'õ': 'o', 'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ñ': 'n', 'ç': 'c' };
+// A channel's key (the same as js/epg.js's EPG.key, see there): a tvg-id ("i:", iptv-org's feed
+// after an @ left out) or a name ("n:", no capitals, accents, spaces, "TV" or HD tags), a country
+// at the end kept apart after a dot. A guide's channel answers with it and without (epgKeys).
+var EPG_COUNTRY = { ar: 'ar', arg: 'ar', mx: 'mx', mex: 'mx', us: 'us', usa: 'us', uk: 'uk', gb: 'uk', es: 'es', br: 'br', cl: 'cl', co: 'co', pe: 'pe',
+    uy: 'uy', py: 'py', ve: 've', ec: 'ec', bo: 'bo', ca: 'ca', fr: 'fr', de: 'de', it: 'it', pt: 'pt' };
+function epgParts(kind, s) {
+    var t = String(s || '').toLowerCase().replace(/[áàâäãåéèêëíìîïóòôöõúùûüñç]/g, function (c) { return EPG_ACCENTS[c]; }).trim(), cc = '', m;
+    if (kind === 'i') { t = t.replace(/@.*$/, ''); }
+    if ((m = /\.([a-z]{2})$/.exec(t))) { cc = m[1]; t = t.slice(0, -3); }
+    else if (kind === 'n' && (m = /[\s_-]+([a-z]{2,3})$/.exec(t)) && EPG_COUNTRY[m[1]] && t.length > m[0].length) { cc = EPG_COUNTRY[m[1]]; t = t.slice(0, -m[0].length); }
+    if (kind === 'n') { t = t.replace(/\[[^\]]*\]|\([^)]*\)/g, ' ').replace(/\b(hd|fhd|uhd|sd|hq|4k|8k|hevc|h265|1080p?|720p?|tv)\b/g, ' '); }
+    t = t.replace(/[^a-z0-9]+/g, '');
+    if (kind === 'n' && t.length > 4) { t = t.replace(/tv$/, ''); }
+    return { base: t.slice(0, 60), cc: cc };
+}
+function epgKey(kind, s) { var p = epgParts(kind, s); return p.base ? kind + ':' + p.base + (p.cc ? '.' + p.cc : '') : ''; }
+function epgKeys(kind, s) { var p = epgParts(kind, s); return !p.base ? [] : p.cc ? [kind + ':' + p.base + '.' + p.cc, kind + ':' + p.base] : [kind + ':' + p.base]; }
+function epgHash(s) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0; }
+    return h;
+}
+function epgHas(bits, key) {
+    if (!bits || !bits.length || !key) { return false; }
+    var i = epgHash(key) % (bits.length * 8);
+    return !!(bits[i >> 3] & (1 << (i & 7)));
+}
+function epgBits(k) {   // base64url -> bytes
+    var b64 = String(k || '').replace(/-/g, '+').replace(/_/g, '/');
+    try { return HAS_BUFFER_FROM ? Buffer.from(b64, 'base64') : new Buffer(b64, 'base64'); } catch (e) { return null; }
+}
+function epgTime(s) {   // "20261021203000 -0300" -> seconds
+    var m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})?\s*([+-]\d{4})?/.exec(String(s || '').trim());
+    if (!m) { return 0; }
+    var t = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)) / 1000;
+    if (m[7]) { t -= (m[7].charAt(0) === '-' ? -1 : 1) * (+m[7].slice(1, 3) * 3600 + +m[7].slice(3, 5) * 60); }
+    return Math.floor(t);
+}
+function epgText(s) {   // an element's text, or an attribute's: entities read, white space folded
+    return noTags(String(s || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')).replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, function (all, e) {
+        var l = e.toLowerCase();
+        if (l.charAt(0) !== '#') { return { amp: '&', lt: '<', gt: '>', quot: '"', apos: '\'' }[l]; }
+        var n = l.charAt(1) === 'x' ? parseInt(l.slice(2), 16) : parseInt(l.slice(1), 10);
+        if (!(n > 0 && n < 0x110000)) { return ''; }
+        if (n < 0x10000) { return String.fromCharCode(n); }
+        n -= 0x10000;
+        return String.fromCharCode(0xd800 + (n >> 10), 0xdc00 + (n & 0x3ff));
+    }).replace(/\s+/g, ' ').trim();
+}
+function epgAttr(tag, name) {
+    var m = new RegExp('\\s' + name + '\\s*=\\s*"([^"]*)"').exec(tag) || new RegExp('\\s' + name + '\\s*=\\s*\'([^\']*)\'').exec(tag);
+    return m ? epgText(m[1]) : '';
+}
+function epgInner(el, name, all) {   // the text of a child element (all: of each one)
+    var re = new RegExp('<' + name + '(?:\\s[^>]*)?>([\\s\\S]*?)</' + name + '>', 'g'), out = [], m;
+    while ((m = re.exec(el))) { out.push(epgText(m[1])); if (!all) { break; } }
+    return all ? out : (out[0] || '');
+}
+// What a program is, from its <category>s: { m: 'movie' | 'series', o: its original title, y:
+// its year } (what's known), or null. A film's often reads "The Book ThiefDrama / 2013 / 7.6":
+// the original title with the genre stuck on, the year, a rating ("Acción / 2015": no title).
+var EPG_GENRES = ['Ciencia ficción', 'C.Ficción', 'Acción', 'Animación', 'Aventura', 'Biográfico', 'Bélica', 'Comedia', 'Crimen', 'Deportivo',
+    'Documental', 'Drama', 'Familiar', 'Fantasía', 'Ficción', 'Histórico', 'Infantil', 'Misterio', 'Musical', 'Policial', 'Romance',
+    'Romántica', 'Suspenso', 'Terror', 'Thriller', 'Western'];
+function epgAbout(cats) {
+    var out = null;
+    (cats || []).forEach(function (c) {
+        var parts = String(c).split(' / '), y = parts.length > 1 && /^(19|20)\d\d$/.test(parts[1].trim()) ? +parts[1].trim() : 0;
+        if (y) {
+            var t = parts[0].trim();
+            for (var i = 0; i < EPG_GENRES.length; i++) {
+                var g = EPG_GENRES[i];
+                if (t.length > g.length && t.slice(-g.length).toLowerCase() === g.toLowerCase()) { t = t.slice(0, -g.length).trim(); break; }
+                if (t.toLowerCase() === g.toLowerCase()) { t = ''; break; }
+            }
+            out = { m: 'movie', y: y };
+            if (t) { out.o = t.slice(0, EPG_TITLE); }
+        } else if (!out && /^(temporada \d+ episodio \d+|series|episode)$/i.test(String(c).trim())) {
+            out = { m: 'series' };
+        } else if (!out && /^(movie|feature film|película|pelicula|cine)$/i.test(String(c).trim())) {
+            out = { m: 'movie' };
+        }
+    });
+    return out;
+}
+// The reader: text in, a piece at a time (feed); <channel> and <programme> elements read as
+// they complete.
+function epgParser(want, now) {
+    var p = { buf: '', channels: Object.create(null), keys: Object.create(null), progs: Object.create(null), icons: Object.create(null), count: 0, partial: false, isGuide: false };   // (no prototype: a channel id like "__proto__" or "constructor" is just a name)
+    var from = now - EPG_BEFORE, to = now + EPG_AFTER;
+    function channel(el) {
+        var id = epgAttr(el.slice(0, el.indexOf('>') + 1), 'id');
+        if (!id) { return; }
+        var keys = epgKeys('i', id);
+        epgInner(el, 'display-name', true).forEach(function (n) { keys = keys.concat(epgKeys('n', n)); });
+        if (!keys.some(function (k) { return epgHas(want, k); })) { return; }
+        p.channels[id] = 1;
+        keys.forEach(function (k) { if (!p.keys[k]) { p.keys[k] = id; } });
+        var icon = /<icon\s[^>]*\bsrc\s*=\s*["']([^"']{1,1000})["']/i.exec(el);   // (its logo: for a channel the playlist gives none)
+        if (icon && /^https?:\/\/[^\s]+$/i.test(epgText(icon[1]))) { p.icons[id] = epgText(icon[1]); }
+    }
+    function programme(el) {
+        var tag = el.slice(0, el.indexOf('>') + 1), ch = epgAttr(tag, 'channel');
+        if (!ch || !p.channels[ch]) { return; }
+        var start = epgTime(epgAttr(tag, 'start')), stop = epgTime(epgAttr(tag, 'stop')) || start + 1800;
+        if (!start || stop <= from || start >= to || stop <= start) { return; }
+        if (p.count >= EPG_TOTAL) { p.partial = true; return; }
+        var row = [start, stop, epgInner(el, 'title').slice(0, EPG_TITLE) || '?', epgInner(el, 'desc').slice(0, EPG_DESC)];
+        var pic = /<icon\s[^>]*\bsrc\s*=\s*["']([^"']{1,1000})["']/i.exec(el);   // (its picture)
+        if (pic && /^https?:\/\/[^\s]+$/i.test(epgText(pic[1]))) { row.push(epgText(pic[1])); }
+        var about = epgAbout(epgInner(el, 'category', true));
+        if (about) { if (row.length < 5) { row.push(''); } row.push(about); }
+        var l = p.progs[ch] = p.progs[ch] || [];
+        l.push(row);
+        p.count++;
+        if (l.length > 2 * EPG_PER) {   // (held to EPG_PER as it's read, the earliest: a feed may list one channel's programs out of order)
+            l.sort(function (a, b) { return a[0] - b[0]; });
+            p.count -= l.length - EPG_PER;
+            l.length = EPG_PER;
+        }
+    }
+    p.feed = function (text) {
+        if (!text) { return; }
+        var b = p.buf + text, at = 0;
+        if (!p.isGuide && /<tv[\s>]/.test(b)) { p.isGuide = true; }
+        for (;;) {
+            var c = b.indexOf('<channel', at), g = b.indexOf('<programme', at);
+            var i = c === -1 ? g : g === -1 ? c : Math.min(c, g);
+            if (i === -1) { at = Math.max(at, b.length - 16); break; }   // (an element's start may be split: kept)
+            var isCh = i === c, gt = b.indexOf('>', i);
+            if (gt === -1) { at = i; break; }
+            if (b.charAt(gt - 1) === '/') { at = gt + 1; continue; }   // (<channel id="…"/>: nothing in it)
+            var close = isCh ? '</channel>' : '</programme>', j = b.indexOf(close, gt);
+            if (j === -1) { at = i; break; }
+            if (isCh) { channel(b.slice(i, j)); } else { programme(b.slice(i, j)); }
+            at = j + close.length;
+        }
+        p.buf = b.slice(at);
+        if (p.buf.length > 4 * 1048576) { p.buf = p.buf.slice(-16); }   // (an element that never ends: not a guide's)
+    };
+    p.finish = function () {
+        var total = 0;
+        Object.keys(p.progs).forEach(function (ch) {
+            var l = p.progs[ch].sort(function (a, b) { return a[0] - b[0]; });
+            if (l.length > EPG_PER) { l = p.progs[ch] = l.slice(0, EPG_PER); }
+            total += l.length;
+        });
+        p.count = total;
+    };
+    return p;
+}
+// The guide's download, unpacked if it's gzipped, its text handed to onText as it comes; past
+// EPG_MAX / EPG_XML_MAX it stops there (cb(null, true): what was read is kept).
+function epgFetch(url, onText, cb) {
+    cb = once(cb);
+    var hops = 0, r = null, done = false, got = 0, unpacked = 0, stopGz = null;
+    var timer = setTimeout(function () { end(null, true); }, EPG_MS);
+    function end(err, partial) { if (done) { return; } done = true; clearTimeout(timer); try { if (r) { r.abort(); } } catch (e) {} if (stopGz) { stopGz(); } cb(err, !!partial); }
+    function get(u) {
+        var pu;
+        try { pu = urllib.parse(u); } catch (e) { end(upError('a bad link', 400)); return; }
+        if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !dlHostOk(pu.hostname)) { end(upError('a link it can\'t follow', 400)); return; }
+        var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, headers: { 'User-Agent': TV_UA, 'Accept-Encoding': 'gzip' } };
+        if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
+        try {
+            r = (pu.protocol === 'https:' ? https : http).get(opts, function (resp) {
+                if (done) { resp.resume(); return; }
+                var sc = resp.statusCode;
+                if (sc >= 300 && sc < 400 && resp.headers.location && hops < 5) { resp.resume(); hops++; get(urllib.resolve(u, resp.headers.location)); return; }
+                if (sc !== 200) { resp.resume(); end(upError('HTTP ' + sc, 502)); return; }
+                var dec = new StringDecoder('utf8'), gz = null, head = null;   // (head: the first bytes, until there are two to tell gzip by)
+                function text(buf) {
+                    if (done) { return; }
+                    unpacked += buf.length;
+                    try { onText(dec.write(buf)); } catch (e) { end(e); return; }
+                    if (unpacked > EPG_XML_MAX) { end(null, true); }
+                }
+                var told = /gzip/i.test(String(resp.headers['content-encoding'] || '')), decided = false;
+                function decide(b) {   // gzip (its header said so, or 1f 8b) or text
+                    decided = true;
+                    if (told || (b.length >= 2 && b[0] === 0x1f && b[1] === 0x8b)) {
+                        gz = zlib.createGunzip();
+                        gz.on('data', text);
+                        gz.on('error', function () { end(upError('the guide couldn\'t be unpacked', 502)); });
+                        gz.on('end', function () { if (!done) { try { onText(dec.end()); } catch (e) {} end(null); } });
+                        stopGz = function () { try { gz.removeAllListeners('data'); if (gz.close) { gz.close(); } } catch (e) {} };
+                    }
+                }
+                function feed(b) {
+                    if (gz) { if (gz.write(b) === false && resp.pause) { resp.pause(); gz.once('drain', function () { if (!done && resp.resume) { resp.resume(); } }); } }
+                    else { text(b); }
+                }
+                resp.on('data', function (chunk) {
+                    if (done) { return; }
+                    got += chunk.length;
+                    if (!decided) {
+                        head = head ? Buffer.concat([head, chunk]) : chunk;
+                        if (head.length < 2 && !told) { return; }
+                        decide(head);
+                        chunk = head; head = null;
+                    }
+                    feed(chunk);
+                    if (got > EPG_MAX) { end(null, true); }
+                });
+                resp.on('end', function () {
+                    if (done) { return; }
+                    if (!decided && head) { decide(head); feed(head); head = null; }
+                    if (gz) { gz.end(); } else { try { onText(dec.end()); } catch (e) {} end(null); }
+                });
+                resp.on('error', function (e) { end(e); });
+            });
+            r.on('error', function (e) { end(upError('couldn\'t reach it (' + (e.code || e.message) + ')', 502)); });
+            guardSelf(r, function () { end(upError('a link it can\'t follow', 400)); });
+        } catch (e) { end(e); }
+    }
+    get(url);
+}
+function epgFile(url) { var d = tokenDir(); return d ? d + '/epg-' + epgHash(url).toString(36) + '.json' : null; }
+// A saved guide is read only up to EPG_FILE_MAX (a bigger one is deleted); one saved more than
+// EPG_KEEP_MS ago, of any guide, is deleted (looked at once, as the first guide is asked for).
+var EPG_FILE_MAX = 32 * 1048576, EPG_KEEP_MS = 2 * 86400000, _epgSwept = false;
+function epgSweep() {
+    if (_epgSwept) { return; }
+    _epgSwept = true;
+    var d = tokenDir(), fs = require('fs');
+    if (!d) { return; }
+    fs.readdir(d, function (err, names) {
+        (err ? [] : names).filter(function (n) { return /^epg-[0-9a-z]+\.json(\.part)?$/.test(n); }).forEach(function (n) {
+            fs.stat(d + '/' + n, function (e, st) { if (!e && st && Date.now() - st.mtime.getTime() > EPG_KEEP_MS) { fs.unlink(d + '/' + n, function () {}); } });
+        });
+    });
+}
+function epgSaved(url) {
+    var f = epgFile(url), fs = require('fs');
+    if (!f) { return null; }
+    try {
+        var st = fs.statSync(f);
+        if (st.size > EPG_FILE_MAX) { fs.unlink(f, function () {}); return null; }
+        var g = JSON.parse(String(fs.readFileSync(f, 'utf8')));
+        if (!g || g.url !== url || typeof g.k !== 'string' || !g.keys || !g.progs) { return null; }
+        g.state = 'ready';
+        return g;
+    } catch (e) { return null; }
+}
+function epgView(g) { return { state: g.state, at: g.at || 0, channels: g.channels || 0, programmes: g.programmes || 0, partial: !!g.partial, error: g.error || '' }; }
+function epgStart(url, k, force) {
+    epgSweep();
+    var g = _epg[url], now = Date.now();
+    if (!g || g.k !== k) {   // (not read here yet, or for other channels: the saved copy, if it's for these)
+        var saved = epgSaved(url);
+        if (saved && saved.k === k) { g = _epg[url] = saved; }
+    }
+    if (g && g.k === k && !force) {
+        if (g.state === 'loading') { return g; }
+        if (g.state === 'ready' && now - g.at < EPG_FRESH_MS) { return g; }
+        if (g.failedAt && now - g.failedAt < EPG_RETRY_MS) { return g; }   // (failed lately: not again yet)
+    }
+    var next = { url: url, k: k, state: 'loading', at: g ? g.at : 0, keys: g && g.keys, progs: g && g.progs, icons: g && g.icons, channels: g && g.channels, programmes: g && g.programmes };
+    _epg[url] = next;
+    var urls = Object.keys(_epg);
+    if (urls.length > EPG_GUIDES) {   // (the oldest others dropped, their saved files too: the one just asked for stays)
+        urls.filter(function (u) { return u !== url; }).sort(function (a, b) { return (_epg[a].at || 0) - (_epg[b].at || 0); }).slice(0, urls.length - EPG_GUIDES).forEach(function (u) {
+            delete _epg[u];
+            var f = epgFile(u);
+            if (f) { require('fs').unlink(f, function () {}); }
+        });
+    }
+    _epgQueue.push(next);
+    epgPump();
+    return next;
+}
+function epgPump() {
+    if (_epgBusy || !_epgQueue.length) { return; }
+    var g = _epgQueue.shift();
+    if (_epg[g.url] !== g) { epgPump(); return; }   // (replaced meanwhile)
+    _epgBusy = true;
+    var p = epgParser(epgBits(g.k), Math.floor(Date.now() / 1000));
+    epgFetch(g.url, p.feed, function (err, partial) {
+        _epgBusy = false;
+        try {
+            p.finish();
+            var kept = Object.keys(p.channels).length;
+            if (err || (!p.isGuide && !kept)) {
+                g.state = g.keys ? 'ready' : 'failed';   // (the last one read still answers)
+                g.error = err ? (err.message || 'failed') : 'not a TV guide (XMLTV)';
+                g.failedAt = Date.now();
+                if (!g.keys) { g.at = g.failedAt; }
+                log('TV guide not read: ' + g.error);
+            } else if (_epg[g.url] === g) {   // (still wanted: not cleared, nor dropped, meanwhile)
+                g.keys = p.keys; g.progs = p.progs; g.icons = p.icons; g.channels = kept; g.programmes = p.count;
+                g.partial = partial || p.partial; g.error = ''; g.state = 'ready'; g.at = Date.now();
+                var f = epgFile(g.url);
+                if (f) {
+                    var keep = { url: g.url, k: g.k, at: g.at, keys: g.keys, progs: g.progs, icons: g.icons, channels: g.channels, programmes: g.programmes, partial: g.partial };
+                    require('fs').writeFile(f + '.part', JSON.stringify(keep), { mode: 384 }, function (e) {   // (written whole, then swapped in)
+                        if (e) { log('TV guide not saved (' + (e.code || e.message) + ')'); return; }
+                        require('fs').rename(f + '.part', f, function (e2) { if (e2) { log('TV guide not saved (' + (e2.code || e2.message) + ')'); } });
+                    });
+                }
+            }
+        } catch (e) { g.state = 'failed'; g.error = 'failed'; g.at = Date.now(); }
+        epgPump();
+    });
+}
+// The guide ticket: for an app that can't read the service's token (its header instead), asked
+// for once (/epg/ticket, a GET with the header: what that app reaches everything with; a web page,
+// which sends an Origin, can't), then given with its guide POSTs. Made anew each time the service starts.
+var _epgTicket = crypto.randomBytes(24).toString('hex');
+function hasTicket(query) {
+    var m = /(?:^|&)ticket=([0-9a-f]{48})(?:&|$)/.exec(query || '');
+    return !!(m && sameToken(m[1], _epgTicket));
+}
+// Settings › Storage: the saved guides (/epg/files: how many, their size), and Clear saved
+// copies (/epg/clear, a POST: every saved guide deleted, and those kept here let go).
+function epgSavedFiles() {
+    var d = tokenDir(), fs = require('fs'), out = { count: 0, bytes: 0 };
+    if (!d) { return out; }
+    try {
+        fs.readdirSync(d).filter(function (n) { return /^epg-[0-9a-z]+\.json(\.part)?$/.test(n); }).forEach(function (n) {
+            try { var st = fs.statSync(d + '/' + n); out.count++; out.bytes += st.size; out.names = (out.names || []).concat(n); } catch (e) {}
+        });
+    } catch (e) {}
+    return out;
+}
+function epgClear() {
+    var d = tokenDir(), files = epgSavedFiles();
+    (files.names || []).forEach(function (n) { try { require('fs').unlinkSync(d + '/' + n); } catch (e) {} });
+    _epg = Object.create(null); _epgQueue = [];   // (one being read: not saved, see epgPump)
+    return files.count;
+}
+function epgControl(req, res, path, query) {
+    if (!entryAllowed(req, query) && !(req.method === 'POST' && hasTicket(query))) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }   // (the guide ticket: its POSTs, see hasTicket)
+    if (path === '/epg/ticket') {
+        if (req.method !== 'GET' || (req.headers && req.headers.origin !== undefined)) { send(res, 403, 'text/plain', 'not allowed'); return; }
+        send(res, 200, 'application/json', JSON.stringify({ ticket: _epgTicket }));
+        return;
+    }
+    if (path === '/epg/files') { var sf = epgSavedFiles(); send(res, 200, 'application/json', JSON.stringify({ count: sf.count, bytes: sf.bytes })); return; }
+    if (path === '/epg/clear') {
+        if (req.method !== 'POST') { send(res, 405, 'text/plain', 'POST only'); return; }
+        send(res, 200, 'application/json', JSON.stringify({ cleared: epgClear() }));
+        return;
+    }
+    var q = {};
+    String(query || '').split('&').forEach(function (kv) { var i = kv.indexOf('='); if (i > 0) { try { q[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); } catch (e) {} } });
+    var u = String(q.u || '').trim();
+    if (!/^https?:\/\/[^\s]+$/i.test(u) || u.length > 2000) { send(res, 400, 'text/plain', 'bad guide link'); return; }
+    if (path === '/epg/load') {
+        if (!/^[A-Za-z0-9_-]{4,24000}$/.test(q.k || '')) { send(res, 400, 'text/plain', 'bad channels'); return; }
+        send(res, 200, 'application/json', JSON.stringify(epgView(epgStart(u, q.k, q.force === '1'))));
+        return;
+    }
+    if (path === '/epg/get') {
+        // Each key asked: its programs; [] for a channel in the guide with none then; nothing for one
+        // not in it; _cut: those not looked at (past EPG_GET_BYTES); _unread: no guide here to ask.
+        var g = _epg[u], now = Math.floor(Date.now() / 1000), out = Object.create(null);
+        var from = +q.from || now - EPG_BEFORE, to = +q.to || now + EPG_AFTER, max = Math.min(EPG_PER, Math.max(1, +q.max || EPG_PER));
+        if (!(g && g.keys)) { out._unread = true; }
+        else {
+            var icons = {}, bytes = 0;   // (an answer kept to EPG_GET_BYTES: past it, said to be partial)
+            String(q.ids || '').split('|').slice(0, 300).forEach(function (key) {
+                var own = Object.prototype.hasOwnProperty;   // (a saved guide's tables have a prototype: own entries only, of the right kind)
+                var id = key && own.call(g.keys, key) && typeof g.keys[key] === 'string' ? g.keys[key] : null;
+                var l = id && own.call(g.progs, id) && Array.isArray(g.progs[id]) ? g.progs[id] : null;
+                if (id && g.icons && own.call(g.icons, id) && typeof g.icons[id] === 'string') { icons[key] = g.icons[id]; }
+                if (!id) { return; }
+                if (out._partial) { (out._cut = out._cut || []).push(key); return; }
+                var sel = [];
+                for (var i = 0; l && i < l.length && sel.length < max; i++) {
+                    if (!(l[i][1] > from && l[i][0] < to)) { continue; }
+                    bytes += JSON.stringify(l[i]).length + 1;
+                    if (bytes > EPG_GET_BYTES) { out._partial = true; break; }
+                    sel.push(l[i]);
+                }
+                if (out._partial) { (out._cut = out._cut || []).push(key); return; }   // (this one too: looked at in part)
+                out[key] = sel;
+            });
+            if (Object.keys(icons).length) { out._icons = icons; }
+        }
+        send(res, 200, 'application/json', JSON.stringify(out));
+        return;
+    }
+    send(res, 404, 'text/plain', 'not found');
+}
+
 // ---- Entering text from the phone ----
 // While the TV shows its QR code, a one-time page on the home network (ENTRY_PORT, on the
 // TV's home-network address only): one field, one entry, behind a random code in its address.
@@ -2242,7 +3059,7 @@ var ENTRY_OPEN_MAX = 2, ENTRY_OPENS = 12, ENTRY_CONNECTIONS = 8, ENTRY_VISIT_MS 
 var ENTRY_TITLES = { link: 'Play a link on StremioK', addon: 'Add an addon to StremioK', playlist: 'Add an IPTV playlist to StremioK', config: 'Import a configuration file into StremioK',
     search: 'Search on StremioK', youtube: 'Add a YouTube catalog to StremioK', aiom: 'Your AIOManager address for StremioK', aiomkey: 'Your AIOManager API key for StremioK' };
 var ENTRY_TEXT = { search: 'Words to search for', youtube: 'A channel, a playlist link, or words to search YouTube for', aiomkey: 'Your account API key' };   // (plain text, not a link)
-var _entries = {}, _entryServer = null, _entrySockets = [], _entryOpened = [];
+var _entries = Object.create(null), _entryServer = null, _entrySockets = [], _entryOpened = [];
 function lanAddress() {
     try {
         var nets = require('os').networkInterfaces(), names = Object.keys(nets), i, j;

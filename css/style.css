@@ -513,3 +513,30 @@ html, body {
 .src-s { background: #7b5bf5; }
 .src-a { background: #0f9f8f; }
 .src-c { background: #6b7280; }
+/* an IPTV channel card: what's on now (its TV guide), and how far along it is, along its top (its name is at the bottom) */
+.card-epg { position: absolute; left: 0; right: 0; top: 0; padding: 5px 8px 4px; background: rgba(10, 12, 18, 0.82); }
+.card-epg-t { font-size: 15px; color: #e6e9ef; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-epg-bar { height: 3px; margin-top: 3px; background: rgba(255, 255, 255, 0.18); border-radius: 2px; overflow: hidden; }
+.card-epg-fill { display: block; height: 100%; background: #818cf8; }
+/* the Guide tab (js/view-guide.js): the hours along the top, then a row a channel; programs
+   placed by their time (left / width in %), what's on now lighter, a line at the time now */
+.guide { padding: 0 60px 20px 60px; }   /* (the same sides as Home's rows: .row-title, .row-scroller) */
+.guide-head { display: flex; height: 34px; }
+.guide-corner { width: 230px; flex: none; font-size: 17px; color: #8b93a5; line-height: 34px; }
+.guide-hours { position: relative; flex: 1; }
+.guide-time { position: absolute; top: 0; font-size: 17px; color: #aeb6c4; line-height: 34px; padding-left: 6px; border-left: 2px solid #2a3346; }
+.guide-row { display: flex; height: 62px; margin-bottom: 6px; }
+.guide-ch { width: 230px; flex: none; padding: 0 12px; font-size: 19px; font-weight: bold; line-height: 62px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #121722; border-radius: 8px 0 0 8px; }
+.guide-track { position: relative; flex: 1; overflow: hidden; background: #0e1219; }
+.guide-prog { position: absolute; top: 0; bottom: 0; padding: 0 10px; font-size: 18px; line-height: 56px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #161b26; border: 3px solid #0e1117; border-radius: 6px; color: #c7cbd4; }
+.guide-prog.now { background: #222b3d; color: #fff; }
+.guide-prog.guide-wait { color: #8b93a5; font-style: italic; }   /* (a row whose programs are still being read) */
+.guide-prog.focusable.focused { background: #818cf8; color: #0e1117; border-color: #fff; }
+.guide-nowline { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #f87171; }
+.guide-ch-logo { height: 34px; max-width: 56px; margin-right: 10px; vertical-align: middle; object-fit: contain; }
+/* a program's picture (the TV guide), at the strip's right; its text kept clear of it */
+.home-info-pic { position: absolute; right: 16px; top: 50%; height: 118px; width: 210px; margin-top: -59px; object-fit: cover; border-radius: 8px; }
+.home-info.has-pic { padding-right: 240px; }
+.home-info-pic.hidden { display: none; }
+#osd-clock { position: fixed; top: 40px; right: 60px; font-size: 34px; font-weight: bold; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,0.9); }   /* (the time of day, top right, while the bar shows) */
+#osd-clock:empty { display: none; }
