@@ -2039,7 +2039,7 @@
         if (_d) { _d.direct = false; _d.directList = false; _d.directFailed = false; }   // (only this once: played again from the list, back to the list)
         var onExit = function (how) {
             // (after CH+/CH−, back on the card of the channel you ended on)
-            if (exitToBack) { App.returnFromLive(_d.channels ? _d.channels.list[_d.channels.idx].card : null); return; }
+            if (exitToBack) { var ch = _d.channels ? _d.channels.list[_d.channels.idx] : null; App.returnFromLive(ch ? ch.card : null, ch ? ch.meta.id : null); return; }
             // played straight away (a single YouTube video): back where it was opened from
             if (direct && !page.directFailed && _d === page) { App.back(); return; }   // (Home redrawn if Continue Watching changed)
             // a channel's video played straight away: back on the channel's videos, on it

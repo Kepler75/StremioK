@@ -73,14 +73,17 @@ var App = (function () {
     // Close a live player directly back to the screen/card that launched it. The
     // originating screen stays mounted while the player is open, so restoring its
     // saved focus node also preserves the grid's horizontal and vertical scroll.
-    // focusNode: the card to land on instead (the channel you switched to with CH+/CH−).
-    function returnFromLive(focusNode) {
+    // focusNode: the card to land on instead (the channel you switched to with CH+/CH−); liveId:
+    // that channel, for the Guide tab, which lands on it at the time now (Views.guideBackOn: its
+    // cells from when it was played may be gone, or show hours long past).
+    function returnFromLive(focusNode, liveId) {
         var f = _stack.pop();
         if (!f) { goHome(); return; }
         if (f.screen !== _current) { abandon(_current); }
         showScreen(f.screen);
+        var guide = liveId && f.screen === 'home' && Views.guideBackOn ? Views.guideBackOn(liveId) : null;
         var alt = focusNode && document.documentElement.contains(focusNode) ? focusNode : null;
-        Focus.setScope(screenEl(f.screen), alt || f.focus);
+        Focus.setScope(screenEl(f.screen), guide || alt || f.focus);
     }
 
     // After a screen is drawn, focus must be on it. A drawing path that doesn't put it there

@@ -7,10 +7,13 @@
    an edge, never back before the current half hour for one still on), ↑ / ↓ the channel above /
    below, at the same time. Home's details strip describes the focused program; OK on what's on
    now plays the channel, on another says what it is. A guide-only channel's (tvg-type="guide":
-   watched elsewhere) any program: the film looked up in your addons (findInAddons). */
+   watched elsewhere) any program: the film looked up in your addons (findInAddons). Hold OK on
+   a program: Watch now, the channel's favorites, Find in your addons (hold). */
 (function (V) {
     'use strict';
     function scr() { return V.scr.apply(null, arguments); }   // core
+    function pickList() { return V.pickList.apply(null, arguments); }   // core
+    function refreshAddonRows() { return V.refreshAddonRows.apply(null, arguments); }   // home
 
     var SPAN = 150 * 60, STEP = 30 * 60, ROWS = 10, AHEAD = 10;
     var _g = null;   // the grid on screen: { el, start, chans, lists: { id: programs }, asked: { id: 1 }, top, nodes: [row: cells], box }
@@ -165,6 +168,7 @@
                 wait.__t = want && want.id === c.id && typeof want.t === 'number' ? want.t : Math.max(now, g.start);
                 wait.__meta = { name: c.name, releaseInfo: 'Reading its TV guide…' };
                 hooks(wait, -1);
+                wait.__onlongpress = function () { hold(g, r, null); };
                 track.appendChild(wait);
                 nodes.push(wait);
                 if (want && want.id === c.id) { found = wait; }
@@ -177,6 +181,7 @@
                     n.__meta = { name: p.title, releaseInfo: c.name + '   ·   ' + EPG.dayTime(p.start) + '–' + EPG.hhmm(p.stop) + (c.guideOnly ? '   ·   OK: find it in your addons' : ''), description: p.desc, picture: p.picture };
                     n.__p = p; n.__i = i;
                     n.__onselect = function () { pick(g, r, p); };
+                    n.__onlongpress = function () { hold(g, r, p); };
                     hooks(n, i);
                     track.appendChild(n);
                     nodes.push(n);
@@ -301,6 +306,23 @@
             (p.stop <= now ? '   (already shown)' : ''), 8000);
     }
 
+    // Hold OK on a program: ▶ Watch now (what's on now, a channel that plays), ★ Add to / Remove
+    // from favorites (its channel), Find in your addons (that program, as a guide-only channel's
+    // OK). p: null for a channel whose guide hasn't come (its favorites only).
+    function hold(g, r, p) {
+        var c = g.chans[r], now = Date.now() / 1000, fav = IPTV.isFavorite(c.id), items = [];
+        if (p && !c.guideOnly && p.start <= now && now < p.stop) { items.push(['play', '▶  Watch now']); }
+        items.push(['fav', fav ? '★  Remove from favorites' : '★  Add to favorites']);
+        if (p && p.title) { items.push(['find', '🔍  Find in your addons']); }
+        pickList(c.name + (p && p.title ? '  ·  ' + p.title : ''), items, items[0][0], function (v) {
+            if (v === 'play') { pick(g, r, p); return; }
+            if (v === 'find') { findInAddons(p); return; }
+            IPTV.setFavorite(c.id, !fav);
+            U.toast(fav ? 'Removed from favorites' : 'Added to favorites: ★ Favorites, first on the IPTV and Guide tabs', 3000);
+            refreshAddonRows('local:iptv');
+        });
+    }
+
     // A guide-only channel's program: a film found by the guide's original title and year (else
     // its title) opens its page with your addons' sources, as Discover does; a show, or a film
     // without one sure match, opens Search with its name.
@@ -328,5 +350,22 @@
         Stremio.findFilm({ title: p.title, orig: p.orig, year: p.year }, cancel).then(done, function () { done(null); });
     }
 
-    V.guideGrid = guideGrid;
+    // Back on the Guide from a channel played from it (BACK, or its stream gave up), after CH+ /
+    // CH−: the hours at the present again, the row of the channel ended on in view (read if it
+    // wasn't), and what's on now on it. Returns that cell; null when the Guide isn't on screen or
+    // the channel isn't on it.
+    function guideBackOn(id) {
+        var g = _g, r = -1;
+        if (!id || !g || !g.box || !document.documentElement.contains(g.box)) { return null; }
+        for (var i = 0; i < g.chans.length; i++) { if (g.chans[i].id === id) { r = i; break; } }
+        if (r < 0) { return null; }
+        var now = Date.now() / 1000;
+        g.start = floorStep(now); g.live = true;
+        if (r < g.top) { g.top = r; } else if (r >= g.top + ROWS) { g.top = r - ROWS + 1; }
+        var n = draw(g, { id: id, t: now });
+        ensure(g).then(function (got) { if (got) { refresh(g); } });   // (its programs, when they weren't read: then onto what's on)
+        return n;
+    }
+
+    V.guideGrid = guideGrid; V.guideBackOn = guideBackOn;
 })(ViewParts);

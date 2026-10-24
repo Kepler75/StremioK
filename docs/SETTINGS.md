@@ -121,7 +121,13 @@ lines starting with `#` are ignored. What it has is listed to tick and import. S
 | *Default language* | **Off**, a language | Turns a subtitle on by itself. |
 | *Second choice* | **None**, a language | Used when nothing is in the default language (not when the default is Off). |
 | *Second subtitle (at the top)* | **Off**, a language | A second language at the top of the screen at the same time. |
+| *Only my languages* | **Off**, On | The subtitle menu lists only the three languages above, and tracks that don't say their language. |
 | *Skip lines with* | **none**, your words, separated by commas | A line with one of them (or a bit of one, capitals or not) isn't shown. |
+
+**Appearance** (a page of its own, from Subtitles):
+
+| Setting | Choices | What it does |
+|---------|---------|--------------|
 | *Size* | Small, **Medium**, Large, Extra Large | |
 | *Color* | **White**, Yellow, Cyan, Green | |
 | *Background* | None, **See-through box**, Solid box | |
@@ -146,18 +152,31 @@ lines starting with `#` are ignored. What it has is listed to tick and import. S
 
 ### Source ranking
 
-Everything that decides which source plays, on one page.
+Everything that decides which source plays: the order on this page, with two pages of their own
+for what's left out and what *▶ Play* does. Their rows sum up what's set.
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Played before first* | **On**, Off | Sources that played for this title (or, for a series, like its recent episodes') come first. Off, they rank like any other. |
-| *Sources the TV can't play* | **Shown**, Hidden | Shown: dimmed at the bottom. Hidden: torrents and links it can't open are left out (a line says how many); where-to-watch apps stay. |
-| *Hide sources with these words* | **none**, your words, separated by commas | Sources with one in their name, description or file name (whole words, capitals or not: CAM, HDTS, a language) move to the bottom and are never picked on their own. |
-| *Movies' sizes* / *Series' sizes (an episode)* | *Smallest* (100 MB to 2 GB), *Largest* (2 GB to 80 GB), *Most per hour* (1 GB to 10 GB an hour); **no limits** | Sources outside a limit move to the bottom and are never picked on their own (see [Size limits](#size-limits)). |
-| *Skip the source list* | **Off**, On | On, *▶ Play* on a movie, OK on an episode and *▶ Play SxEx* play the top source as soon as the addons have answered, without showing the list (with nothing playable, it shows as usual). |
-| *The next source if one doesn't start* | **On**, Off | A source the TV refuses, or that hasn't started after 45 seconds, gives way to the next, up to 3 more. Off: back to the list at once. Not for live channels, YouTube videos or USB files. |
+| *Filters ›* | a page (below) | What's left out, or sent to the bottom. |
+| *When you press Play ›* | a page (below) | Whether the list shows, and what happens when a source doesn't start. |
 | The criteria, in order | ▲ / ▼ to move, OK to turn on or off | What orders the sources (see [The criteria](#the-criteria)). *Restore defaults* puts them back. |
 | *Addons* (Feed sources) | ▲ / ▼, OK to turn off | The addons that give sources: their order (also the order they're asked in; a file two offer is listed under the higher one). One turned off isn't asked. |
+
+**Filters:**
+
+| Setting | Choices | What it does |
+|---------|---------|--------------|
+| *Sources the TV can't play* | **Shown**, Hidden | Shown: dimmed at the bottom. Hidden: torrents and links it can't open are left out (a line says how many); where-to-watch apps stay. |
+| *Movies' sizes* / *Series' sizes (an episode)* | *Smallest* (100 MB to 2 GB), *Largest* (2 GB to 80 GB), *Most per hour* (1 GB to 10 GB an hour); **no limits** | Sources outside a limit move to the bottom and are never picked on their own (see [Size limits](#size-limits)). |
+| *Hide sources with these words* | **none**, your words, separated by commas | Sources with one in their name, description or file name (whole words, capitals or not: CAM, HDTS, a language) move to the bottom and are never picked on their own. |
+
+**When you press Play:**
+
+| Setting | Choices | What it does |
+|---------|---------|--------------|
+| *Skip the source list* | **Off**, On | On, *▶ Play* on a movie, OK on an episode and *▶ Play SxEx* play the top source as soon as the addons have answered, without showing the list (with nothing playable, it shows as usual). |
+| *The next source if one doesn't start* | **On**, Off | A source the TV refuses, or that hasn't started after 45 seconds, gives way to the next, up to 3 more. Off: back to the list at once. Not for live channels, YouTube videos or USB files. |
 
 #### Size limits
 

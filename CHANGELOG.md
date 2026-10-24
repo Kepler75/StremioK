@@ -3,6 +3,21 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.2.1 — 2026-10-24
+- **Every language OpenSubtitles uses** (94, Indonesian among them, #1) for subtitles and audio:
+  to pick as your default, second choice or second subtitle, listed by name, and each track
+  shown by its language's name ("Pan" is Punjabi).
+- **Only my languages** (Settings › Playback › Subtitles, *Off* by default): the subtitle menu
+  lists just your languages, and tracks that don't say theirs; *Other languages* at its end has
+  the rest.
+- **Shorter settings pages:** the subtitles' size, color, background, edge, position and font are
+  on a page of their own (*Appearance*); Source ranking keeps *Played before first* above its
+  order, with *Filters* and *When you press Play* as pages of their own.
+- **Hold OK on a program in the Guide tab:** *▶ Watch now*, *★ Add to / Remove from favorites*
+  for its channel, and *Find in your addons* for that program.
+- **Fixed:** back on the Guide tab after CH+ / CH− lands on the channel you ended on, at the time
+  now, instead of the first channel played.
+
 ## 2.2.0 — 2026-10-23
 - **A TV guide for your IPTV channels:** what's on now and next on each channel's card, in
   Home's details strip and while a channel plays, and its schedule when you hold OK on it. From

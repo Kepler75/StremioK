@@ -7,7 +7,7 @@ var Views = (function (V) {
     return {
         renderHome: V.renderHome, renderDetail: V.renderDetail, applyAppearance: V.applyAppearance,
         renderPerson: V.renderPerson, detailSnapshot: V.detailSnapshot, restoreDetail: V.restoreDetail, lightSnapshot: V.lightSnapshot, renderSettings: V.renderSettings,
-        settingsRoot: V.settingsRoot, backInSettings: V.backInSettings,
+        settingsRoot: V.settingsRoot, backInSettings: V.backInSettings, guideBackOn: V.guideBackOn,
         // a screen left: its downloads still running (a title page's details, Discover's
         // pages, a search's rows) stopped
         leaveScreen: function (name) { var f = { detail: V.leaveDetail, discover: V.leaveDiscover, search: V.leaveSearch }[name]; if (f) { f(); } }, backInLocal: V.backInLocal, setHomeTab: V.setHomeTab,

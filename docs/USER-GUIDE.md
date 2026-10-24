@@ -396,9 +396,9 @@ addons is shown once ("also on …").
   source (2 of 4)…") at the same place, up to 3 more; when none starts, you're back on the
   list. When a debrid service sends a notice instead of the video, StremioK says what it means
   (see [Troubleshooting](TROUBLESHOOTING.md#a-source-doesnt-start)).
-- **Skip the source list** (Settings › Playback › Source ranking) plays the top source as soon
-  as the addons have answered. The list is still a press away: hold OK on an episode ›
-  *Details*, or *Select source* while it plays.
+- **Skip the source list** (Settings › Playback › Source ranking › *When you press Play*) plays
+  the top source as soon as the addons have answered. The list is still a press away: hold OK
+  on an episode › *Details*, or *Select source* while it plays.
 - The list is ranked again when you come back to it: a source that just played moves to
   *Played before*, one that just failed drops, and changed settings apply.
 
@@ -539,7 +539,9 @@ Atmos · 5.1 · MKV`).
 - Your **default language** (Settings › Playback › Subtitles) turns one on by itself, from
   wherever it is. When nothing is in it, your **second choice** is looked for the same way.
 - **Green** (or *Subtitles* in the DOWN menu) picks a language, then a track. Your choice for a
-  title, its timing included, is remembered (the last 50 titles).
+  title, its timing included, is remembered (the last 50 titles). With *Only my languages* on
+  (Settings › Playback › Subtitles), it lists just yours; *Other languages* at the end has the
+  rest.
 - **A second subtitle** (Settings › Playback › Subtitles; *Off* by default): a second language at
   the top of the screen (English below, Spanish above, say), with the same style and timing. Green › *Second subtitle* changes it while something plays.
 - **Skip lines with** (Settings › Playback › Subtitles): lines with one of your words aren't
@@ -557,7 +559,7 @@ Atmos · 5.1 · MKV`).
 
 ### Look
 
-Size, color, background, edge, position and font are in Settings › Playback › Subtitles (keys
+Size, color, background, edge, position and font are in Settings › Playback › Subtitles › *Appearance* (keys
 4–9 change position and size while playing). While the progress bar is on screen, the line
 moves up above it.
 
@@ -628,7 +630,11 @@ counts, when it was last downloaded, and what went wrong (a failed refresh keeps
   hours from the current half hour, with a line at the time now. ← / → go from program to
   program (the hours move along past the edge), ↑ / ↓ to the channel above or below at the same
   time. The details strip describes the focused program; OK on what's on now plays the channel
-  (CH+ / CH− then go through the Guide's channels), on a later one shows its description.
+  (CH+ / CH− then go through the Guide's channels), on a later one shows its description. BACK,
+  or a channel that stops, lands on the channel you ended on, at the time now.
+- **Hold OK on a program** in the Guide tab: *▶ Watch now* (what's on now), *★ Add to / Remove
+  from favorites* (its channel), and *Find in your addons*: a film opens its page with your
+  sources, anything else Search.
 
 ## YouTube
 

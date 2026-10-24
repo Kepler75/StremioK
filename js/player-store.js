@@ -85,7 +85,8 @@
             edge: pick3(SUB_EDGES, d.edge)[0], pos: pick3(SUB_POSITIONS, d.pos || 'bottom')[0],   // (Bottom unless chosen: Lower comes first in the list)
             font: subFontFamily(d.font) ? d.font : 'default',   // an unknown font -> TV default
             skip: skipWords(d.skip),   // lines with one of these aren't shown (none by default: see player-subs' skipLines)
-            second: typeof d.second === 'string' && /^[a-z]{2,3}$/.test(d.second) ? d.second : 'off' };   // a second subtitle at the top (player-subs; Off by default)
+            second: typeof d.second === 'string' && /^[a-z]{2,3}$/.test(d.second) ? d.second : 'off',   // a second subtitle at the top (player-subs; Off by default)
+            only: d.only === 'on' ? 'on' : 'off' };   // the subtitle menu: only your languages (player-subs' langMenu; Off by default)
     }
     // Settings › Subtitles › Skip lines with: words (or bits, ".srt"), capitals or not; at most 20.
     function skipWords(x) {

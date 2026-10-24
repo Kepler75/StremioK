@@ -98,11 +98,35 @@
     }
 
     // ================= SUBTITLE CONFIG =================
-    var SUB_LANGS = [['off', 'Off'], ['eng', 'English'], ['spa', 'Spanish'], ['fre', 'French'],
-        ['ger', 'German'], ['ita', 'Italian'], ['por', 'Portuguese'], ['dut', 'Dutch'],
-        ['rus', 'Russian'], ['ara', 'Arabic'], ['tur', 'Turkish'], ['pol', 'Polish']];
+    // Every language player-lang recognizes on a track (its LANG_ALIASES), by name.
+    var SUB_LANGS = [['off', 'Off'], ['afr', 'Afrikaans'], ['alb', 'Albanian'], ['ara', 'Arabic'],
+        ['arg', 'Aragonese'], ['arm', 'Armenian'], ['ast', 'Asturian'], ['aze', 'Azerbaijani'],
+        ['baq', 'Basque'], ['bel', 'Belarusian'], ['ben', 'Bengali'], ['bos', 'Bosnian'],
+        ['bre', 'Breton'], ['bul', 'Bulgarian'], ['bur', 'Burmese'], ['cat', 'Catalan'],
+        ['chi', 'Chinese'], ['hrv', 'Croatian'], ['cze', 'Czech'], ['dan', 'Danish'], ['prs', 'Dari'],
+        ['dut', 'Dutch'], ['eng', 'English'], ['epo', 'Esperanto'], ['est', 'Estonian'],
+        ['ext', 'Extremaduran'], ['fil', 'Filipino'], ['fin', 'Finnish'], ['fre', 'French'],
+        ['glg', 'Galician'], ['geo', 'Georgian'], ['ger', 'German'], ['gre', 'Greek'],
+        ['heb', 'Hebrew'], ['hin', 'Hindi'], ['hun', 'Hungarian'], ['ice', 'Icelandic'],
+        ['ibo', 'Igbo'], ['ind', 'Indonesian'], ['ina', 'Interlingua'], ['gle', 'Irish'],
+        ['ita', 'Italian'], ['jpn', 'Japanese'], ['kan', 'Kannada'], ['kaz', 'Kazakh'],
+        ['khm', 'Khmer'], ['kor', 'Korean'], ['kur', 'Kurdish'], ['lav', 'Latvian'],
+        ['lit', 'Lithuanian'], ['ltz', 'Luxembourgish'], ['mac', 'Macedonian'], ['may', 'Malay'],
+        ['mal', 'Malayalam'], ['mni', 'Manipuri'], ['mar', 'Marathi'], ['mon', 'Mongolian'],
+        ['mne', 'Montenegrin'], ['nav', 'Navajo'], ['nep', 'Nepali'], ['sme', 'Northern Sami'],
+        ['nor', 'Norwegian'], ['oci', 'Occitan'], ['ori', 'Odia'], ['pus', 'Pashto'],
+        ['per', 'Persian'], ['pol', 'Polish'], ['por', 'Portuguese'], ['pan', 'Punjabi'],
+        ['rum', 'Romanian'], ['rus', 'Russian'], ['sat', 'Santali'], ['gla', 'Scottish Gaelic'],
+        ['srp', 'Serbian'], ['snd', 'Sindhi'], ['sin', 'Sinhala'], ['slo', 'Slovak'],
+        ['slv', 'Slovenian'], ['som', 'Somali'], ['spa', 'Spanish'], ['swa', 'Swahili'],
+        ['swe', 'Swedish'], ['syr', 'Syriac'], ['tam', 'Tamil'], ['tat', 'Tatar'], ['tel', 'Telugu'],
+        ['tha', 'Thai'], ['tok', 'Toki Pona'], ['tur', 'Turkish'], ['tuk', 'Turkmen'],
+        ['ukr', 'Ukrainian'], ['urd', 'Urdu'], ['uzb', 'Uzbek'], ['vie', 'Vietnamese'],
+        ['wel', 'Welsh']];
     // A second choice, turned on when nothing is in the default language (from any source).
     var SUB_LANGS2 = [['none', 'None']].concat(SUB_LANGS.slice(1));
+    // The subtitle menu with only the three languages above (and tracks of no known language).
+    var SUB_ONLY = [['off', 'Off'], ['on', 'On']];
     var SUB_SIZES = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large'], ['xlarge', 'Extra Large']];
 
     function labelFor(list, v) {
@@ -338,7 +362,7 @@
     // BACK goes up one level, onto the row it came from: from a section to its group (on
     // that section, not the first one), from Home feeds / Search results to Appearance,
     // from a group to the Settings list (on that group).
-    var SECTION_PARENT = { menuorder: 'appearance', feeds: 'appearance', searchfeeds: 'appearance', aiomanager: 'addons' };
+    var SECTION_PARENT = { menuorder: 'appearance', feeds: 'appearance', searchfeeds: 'appearance', aiomanager: 'addons', subtitlelook: 'subtitles', rankfilters: 'ranking', rankplay: 'ranking' };
     Object.keys(SETTINGS_GROUPS).forEach(function (g) {
         SETTINGS_GROUPS[g].rows.forEach(function (row) { SECTION_PARENT[row[2]] = g; });
     });
@@ -365,12 +389,15 @@
         else if (_settingsSection === 'integrations') { settingsIntegrations(wrap); }
         else if (_settingsSection === 'audio') { settingsAudio(wrap); }
         else if (_settingsSection === 'subtitles') { settingsSubtitles(wrap); }
+        else if (_settingsSection === 'subtitlelook') { settingsSubtitleLook(wrap); }
         else if (_settingsSection === 'skipping') { settingsSkipping(wrap); }
         else if (_settingsSection === 'seeking') { settingsSeeking(wrap); }
         else if (_settingsSection === 'menuorder') { settingsFeeds(wrap, 'menu'); }
         else if (_settingsSection === 'feeds') { settingsFeeds(wrap, 'home'); }
         else if (_settingsSection === 'searchfeeds') { settingsFeeds(wrap, 'search'); }
         else if (_settingsSection === 'ranking') { settingsFeeds(wrap, 'ranking'); }
+        else if (_settingsSection === 'rankfilters') { settingsRankFilters(wrap); }
+        else if (_settingsSection === 'rankplay') { settingsRankPlay(wrap); }
         else if (SETTINGS_GROUPS[_settingsSection]) { settingsGroup(wrap, _settingsSection); }
         else if (_settingsSection === 'logs') { settingsLogs(wrap); }
         else if (_settingsSection === 'storage') { settingsStorage(wrap); }
@@ -1399,14 +1426,7 @@
         wrap.appendChild(subPickRow('Default language', SUB_LANGS, 'lang'));
         wrap.appendChild(subPickRow('Second choice', SUB_LANGS2, 'lang2'));
         wrap.appendChild(subPickRow('Second subtitle (at the top)', SUB_LANGS, 'second'));
-        wrap.appendChild(subPickRow('Size', SUB_SIZES, 'size'));
-        // [id, label] for the picker (colors with a swatch)
-        function plain(list) { return list.map(function (x) { return [x[0], x[1]]; }); }
-        wrap.appendChild(subPickRow('Color', Player.SUB_COLORS.map(function (x) { return [x[0], x[1], null, x[2]]; }), 'color'));
-        wrap.appendChild(subPickRow('Background', plain(Player.SUB_BGS), 'bg'));
-        wrap.appendChild(subPickRow('Edge', plain(Player.SUB_EDGES), 'edge'));
-        wrap.appendChild(subPickRow('Position', plain(Player.SUB_POSITIONS), 'pos'));
-        wrap.appendChild(subPickRow('Font', Player.SUB_FONTS, 'font'));
+        wrap.appendChild(subPickRow('Only my languages', SUB_ONLY, 'only'));
         // lines to leave out: those with one of your words (a subtitle site's ads, a file's name…)
         var skip = Player.getSubCfg().skip || [];
         var sk = U.el('div', 'addon-item focusable cfg-row');
@@ -1419,6 +1439,21 @@
                 onConfirm: function (v) { var c = Player.getSubCfg(); c.skip = ('' + v).split(','); Player.setSubCfg(c); App.back(); renderSettings(); } });
         };
         wrap.appendChild(sk);
+        var look = sectionRow('Appearance  ›', 'Size, color, background, edge, position, font', 'subtitlelook');   // (their own page: settingsSubtitleLook)
+        wrap.appendChild(look);
+        if (_focusChild === 'subtitlelook') { _focusChild = null; Focus.setScope(scr('settings'), look); } else { focusSettings(); }
+    }
+    // Subtitles › Appearance: how subtitles look.
+    function settingsSubtitleLook(wrap) {
+        wrap.appendChild(U.el('h2', null, 'Subtitle appearance'));
+        wrap.appendChild(subPickRow('Size', SUB_SIZES, 'size'));
+        // [id, label] for the picker (colors with a swatch)
+        function plain(list) { return list.map(function (x) { return [x[0], x[1]]; }); }
+        wrap.appendChild(subPickRow('Color', Player.SUB_COLORS.map(function (x) { return [x[0], x[1], null, x[2]]; }), 'color'));
+        wrap.appendChild(subPickRow('Background', plain(Player.SUB_BGS), 'bg'));
+        wrap.appendChild(subPickRow('Edge', plain(Player.SUB_EDGES), 'edge'));
+        wrap.appendChild(subPickRow('Position', plain(Player.SUB_POSITIONS), 'pos'));
+        wrap.appendChild(subPickRow('Font', Player.SUB_FONTS, 'font'));
         focusSettings();
     }
 
@@ -1928,7 +1963,7 @@
             list: function () { return Promise.resolve(Stremio.getRanking().criteria); }, keyOf: function (c) { return c.key; },
             move: function (k, d) { Stremio.moveRanking(k, d); return Promise.resolve(); }, toggle: function (k) { Stremio.toggleRanking(k); },
             hidden: function (k) { return !Stremio.getRanking().criteria.some(function (c) { return c.key === k && c.on; }); },
-            before: function (wrap) {   // played before, above the resolution groups
+            before: function (wrap) {   // played before, above the resolution groups; then the two pages
                 var played = Stremio.getRanking().played;
                 var r = U.el('div', 'addon-item focusable cfg-row feed-extra');
                 r.setAttribute('data-fk', 'played'); r.setAttribute('data-ctl', 'extra');
@@ -1937,48 +1972,9 @@
                     : 'Sources you played rank like any other') + '   ·   OK to turn ' + (played ? 'off' : 'on')));
                 r.__onselect = function () { Stremio.setPlayedFirst(!played); refeed('ranking', 'played', 'extra'); };
                 wrap.appendChild(r);
-                // direct links only: the sources the TV can't play left out of the list
-                var hideUn = Stremio.getPrefs().hideUnplayable;
-                var un = U.el('div', 'addon-item focusable cfg-row feed-extra');
-                un.setAttribute('data-fk', 'unplayable'); un.setAttribute('data-ctl', 'extra');
-                un.appendChild(U.el('div', 'a-name', 'Sources the TV can’t play:  ' + (hideUn ? 'Hidden' : 'Shown')));
-                un.appendChild(U.el('div', 'a-url', (hideUn ? 'Left out (torrents, links it can’t open): direct links only; where-to-watch apps stay'
-                    : 'Listed, dimmed, at the bottom (torrents, links it can’t open)') + '   ·   OK to ' + (hideUn ? 'show them' : 'hide them')));
-                un.__onselect = function () { Stremio.setPref('hideUnplayable', !hideUn); refeed('ranking', 'unplayable', 'extra'); };
-                wrap.appendChild(un);
-                // skip the source list: Play plays the top source at once
-                var skipList = Stremio.getPrefs().skipSourceList;
-                var sl = U.el('div', 'addon-item focusable cfg-row feed-extra');
-                sl.setAttribute('data-fk', 'skiplist'); sl.setAttribute('data-ctl', 'extra');
-                sl.appendChild(U.el('div', 'a-name', 'Skip the source list:  ' + (skipList ? 'On' : 'Off')));
-                sl.appendChild(U.el('div', 'a-url', (skipList ? '▶ Play, OK on an episode and ▶ Play SxEx play the top source at once (hold OK on an episode › Details for the list)'
-                    : '▶ Play and OK on an episode show the sources to pick from') + '   ·   OK to turn ' + (skipList ? 'off' : 'on')));
-                sl.__onselect = function () { Stremio.setPref('skipSourceList', !skipList); refeed('ranking', 'skiplist', 'extra'); };
-                wrap.appendChild(sl);
-                // a source that doesn't start: the next one
-                var nextOn = Stremio.getPrefs().nextOnFail;
-                var nx = U.el('div', 'addon-item focusable cfg-row feed-extra');
-                nx.setAttribute('data-fk', 'nextonfail'); nx.setAttribute('data-ctl', 'extra');
-                nx.appendChild(U.el('div', 'a-name', 'The next source if one doesn’t start:  ' + (nextOn ? 'On' : 'Off')));
-                nx.appendChild(U.el('div', 'a-url', (nextOn ? 'A source the TV refuses, or that hasn’t started after 45 s, gives way to the next best one (up to 3 more)'
-                    : 'A source that doesn’t start takes you back to the list') + '   ·   OK to turn ' + (nextOn ? 'off' : 'on')));
-                nx.__onselect = function () { Stremio.setPref('nextOnFail', !nextOn); refeed('ranking', 'nextonfail', 'extra'); };
-                wrap.appendChild(nx);
-                // size limits: movies and series apart
-                [['movie', 'Movies’ sizes'], ['series', 'Series’ sizes (an episode)']].forEach(function (k) { wrap.appendChild(sizeRow(k[0], k[1])); });
-                // your words: sources with one of them at the bottom, for every title
-                var words = Stremio.getPrefs().hideWords;
-                var w = U.el('div', 'addon-item focusable cfg-row feed-extra');
-                w.setAttribute('data-fk', 'words'); w.setAttribute('data-ctl', 'extra');
-                w.appendChild(U.el('div', 'a-name', 'Hide sources with these words:  ' + (words.length ? words.join(', ') : 'None')));
-                w.appendChild(U.el('div', 'a-url', 'A source with one of them in its name, description or file name (a whole word: “CAM” isn’t in “CAMERA”) goes to the bottom, for every title   ·   OK to change'));
-                w.__onselect = function () {
-                    App.openEntry({ title: 'Hide sources with these words', value: words.join(', '), placeholder: 'CAM, HDTS, TELESYNC',
-                        hint: 'Words separated by commas, capitals or not. Sources with one go to the bottom and are never picked on their own. Leave it empty for none.',
-                        validate: function () { return null; },
-                        onConfirm: function (v) { App.back(); Stremio.setHideWords(v); refeed('ranking', 'words', 'extra'); } });
-                };
-                wrap.appendChild(w);
+                wrap.appendChild(rankPageRow('Filters  ›', filtersSummary(), 'rankfilters'));
+                wrap.appendChild(rankPageRow('When you press Play  ›', onPlaySummary(), 'rankplay'));
+                if (_focusChild === 'rankfilters' || _focusChild === 'rankplay') { _feedFocus = { key: _focusChild, ctl: 'extra' }; _focusChild = null; }   // (BACK from one: on its row)
                 wrap.appendChild(U.el('div', 'formats-group', 'Then, in this order'));
             },
             after: function (wrap) {
@@ -1997,7 +1993,94 @@
                 }, function () { wrap.appendChild(U.el('div', 'hint', 'Your addons couldn\'t be read just now.')); });
             } }
     };
-    // Size limits (Settings › Source ranking): smallest, largest and most per hour, for movies or
+    // Source ranking's two pages (rankfilters, rankplay): a row on it that opens one, saying
+    // what's set there.
+    function rankPageRow(title, summary, section) {
+        var r = U.el('div', 'addon-item focusable cfg-row feed-extra');
+        r.setAttribute('data-fk', section); r.setAttribute('data-ctl', 'extra');
+        r.appendChild(U.el('div', 'a-name', title));
+        r.appendChild(U.el('div', 'a-url', summary));
+        r.__onselect = function () { _settingsSection = section; renderSettings(); };
+        return r;
+    }
+    function filtersSummary() {
+        var P = Stremio.getPrefs(), bits = ['Sources the TV can’t play: ' + (P.hideUnplayable ? 'Hidden' : 'Shown')], sizes = [];
+        [['movie', 'Movies'], ['series', 'Series']].forEach(function (k) { var L = P.sizeLimits[k[0]]; if (L.min || L.max || L.perHour) { sizes.push(k[1] + ' ' + sizeSummary(L)); } });
+        bits.push(sizes.length ? sizes.join(', ') : 'No size limits');
+        bits.push(P.hideWords.length ? 'Words: ' + P.hideWords.join(', ') : 'No words');
+        return bits.join('   ·   ');
+    }
+    function onPlaySummary() {
+        var P = Stremio.getPrefs();
+        return 'Source list: ' + (P.skipSourceList ? 'skipped' : 'shown') + '   ·   The next source if one doesn’t start: ' + (P.nextOnFail ? 'On' : 'Off');
+    }
+    // A page of its own: its title, a hint, its rows; focus back on the one just changed.
+    function rankPage(wrap, title, hint, rows) {
+        wrap.appendChild(U.el('h2', null, 'Playback  ›  Source ranking  ›  ' + title));
+        wrap.appendChild(U.el('div', 'hint feeds-hint', hint));
+        rows.forEach(function (r) { wrap.appendChild(r); });
+        var pref = null;
+        if (_feedFocus) { pref = rows.filter(function (r) { return r.getAttribute('data-fk') === _feedFocus.key; })[0] || null; _feedFocus = null; }
+        Focus.setScope(scr('settings'), pref || rows[0]);
+    }
+    // Filters: what's left out, or sent to the bottom.
+    function settingsRankFilters(wrap) {
+        rankPage(wrap, 'Filters', 'Sources these leave out, or send to the bottom of the list: never picked on their own.',
+            [unplayableRow(), sizeRow('movie', 'Movies’ sizes'), sizeRow('series', 'Series’ sizes (an episode)'), wordsRow()]);
+    }
+    // When you press Play: whether the list shows, and a source that doesn't start.
+    function settingsRankPlay(wrap) {
+        rankPage(wrap, 'When you press Play', 'What ▶ Play does with the ranked list.', [skipListRow(), nextOnFailRow()]);
+    }
+    // direct links only: the sources the TV can't play left out of the list
+    function unplayableRow() {
+        var hideUn = Stremio.getPrefs().hideUnplayable;
+        var un = U.el('div', 'addon-item focusable cfg-row feed-extra');
+        un.setAttribute('data-fk', 'unplayable'); un.setAttribute('data-ctl', 'extra');
+        un.appendChild(U.el('div', 'a-name', 'Sources the TV can’t play:  ' + (hideUn ? 'Hidden' : 'Shown')));
+        un.appendChild(U.el('div', 'a-url', (hideUn ? 'Left out (torrents, links it can’t open): direct links only; where-to-watch apps stay'
+            : 'Listed, dimmed, at the bottom (torrents, links it can’t open)') + '   ·   OK to ' + (hideUn ? 'show them' : 'hide them')));
+        un.__onselect = function () { Stremio.setPref('hideUnplayable', !hideUn); refeed('ranking', 'unplayable', 'extra'); };
+        return un;
+    }
+    // skip the source list: Play plays the top source at once
+    function skipListRow() {
+        var skipList = Stremio.getPrefs().skipSourceList;
+        var sl = U.el('div', 'addon-item focusable cfg-row feed-extra');
+        sl.setAttribute('data-fk', 'skiplist'); sl.setAttribute('data-ctl', 'extra');
+        sl.appendChild(U.el('div', 'a-name', 'Skip the source list:  ' + (skipList ? 'On' : 'Off')));
+        sl.appendChild(U.el('div', 'a-url', (skipList ? '▶ Play, OK on an episode and ▶ Play SxEx play the top source at once (hold OK on an episode › Details for the list)'
+            : '▶ Play and OK on an episode show the sources to pick from') + '   ·   OK to turn ' + (skipList ? 'off' : 'on')));
+        sl.__onselect = function () { Stremio.setPref('skipSourceList', !skipList); refeed('ranking', 'skiplist', 'extra'); };
+        return sl;
+    }
+    // a source that doesn't start: the next one
+    function nextOnFailRow() {
+        var nextOn = Stremio.getPrefs().nextOnFail;
+        var nx = U.el('div', 'addon-item focusable cfg-row feed-extra');
+        nx.setAttribute('data-fk', 'nextonfail'); nx.setAttribute('data-ctl', 'extra');
+        nx.appendChild(U.el('div', 'a-name', 'The next source if one doesn’t start:  ' + (nextOn ? 'On' : 'Off')));
+        nx.appendChild(U.el('div', 'a-url', (nextOn ? 'A source the TV refuses, or that hasn’t started after 45 s, gives way to the next best one (up to 3 more)'
+            : 'A source that doesn’t start takes you back to the list') + '   ·   OK to turn ' + (nextOn ? 'off' : 'on')));
+        nx.__onselect = function () { Stremio.setPref('nextOnFail', !nextOn); refeed('ranking', 'nextonfail', 'extra'); };
+        return nx;
+    }
+    // your words: sources with one of them at the bottom, for every title
+    function wordsRow() {
+        var words = Stremio.getPrefs().hideWords;
+        var w = U.el('div', 'addon-item focusable cfg-row feed-extra');
+        w.setAttribute('data-fk', 'words'); w.setAttribute('data-ctl', 'extra');
+        w.appendChild(U.el('div', 'a-name', 'Hide sources with these words:  ' + (words.length ? words.join(', ') : 'None')));
+        w.appendChild(U.el('div', 'a-url', 'A source with one of them in its name, description or file name (a whole word: “CAM” isn’t in “CAMERA”) goes to the bottom, for every title   ·   OK to change'));
+        w.__onselect = function () {
+            App.openEntry({ title: 'Hide sources with these words', value: words.join(', '), placeholder: 'CAM, HDTS, TELESYNC',
+                hint: 'Words separated by commas, capitals or not. Sources with one go to the bottom and are never picked on their own. Leave it empty for none.',
+                validate: function () { return null; },
+                onConfirm: function (v) { App.back(); Stremio.setHideWords(v); refeed('ranking', 'words', 'extra'); } });
+        };
+        return w;
+    }
+    // Size limits (Settings › Source ranking › Filters): smallest, largest and most per hour, for movies or
     // series; OK on the row: which one, then its value.
     var SIZE_CHOICES = {
         min: { label: 'Smallest', none: 'None', values: [0.1, 0.3, 0.5, 1, 2] },

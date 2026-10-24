@@ -583,19 +583,32 @@
     // Level 1: one entry per language, spellings merged ("en", "eng" and "English" are one
     // group), named in full, with the file's own tracks in the same groups as the addons'.
     // Order: the language showing now, the preferred language, then by name.
-    function langMenu() {
+    // Only my languages (Settings, Off by default): just your default, second-choice and
+    // second-subtitle languages, the one showing, and tracks that don't say their language;
+    // Other languages, after them, lists the rest (all: that list).
+    function langMenu(all) {
         var groups = Object.create(null), order = [];   // (no inherited names: a language an addon calls "__proto__" is just a key)
+        function key(l) { var k = langKey(l); return P.langUnstated(k) ? '' : k; }   // (no language, "und"…: one Unknown language)
         function add(k, item) {
             if (!groups[k]) { groups[k] = []; order.push(k); }
             groups[k].push(item);
         }
-        getTextTracks().forEach(function (tr, i) { add(langKey(textLang(tr)), { emb: tr, n: i }); });
+        getTextTracks().forEach(function (tr, i) { add(key(textLang(tr)), { emb: tr, n: i }); });
         var offer = S.ctx && !S.ctx._relayCc ? S.ctx._ccOffer : null;   // (a live channel's closed captions, not on yet)
-        (offer || []).forEach(function (c, i) { add(langKey(c.lang || ''), { cc: c, n: i, emb: true }); });
-        _subTracks.forEach(function (tr) { add(langKey(tr.lang), { track: tr }); });
-        var curKey = _subOn ? langKey(_subLabel) : (_embSub != null ? langKey(_embLang) : null);
+        (offer || []).forEach(function (c, i) { add(key(c.lang || ''), { cc: c, n: i, emb: true }); });
+        _subTracks.forEach(function (tr) { add(key(tr.lang), { track: tr }); });
+        var curKey = _subOn ? key(_subLabel) : (_embSub != null ? key(_embLang) : null);
         var pref = getSubCfg().lang;
         var prefs = [curKey, pref].filter(function (x) { return x && x !== 'off'; });
+        var cfg = getSubCfg(), hidden = 0;
+        var mine = [cfg.lang, cfg.lang2, cfg.second].filter(function (l) { return l && l !== 'off' && l !== 'none'; });
+        if (cfg.only === 'on' && !all && mine.length) {
+            order = order.filter(function (k) {
+                var keep = k === curKey || k === '' || mine.some(function (l) { return langKey(l) === k || langMatches(l, k); });
+                if (!keep) { hidden++; }
+                return keep;
+            });
+        }
         order.sort(function (a, b) {
             var ra = langRank(a, prefs), rb = langRank(b, prefs);
             if (ra !== rb) { return ra - rb; }
@@ -610,11 +623,12 @@
                 sel: (k === curKey),
                 run: function () { pushMenu(langTracksMenu(k, list)); } });
         });
+        if (hidden) { items.push({ label: 'Other languages', detail: hidden + ' more', run: function () { pushMenu(langMenu(true)); } }); }
         var sec = getSubCfg().second;
         if (_subTracks.length) { items.push({ label: 'Second subtitle: ' + (sec === 'off' ? 'Off' : langName(sec)), detail: 'At the top, at the same time', run: function () { pushMenu(secondMenu()); } }); }
         var idx = 0;
         for (var i = 0; i < items.length; i++) { if (items[i].sel) { idx = i; break; } }
-        return { title: 'Subtitle language', items: items, idx: idx, rebuild: langMenu };
+        return { title: all ? 'All subtitle languages' : 'Subtitle language', items: items, idx: idx, rebuild: function () { return langMenu(all); } };
     }
 
     function inFile() { return S.ctx && (S.ctx._relayCc || S.ctx._ccOffer) ? 'closed captions' : 'in the file'; }

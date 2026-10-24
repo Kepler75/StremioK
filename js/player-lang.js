@@ -34,7 +34,7 @@
         fre: ['fre', 'fra', 'fr', 'french', 'français', 'francais'],
         ger: ['ger', 'deu', 'de', 'german', 'deutsch'],
         ita: ['ita', 'it', 'italian', 'italiano'],
-        por: ['por', 'pob', 'pt', 'portuguese', 'português', 'portugues'],
+        por: ['por', 'pob', 'pom', 'pt', 'portuguese', 'português', 'portugues'],
         dut: ['dut', 'nld', 'nl', 'dutch', 'nederlands'],
         rus: ['rus', 'ru', 'russian'],
         ara: ['ara', 'ar', 'arabic'],
@@ -42,7 +42,7 @@
         pol: ['pol', 'pl', 'polish', 'polski'],
         jpn: ['jpn', 'ja', 'japanese', '日本語'],
         kor: ['kor', 'ko', 'korean', '한국어'],
-        chi: ['chi', 'zho', 'zh', 'cmn', 'chinese', 'mandarin', '中文'],
+        chi: ['chi', 'zho', 'zh', 'cmn', 'zht', 'zhe', 'chinese', 'mandarin', '中文'],   // (zht / zhe: OpenSubtitles' traditional and bilingual)
         hin: ['hin', 'hi', 'hindi'],
         swe: ['swe', 'sv', 'swedish', 'svenska'],
         nor: ['nor', 'nob', 'nno', 'nb', 'nn', 'norwegian', 'norsk'],
@@ -58,7 +58,7 @@
         ukr: ['ukr', 'uk', 'ukrainian'],
         tha: ['tha', 'th', 'thai'],
         vie: ['vie', 'vi', 'vietnamese'],
-        ind: ['ind', 'id', 'indonesian'],
+        ind: ['ind', 'id', 'indonesian', 'indonesia'],   // ("Bahasa Indonesia": its last word)
         may: ['may', 'msa', 'ms', 'malay'],
         fil: ['fil', 'tgl', 'tl', 'filipino', 'tagalog'],
         cat: ['cat', 'ca', 'catalan', 'català'],
@@ -66,7 +66,7 @@
         glg: ['glg', 'gl', 'galician', 'galego'],
         bul: ['bul', 'bg', 'bulgarian'],
         hrv: ['hrv', 'hr', 'croatian', 'hrvatski'],
-        srp: ['srp', 'sr', 'serbian'],
+        srp: ['srp', 'scc', 'sr', 'serbian'],
         per: ['per', 'fas', 'fa', 'persian', 'farsi'],
         est: ['est', 'et', 'estonian'],
         lav: ['lav', 'lv', 'latvian'],
@@ -74,7 +74,57 @@
         ice: ['ice', 'isl', 'is', 'icelandic'],
         tam: ['tam', 'ta', 'tamil'],
         tel: ['tel', 'te', 'telugu'],
-        ben: ['ben', 'bn', 'bengali']
+        ben: ['ben', 'bn', 'bengali'],
+        // (2.2.0.2) the rest of OpenSubtitles' languages; two-letter codes that are also everyday
+        // words or labels (my, be, or, so, an, se, si, ne, mr, SD, BR…) left out
+        afr: ['afr', 'af', 'afrikaans'],
+        alb: ['alb', 'sqi', 'sq', 'albanian', 'shqip'],
+        arg: ['arg', 'aragonese'],
+        arm: ['arm', 'hye', 'hy', 'armenian'],
+        ast: ['ast', 'asturian'],
+        aze: ['aze', 'az', 'azerbaijani'],
+        bel: ['bel', 'belarusian'],
+        bos: ['bos', 'bs', 'bosnian'],
+        bre: ['bre', 'breton'],
+        bur: ['bur', 'mya', 'burmese'],
+        prs: ['prs', 'dari'],
+        epo: ['epo', 'eo', 'esperanto'],
+        ext: ['ext', 'extremaduran'],
+        gla: ['gla', 'gd', 'gaelic'],
+        geo: ['geo', 'kat', 'ka', 'georgian'],
+        ibo: ['ibo', 'ig', 'igbo'],
+        ina: ['ina', 'interlingua'],
+        gle: ['gle', 'ga', 'irish'],
+        kan: ['kan', 'kn', 'kannada'],
+        kaz: ['kaz', 'kk', 'kazakh'],
+        khm: ['khm', 'km', 'khmer'],
+        kur: ['kur', 'ku', 'kurdish'],
+        ltz: ['ltz', 'lb', 'luxembourgish'],
+        mac: ['mac', 'mkd', 'mk', 'macedonian'],
+        mal: ['mal', 'ml', 'malayalam'],
+        mni: ['mni', 'manipuri'],
+        mar: ['mar', 'marathi'],
+        mon: ['mon', 'mn', 'mongolian'],
+        mne: ['mne', 'montenegrin'],
+        nav: ['nav', 'nv', 'navajo'],
+        nep: ['nep', 'nepali'],
+        sme: ['sme', 'sami'],
+        oci: ['oci', 'oc', 'occitan'],
+        ori: ['ori', 'odia', 'oriya'],
+        pan: ['pan', 'pa', 'punjabi', 'panjabi'],
+        pus: ['pus', 'pashto'],
+        sat: ['sat', 'santali'],
+        snd: ['snd', 'sindhi'],
+        sin: ['sin', 'sinhala', 'sinhalese'],
+        som: ['som', 'somali'],
+        swa: ['swa', 'sw', 'swahili'],
+        syr: ['syr', 'syriac'],
+        tat: ['tat', 'tt', 'tatar'],
+        tok: ['tok', 'toki'],
+        tuk: ['tuk', 'tk', 'turkmen'],
+        urd: ['urd', 'ur', 'urdu'],
+        uzb: ['uzb', 'uz', 'uzbek'],
+        wel: ['wel', 'cym', 'cy', 'welsh']
     };
     function langMatches(pref, lang) {
         var names = LANG_ALIASES[pref] || [pref];
@@ -97,6 +147,14 @@
         per: 'Persian', fas: 'Persian', fa: 'Persian', slo: 'Slovak', slv: 'Slovenian', may: 'Malay', fil: 'Filipino',
         baq: 'Basque', glg: 'Galician', est: 'Estonian', lav: 'Latvian', lit: 'Lithuanian', ice: 'Icelandic',
         tam: 'Tamil', tel: 'Telugu', ben: 'Bengali', mul: 'Multiple languages', zxx: 'No language',
+        afr: 'Afrikaans', alb: 'Albanian', arg: 'Aragonese', arm: 'Armenian', ast: 'Asturian', aze: 'Azerbaijani',
+        bel: 'Belarusian', bos: 'Bosnian', bre: 'Breton', bur: 'Burmese', prs: 'Dari', epo: 'Esperanto', ext:
+        'Extremaduran', gla: 'Scottish Gaelic', geo: 'Georgian', ibo: 'Igbo', ina: 'Interlingua', gle: 'Irish', kan:
+        'Kannada', kaz: 'Kazakh', khm: 'Khmer', kur: 'Kurdish', ltz: 'Luxembourgish', mac: 'Macedonian', mal:
+        'Malayalam', mni: 'Manipuri', mar: 'Marathi', mon: 'Mongolian', mne: 'Montenegrin', nav: 'Navajo', nep:
+        'Nepali', sme: 'Northern Sami', oci: 'Occitan', ori: 'Odia', pan: 'Punjabi', pus: 'Pashto', sat: 'Santali',
+        snd: 'Sindhi', sin: 'Sinhala', som: 'Somali', swa: 'Swahili', syr: 'Syriac', tat: 'Tatar', tok: 'Toki Pona',
+        tuk: 'Turkmen', urd: 'Urdu', uzb: 'Uzbek', wel: 'Welsh',
         und: 'Unknown language', '': 'Unknown language' };
     function langName(lang) {
         var k = langKey(lang);
@@ -122,6 +180,9 @@
     // ----- for the other parts (and js/player.js) -----
     P.trackInfo = trackInfo; P.infoLang = infoLang; P.trackLang = trackLang; P.langMatches = langMatches;
     P.langName = langName; P.langRank = langRank; P.langKey = langKey;
+    // A track that doesn't say its language (by its key): none, "und", "unknown"…, or no letters.
+    // (A language StremioK has no name for is still a language.)
+    P.langUnstated = function (k) { k = ('' + (k || '')).trim(); return !/[a-zà-ÿ]/i.test(k) || /^(und|unk|unknown|unknown language|mul|zxx|n\/a|none)$/i.test(k); };
     // A language code's two-letter form (ISO 639-1: "spa" -> "es"), or '' (TMDB asks by it).
     P.lang2 = function (key) { var a = LANG_ALIASES[key] || []; for (var i = 0; i < a.length; i++) { if (/^[a-z]{2}$/.test(a[i])) { return a[i]; } } return ''; };
 })(PlayerParts);
