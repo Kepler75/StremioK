@@ -164,6 +164,11 @@ var App = (function () {
         var now = Date.now();
         if (now - _exitArmedAt < 3000) {
             try {
+                if (window.AndroidApp && AndroidApp.exitApp) {
+                    U.sessionState('exit');
+                    AndroidApp.exitApp();
+                    return;
+                }
                 if (window.tizen && tizen.application) {
                     U.sessionState('exit');
                     tizen.application.getCurrentApplication().exit();

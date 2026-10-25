@@ -44,6 +44,8 @@ var Keys = (function () {
     var _handler = null;
     function setHandler(fn) { _handler = fn; }
 
+    var _touchTimer = null, _touchNode = null, _touchX = 0, _touchY = 0, _suppressClickUntil = 0;
+
     var LONG_MS = 550;      // hold threshold for a long-press
     var _okDownAt = 0;
 
@@ -104,10 +106,63 @@ var Keys = (function () {
         if (ev && ev.keyName === 'back') { dispatch('BACK', ev); }
     }
 
+    function onClick(ev) {
+        if (!ev || !ev.detail) { return; }   // Ignore synthetic clicks from the keyboard path.
+        if (Date.now() < _suppressClickUntil) { ev.preventDefault(); return; }
+        var node = ev.target;
+        while (node && node !== document) {
+            if (node.classList && node.classList.contains('focusable')) {
+                Focus.select(node);
+                return;
+            }
+            node = node.parentNode;
+        }
+    }
+
+    function focusableAt(node) {
+        while (node && node !== document) {
+            if (node.classList && node.classList.contains('focusable')) { return node; }
+            node = node.parentNode;
+        }
+        return null;
+    }
+
+    function cancelTouchHold() {
+        if (_touchTimer) { clearTimeout(_touchTimer); _touchTimer = null; }
+        _touchNode = null;
+    }
+
+    function onTouchStart(ev) {
+        if (!ev.touches || ev.touches.length !== 1) { cancelTouchHold(); return; }
+        var node = focusableAt(ev.target), touch = ev.touches[0];
+        if (!node || typeof node.__onlongpress !== 'function') { return; }
+        cancelTouchHold();
+        _touchNode = node; _touchX = touch.clientX; _touchY = touch.clientY;
+        _touchTimer = setTimeout(function () {
+            var held = _touchNode;
+            _touchTimer = null; _touchNode = null;
+            if (held && document.documentElement.contains(held) && typeof held.__onlongpress === 'function') {
+                _suppressClickUntil = Date.now() + 900;
+                held.__onlongpress(held);
+            }
+        }, LONG_MS);
+    }
+
+    function onTouchMove(ev) {
+        if (!_touchNode || !ev.touches || !ev.touches.length) { return; }
+        var touch = ev.touches[0];
+        if (Math.abs(touch.clientX - _touchX) > 12 || Math.abs(touch.clientY - _touchY) > 12) { cancelTouchHold(); }
+    }
+
     function init() {
         register();
         document.addEventListener('keydown', onKeyDown, false);
         document.addEventListener('keyup', onKeyUp, false);
+        document.addEventListener('click', onClick, false);
+        document.addEventListener('touchstart', onTouchStart, { passive: true });
+        document.addEventListener('touchmove', onTouchMove, { passive: true });
+        document.addEventListener('touchend', cancelTouchHold, { passive: true });
+        document.addEventListener('touchcancel', cancelTouchHold, { passive: true });
         document.addEventListener('tizenhwkey', onHwKey, false);
     }
 

@@ -1,0 +1,47 @@
+plugins {
+    id 'com.android.application'
+}
+
+def webRoot = rootProject.projectDir.parentFile
+def webAssets = layout.buildDirectory.dir('generated/web-assets')
+
+android {
+    namespace 'tv.stremiok.android'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'tv.stremiok.android'
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName '2.2.1'
+    }
+
+    sourceSets {
+        main.assets.srcDirs = [webAssets]
+    }
+}
+
+tasks.register('syncWebAssets', Sync) {
+    from(webRoot) {
+        include 'index.html'
+        include 'css/**'
+        include 'js/**'
+    }
+    into(webAssets.map { it.dir('www') })
+}
+
+tasks.named('preBuild').configure {
+    dependsOn(tasks.named('syncWebAssets'))
+}
+
+tasks.register('exportDebugApk', Copy) {
+    dependsOn('assembleDebug')
+    from(layout.buildDirectory.file('outputs/apk/debug/app-debug.apk'))
+    into(new File(webRoot, 'dist'))
+    rename { 'StremioK-android-debug.apk' }
+}
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.14.0'
+}

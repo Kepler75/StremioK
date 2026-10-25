@@ -16,6 +16,8 @@ video through Samsung's AVPlay API.
 - **[Changelog](CHANGELOG.md)**: what changed in each version.
 - **[Developer guide](docs/DEVELOPER-GUIDE.md)**: how it's put together, and running it in a
   browser.
+- **[Android build](docs/ANDROID.md)**: build the landscape Android WebView APK and see its
+  platform differences.
 - **[Security policy](docs/SECURITY.md)**: reporting a vulnerability, privately.
 
 ## Highlights

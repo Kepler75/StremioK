@@ -2,11 +2,12 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=1920, height=1080, user-scalable=no">
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>StremioK</title>
     <link rel="stylesheet" href="css/style.css?v=2.2.1">
 </head>
 <body>
+    <div id="tv-stage">
     <!-- CSS-applied sentinel (kept off-screen); app.js waits for its width before rendering -->
     <div id="css-sentinel" style="position:absolute;left:-9999px;top:0;height:1px;overflow:hidden;"></div>
     <!-- AVPlay video plane (Tizen). Sits behind the UI; shown only during playback. -->
@@ -53,6 +54,7 @@
 
     <!-- Load order matters: polyfills -> util -> iptv -> data -> input -> tvapps -> player parts -> player -> ytplay -> view parts -> views -> app -->
     <!-- ?v= busts the TV webview cache on every release (keep in sync with package.json) -->
+    <script src="js/mobile-scale.js?v=2.2.1"></script>
     <script src="js/polyfills.js?v=2.2.1"></script>
     <script src="js/util.js?v=2.2.1"></script>
     <script src="js/iptv.js?v=2.2.1"></script>
@@ -85,5 +87,6 @@
     <script src="js/views.js?v=2.2.1"></script>
     <script src="js/app.js?v=2.2.1"></script>
     <script src="js/hubpreview.js?v=2.2.1"></script>
+    </div>
 </body>
 </html>

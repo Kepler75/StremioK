@@ -145,7 +145,11 @@
         if (!_skip) { return; }
         U.clear(S.skipEl);
         _skip.buttons.forEach(function (b, i) {
-            S.skipEl.appendChild(U.el('div', 'skip-btn' + (i === _skip.idx ? ' sel' : ''), b.label));
+            var node = U.el('div', 'skip-btn' + (i === _skip.idx ? ' sel' : ''), b.label);
+            node.addEventListener('click', function () {
+                if (_skip && _skip.buttons[i] && _skip.buttons[i].run) { _skip.buttons[i].run(); }
+            }, false);
+            S.skipEl.appendChild(node);
         });
         S.skipEl.className = '';
     }
@@ -283,6 +287,9 @@
             var node = U.el('div', 'sm-item' + (m.wide ? ' sm-tall' : '') + (i === m.idx ? ' sel' : ''));
             node.appendChild(U.el('div', 'sm-main', it.label + (it.sel ? '  ✓' : '')));
             if (it.detail) { node.appendChild(U.el('div', 'sm-detail', it.detail)); }
+            node.addEventListener('click', function () {
+                if (topMenu() === m && m.items[i] && m.items[i].run) { m.items[i].run(); }
+            }, false);
             list.appendChild(node);
         });
         S.subMenuEl.appendChild(list);
@@ -339,7 +346,9 @@
         if (_barIdx >= b.length) { _barIdx = b.length - 1; }
         U.clear(S.barEl);
         b.forEach(function (it, i) {
-            S.barEl.appendChild(U.el('div', 'pb-btn' + (i === _barIdx ? ' sel' : ''), it.label));
+            var node = U.el('div', 'pb-btn' + (i === _barIdx ? ' sel' : ''), it.label);
+            node.addEventListener('click', function () { if (S.active && it.run) { it.run(); } }, false);
+            S.barEl.appendChild(node);
         });
         S.barEl.className = '';
     }

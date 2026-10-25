@@ -16,6 +16,7 @@ var YTPlay = (function () {
         var href = '' + ((window.location && window.location.href) || '');
         if (/^https?:\/\/(127\.0\.0\.1|localhost):8081\/module\//i.test(href)) { return 'tizenbrew'; }
         if (window.tizen && tizen.application) { return 'wgt'; }
+        if (window.AndroidApp && typeof AndroidApp.isAndroidApp === 'function' && AndroidApp.isAndroidApp()) { return 'android'; }
         return 'browser';
     }
     var MODE = installMode();
@@ -175,6 +176,10 @@ var YTPlay = (function () {
     // after downloading the file), so just wait a little longer.
     function ensureService() {
         return new Promise(function (resolve, reject) {
+            if (MODE === 'android' || MODE === 'browser') {
+                reject(new Error('service-down'));
+                return;
+            }
             function poll(left) {
                 U.getText(PROXY + '/health', 2500, 4096, null, true).then(function () { resolve(); }, function () {
                     if (left <= 0) {
@@ -216,6 +221,9 @@ var YTPlay = (function () {
         if (MODE === 'wgt') {
             return thing + ' through StremioK’s YouTube service, which didn’t start. Try again, or restart StremioK.';
         }
+        if (MODE === 'android') {
+            return thing + ' through the optional StremioK service, which is not included in this Android build.';
+        }
         return thing + ' through StremioK’s YouTube service, which runs on the TV (not in a browser).';
     }
 
@@ -226,7 +234,7 @@ var YTPlay = (function () {
 
     // For Settings: how StremioK was installed.
     function installLabel() {
-        return MODE === 'tizenbrew' ? 'TizenBrew module' : MODE === 'wgt' ? 'Sideloaded app (.wgt)' : 'Browser (development)';
+        return MODE === 'tizenbrew' ? 'TizenBrew module' : MODE === 'wgt' ? 'Sideloaded app (.wgt)' : MODE === 'android' ? 'Android app' : 'Browser (development)';
     }
 
     return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, hlsMaster: hlsMaster, aiomAddons: aiomAddons, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },

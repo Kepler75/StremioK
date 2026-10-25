@@ -50,12 +50,12 @@ var Focus = (function () {
                 var pr = p.getBoundingClientRect();
                 var nr = node.getBoundingClientRect();
                 if (canX) {
-                    var mx = 90;
+                    var mx = window.innerWidth <= 900 ? 12 : 90;
                     if (nr.left < pr.left + mx) { p.scrollLeft -= (pr.left + mx - nr.left); }
                     else if (nr.right > pr.right - mx) { p.scrollLeft += (nr.right - (pr.right - mx)); }
                 }
                 if (canY) {
-                    var my = 70;
+                    var my = window.innerWidth <= 900 ? 12 : 70;
                     if (nr.top < pr.top + my) { p.scrollTop -= (pr.top + my - nr.top); }
                     else if (nr.bottom > pr.bottom - my) { p.scrollTop += (nr.bottom - (pr.bottom - my)); }
                 }
@@ -216,6 +216,11 @@ var Focus = (function () {
 
     function current() { return _current; }
     function clickCurrent() { if (_current) { fireClick(_current); } }
+    function select(node) {
+        if (!node || !node.classList || !node.classList.contains('focusable')) { return; }
+        setFocus(node);
+        fireClick(node);
+    }
     function fireClick(node) {
         if (node.__onselect) { node.__onselect(node); return; }
         if (node.click) { node.click(); }
@@ -223,6 +228,6 @@ var Focus = (function () {
 
     function onFocus(fn) { _onFocus.push(fn); }
 
-    return { setScope: setScope, move: move, setFocus: setFocus, current: current, onFocus: onFocus,
+    return { setScope: setScope, move: move, setFocus: setFocus, current: current, select: select, onFocus: onFocus,
              clickCurrent: clickCurrent, refresh: function () { return items(); } };
 })();
