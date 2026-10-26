@@ -187,6 +187,11 @@ network you trust: addon and playlist links often carry your tokens or passwords
 the TV both say so). It exists only while the QR code is on screen, behind a one-time code,
 and takes one entry (see [Privacy and data](PRIVACY.md#sending-text-from-your-phone)).
 
+## Exiting
+
+Pushing Back on the remote will get you back to the top menu. A long press on the Back button
+will close StremioK
+
 ## Finding something to watch
 
 ### Home
