@@ -33,14 +33,30 @@ var U = (function () {
         try { d = decodeURIComponent(('' + k).replace(/\+/g, ' ')); } catch (e) {}
         return SECRET_PARAM.test(d.trim());
     }
-    function maskParams(str) {
+    // A link inside a link's value (a converted video's mediaURL=…): decoded (up to 3 times), masked
+    // the same way (a link in it too, 3 deep at most), and shown encoded as it was. Null: not one.
+    var LINK_START = /^[a-z][a-z0-9+.-]*:\/\//i;
+    function innerLink(v, depth) {
+        var d = v, n = 0;
+        while (n < 3 && !LINK_START.test(d) && /%[0-9a-f]{2}/i.test(d)) {
+            try { d = decodeURIComponent(d.replace(/\+/g, ' ')); } catch (e) { return null; }
+            n++;
+        }
+        if (!n || !LINK_START.test(d)) { return null; }
+        var r = depth < 3 ? redactUrl(d, depth + 1) : d.replace(/[?#].*$/, '?•••');
+        for (var i = 0; i < n; i++) { r = encodeURIComponent(r).replace(/%E2%80%A2/g, '•'); }
+        return r;
+    }
+    function maskParams(str, depth) {
         return str.split('&').map(function (kv) {
             var eq = kv.indexOf('='), k = eq === -1 ? kv : kv.slice(0, eq);
             if (eq !== -1 && secretName(k)) { return k + '=•••'; }
+            var inner = eq !== -1 ? innerLink(kv.slice(eq + 1), depth || 0) : null;
+            if (inner !== null) { return k + '=' + inner; }
             return (eq !== -1 && looksLikeToken(kv.slice(eq + 1))) ? k + '=•••' : kv;
         }).join('&');
     }
-    function redactUrl(url) {
+    function redactUrl(url, depth) {
         var u = '' + (url || ''), m = u.match(/^([a-z][a-z0-9+.-]*:\/\/)([^\/?#]*)([^?#]*)(\?[^#]*)?(#.*)?$/i);
         if (!m) { return u; }
         var auth = m[2].lastIndexOf('@');
@@ -52,9 +68,9 @@ var U = (function () {
             if (xt !== -1 && (j === xt + 1 || j === xt + 2)) { return '•••'; }
             return looksLikeToken(seg) ? '•••' : seg;
         });
-        var query = m[4] ? '?' + maskParams(m[4].slice(1)) : '';
+        var query = m[4] ? '?' + maskParams(m[4].slice(1), depth) : '';
         var frag = m[5] ? m[5].slice(1) : null;
-        if (frag !== null) { frag = '#' + (frag.indexOf('=') !== -1 ? maskParams(frag) : looksLikeToken(frag) ? '•••' : frag); }
+        if (frag !== null) { frag = '#' + (frag.indexOf('=') !== -1 ? maskParams(frag, depth) : looksLikeToken(frag) ? '•••' : frag); }
         return m[1] + host + segs.join('/') + query + (frag || '');
     }
 
@@ -398,11 +414,13 @@ var U = (function () {
         var big = m.match(/^Too large \((over [^)]+)\)/);
         if (big) { return 'too large (' + big[1] + ')'; }
         if (/^Bad JSON/.test(m)) { return 'not valid JSON'; }
+        var late = m.match(/^Timed out after (\d+ s)/);
+        if (late) { return 'timed out after ' + late[1]; }
         if (/^Timeout/.test(m)) { return 'timed out'; }
-        if (/^Network error/.test(m)) { return 'network error'; }
+        if (/^(No answer|Network error)/.test(m)) { return 'no answer (connection refused, blocked or certificate)'; }
         if (/^Redirected into the home network/.test(m)) { return 'redirected into the home network'; }
         var st = m.match(/^HTTP (\d+)/);
-        if (st) { return st[1] === '0' ? 'no answer (blocked?)' : 'HTTP ' + st[1]; }
+        if (st) { return st[1] === '0' ? 'no answer (connection refused, blocked or certificate)' : 'HTTP ' + st[1]; }
         return m.split(':')[0] || 'failed';
     }
 
@@ -438,7 +456,7 @@ var U = (function () {
     function logged(err, priv) {
         var msg = '' + err.message;
         if (priv || privateNow()) {
-            var kind = /^(HTTP \d+|Timeout|Network error|Too large|Bad JSON|Redirected into the home network)/.exec(msg), host = /(https?:\/\/[^\/\s?#]+)/.exec(msg);
+            var kind = /^(HTTP \d+|Timed out after \d+ s|Timeout|No answer|Network error|Too large|Bad JSON|Redirected into the home network)/.exec(msg), host = /(https?:\/\/[^\/\s?#]+)/.exec(msg);
             msg = 'Private viewing: a download' + (host ? ' from ' + host[1] : '') + ' failed' + (kind ? ' (' + kind[1] + ')' : '');
         }
         log('network', msg); err.logged = true; return err;
@@ -513,6 +531,11 @@ var U = (function () {
                     reject(logged(new Error('Redirected into the home network: ' + redactUrl(url) + ' -> ' + redactUrl(landed))));
                     return;
                 }
+                if (xhr.status === 0) {   // (no answer: the TV's browser says so first, then whether it timed out or failed)
+                    done = false;
+                    setTimeout(function () { if (!done) { done = true; reject(logged(noAnswer(url))); } }, 0);
+                    return;
+                }
                 if (xhr.status >= 200 && xhr.status < 300) { resolve(body); }
                 else {
                     var err = new Error('HTTP ' + xhr.status + ' for ' + redactUrl(url));
@@ -521,12 +544,15 @@ var U = (function () {
                     reject(logged(err));
                 }
             };
-            xhr.ontimeout = function () { if (!done) { done = true; reject(logged(new Error('Timeout: ' + redactUrl(url)))); } };
-            xhr.onerror = function () { if (!done) { done = true; reject(logged(new Error('Network error: ' + redactUrl(url)))); } };
+            xhr.ontimeout = function () { if (!done) { done = true; reject(logged(new Error('Timed out after ' + Math.round(xhr.timeout / 1000) + ' s: ' + redactUrl(url)))); } };
+            xhr.onerror = function () { if (!done) { done = true; reject(logged(noAnswer(url))); } };
             try { if (body == null) { xhr.send(); } else { xhr.send('' + body); } } catch (e3) { reject(e3); }
         });
     }
 
+    // No answer at all: the connection refused or dropped, blocked, a certificate the TV doesn't
+    // trust (its browser says only "status 0").
+    function noAnswer(url) { return new Error('No answer (connection refused, blocked or certificate): ' + redactUrl(url)); }
     function cancelledError(url) { var e = new Error('Cancelled: ' + redactUrl(url)); e.cancelled = true; return e; }
     // Downloads for one screen (or one job), stopped together: getText / getJSON(url, …, token).
     function cancelToken() {
@@ -566,11 +592,12 @@ var U = (function () {
        unless maxBytes says otherwise). cancel, headers: see getText. */
     // A POST (body: text), its answer JSON.
     function postJSON(url, body, timeoutMs, maxBytes, headers) { return getJSON(url, timeoutMs, maxBytes, null, headers, body); }
-    function getJSON(url, timeoutMs, maxBytes, cancel, headers, body) {
+    // quiet: not noted in Diagnostics (the caller says what came of it, e.g. a skip-times lookup).
+    function getJSON(url, timeoutMs, maxBytes, cancel, headers, body, quiet) {
         var priv = privateNow();   // (asked during a private playback: its answer unreadable later is logged as one too)
-        return getText(url, timeoutMs, maxBytes || JSON_MAX, cancel, false, headers, body).then(function (text) {
+        return getText(url, timeoutMs, maxBytes || JSON_MAX, cancel, !!quiet, headers, body).then(function (text) {
             try { return JSON.parse(text); }
-            catch (e) { throw logged(new Error('Bad JSON from ' + redactUrl(url)), priv); }
+            catch (e) { var bad = new Error('Bad JSON from ' + redactUrl(url)); throw quiet ? bad : logged(bad, priv); }
         });
     }
 
@@ -1309,6 +1336,21 @@ var U = (function () {
         'filter: drop-shadow(0 0 2px rgba(0,0,0,0.85)) drop-shadow(0 0 6px rgba(0,0,0,0.45)) }\n' +
         '#player-osd, #sub-menu, #player-bar, #skip-prompt, #stream-info, #cast-strip, #yt-links, #yt-card, #toast, #hold-hint, #spinner { color: #e6e9ef }';
 
+    // Zoom (Settings › Appearance), 1 to 1.4: the page laid out on 1920×1080 divided by it and
+    // scaled up from the top left to fill the screen (a transform: what's measured on screen,
+    // getBoundingClientRect, is scaled; scrolling, offsets and styles aren't: divide by zoom()).
+    var _zoom = 1;
+    function zoom() { return _zoom; }
+    function setZoom(z) {
+        _zoom = (z > 1 && z <= 1.4) ? z : 1;
+        var s = document.body && document.body.style, on = _zoom !== 1;
+        if (!s) { return; }
+        s.width = on ? Math.ceil(1920 / _zoom) + 'px' : '';
+        s.height = on ? Math.ceil(1080 / _zoom) + 'px' : '';
+        s.webkitTransform = s.transform = on ? 'scale(' + _zoom + ')' : '';
+        s.webkitTransformOrigin = s.transformOrigin = on ? '0 0' : '';
+    }
+
     // bg: 'dark' (the stylesheet's own), 'black', 'gray' or 'white' (the last two with dark text)
     function applyTheme(accent, bg) {
         if (bg === true) { bg = 'black'; }
@@ -1509,6 +1551,6 @@ var U = (function () {
         store: store, toast: toast, spinner: spinner,
         deferImage: deferImage, deferBg: deferBg, cardImage: cardImage, prioritizeImages: prioritizeImages, requeueImages: requeueImages,
         fmtTime: fmtTime, dayLabel: dayLabel, settleAll: settleAll, cancelToken: cancelToken, isHidden: isHidden, whenVisible: whenVisible, crumb: crumb, sessionStart: sessionStart, sessionState: sessionState, mark: mark, startupMarks: startupMarks, loadScript: loadScript, qrModules: qrModules, qrCanvas: qrCanvas, qrScale: qrScale,
-        applyTheme: applyTheme, accentColor: accentColor, ACCENT_KEYS: Object.keys(ACCENTS)
+        applyTheme: applyTheme, zoom: zoom, setZoom: setZoom, accentColor: accentColor, ACCENT_KEYS: Object.keys(ACCENTS)
     };
 })();

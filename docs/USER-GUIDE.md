@@ -26,8 +26,8 @@ How to use StremioK, task by task. Also:
 
 StremioK starts with **Cinemeta** (titles and their details) and **OpenSubtitles**
 (subtitles). To stream movies and series from addon catalogs, add a **stream addon** that
-provides HTTP(S) links, for example through a debrid service; torrent-only sources are listed
-but don't play. IPTV playlists, StremioK's own YouTube and videos on a USB drive don't need
+provides HTTP(S) links, for example through a debrid service; torrent-only sources play through
+a [streaming server](SETTINGS.md#streaming-server) on your network. IPTV playlists, StremioK's own YouTube and videos on a USB drive don't need
 one.
 
 ### Play your first title
@@ -138,7 +138,7 @@ where it came from.
 | Arrows | Move. |
 | OK | Select. |
 | Hold OK | An item's own menu, where it has one: *Hold OK for more* shows in the bottom-right corner then. |
-| BACK | Back. On a main page (Home's tabs, Discover, Search, Settings) it goes to the top menu first (DOWN comes back to where you were); from the menu, to the page before, or *Press Back again to exit* on Home. |
+| BACK | Back. On a main page (Home's tabs, Discover, Search, Settings) it goes to the top menu first (DOWN comes back to where you were); from the menu, to the page before, or *Exit StremioK?* on Home (OK exits, BACK stays). |
 | 0–9 | The top menu's items (see below); in the player, the subtitles' [timing, position and size](#keys-while-it-plays); on a live channel, a [channel number](#iptv-and-radio). |
 | UP / DOWN in the player | The quick bar / the menu ([While it plays](#while-it-plays)). |
 | Red / Green / Yellow / Blue in the player | Audio tracks / subtitles / sources / stream info. |
@@ -153,7 +153,8 @@ Search.
 ### The top menu
 
 The tabs, **Discover**, **Search** and **Settings ⚙**, then the StremioK name. UP from a page
-reaches it.
+reaches it. When they don't all fit, the menu scrolls sideways as you move along it (or pick an
+item by number); the StremioK name stays put.
 
 ### Lists you put in order
 
@@ -186,11 +187,6 @@ The page travels **unencrypted** (plain HTTP) over your home network, so use it 
 network you trust: addon and playlist links often carry your tokens or passwords (the page and
 the TV both say so). It exists only while the QR code is on screen, behind a one-time code,
 and takes one entry (see [Privacy and data](PRIVACY.md#sending-text-from-your-phone)).
-
-## Exiting
-
-Pushing Back on the remote will get you back to the top menu. A long press on the Back button
-will close StremioK
 
 ## Finding something to watch
 
@@ -383,7 +379,7 @@ addons is shown once ("also on …").
 3. At the bottom, in their own groups: sources you marked **not suitable**, ones with your
    **words to hide**, ones **outside your size limits**, ones with a format marked **Not
    working** or a resolution you don't allow (see [Formats](SETTINGS.md#formats)), then links
-   that don't play here (torrents). ▶ Play best and the next episode never pick these.
+   that don't play here (torrents, without a streaming server). ▶ Play best and the next episode never pick these.
 
 ### Playing one
 
@@ -399,7 +395,7 @@ addons is shown once ("also on …").
   with a drive plugged in (see [Downloads](#downloads)).
 - **When a source doesn't start**, the next one is tried ("Didn't start: trying the next
   source (2 of 4)…") at the same place, up to 3 more; when none starts, you're back on the
-  list. When a debrid service sends a notice instead of the video, StremioK says what it means
+  list ([how a start is judged](TECHNICAL-REFERENCE.md#starting-and-recovering)). When a debrid service sends a notice instead of the video, StremioK says what it means
   (see [Troubleshooting](TROUBLESHOOTING.md#a-source-doesnt-start)).
 - **Skip the source list** (Settings › Playback › Source ranking › *When you press Play*) plays
   the top source as soon as the addons have answered. The list is still a press away: hold OK
@@ -543,7 +539,8 @@ Atmos · 5.1 · MKV`).
   as `es-419` kept.
 - Your **default language** (Settings › Playback › Subtitles) turns one on by itself, from
   wherever it is. When nothing is in it, your **second choice** is looked for the same way.
-- **Green** (or *Subtitles* in the DOWN menu) picks a language, then a track. Your choice for a
+- **Green** (or *Subtitles* in the DOWN menu) picks a language, then a track. A slow one says so
+  ("Loading subtitles… 8 s"): there's no need to pick it again. Your choice for a
   title, its timing included, is remembered (the last 50 titles). With *Only my languages* on
   (Settings › Playback › Subtitles), it lists just yours; *Other languages* at the end has the
   rest.
@@ -594,6 +591,9 @@ counts, when it was last downloaded, and what went wrong (a failed refresh keeps
   the order.
 - OK on one: *Rename*, *Turn off* / *Turn on* (off: its channels hidden, its copy kept), *Edit
   link*, *Guide link*, *Reload*, *Remove*.
+- **Auto-refresh** (*Off* by default): every hour, 3, 6 or 12 hours, all playlists and their
+  TV guides are downloaded again, as *Reload* does, so a channel whose guide came late is back
+  on the Guide tab. Never while something plays.
 
 ### Watching
 
@@ -622,7 +622,7 @@ counts, when it was last downloaded, and what went wrong (a failed refresh keeps
 - **Where it comes from:** the guide link a playlist names (`url-tvg`), or an Xtream
   playlist's (`get.php`) own guide. *Guide link* (OK on a playlist) sets another, or puts back
   the automatic one. The sideloaded app or TizenBrew reads it, again every 6 hours, or at once
-  with the playlist's *Reload*.
+  with the playlist's *Reload* (its limits: [TV guide](TECHNICAL-REFERENCE.md#tv-guide)).
 - A channel is matched by its `tvg-id`, else by its name. One without a logo in its playlist
   gets the guide's.
 - **Channel cards** show what's on now and how far along it is; Home's details strip adds its
@@ -795,7 +795,8 @@ do; there's nothing else to set up.
 
 ### Keeping in step
 
-- Changes are sent at once and retried automatically. Ones that still fail stay in *Trakt
+- Changes are sent at once and retried automatically (how:
+  [Sending changes](TECHNICAL-REFERENCE.md#sending-changes)). Ones that still fail stay in *Trakt
   sync*, to send again or let go. *Trakt sync* (Settings ›
   Content › Integrations) shows when it last synced, the changes waiting, and any Trakt
   refused; *Sync now* sends everything, *Let them go* drops the refused ones.

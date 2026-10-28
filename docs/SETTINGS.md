@@ -11,7 +11,7 @@ from your phone instead (see the [user guide](USER-GUIDE.md#typing-or-sending-fr
 In a list you order, ▲ / ▼ move an item one place and ⇈ / ⇊ move it to the top or bottom.
 
 - [Content](#content): [Addons](#addons), [AIOManager](#aiomanager),
-  [Integrations](#integrations), [IPTV](#iptv), [YouTube](#youtube),
+  [Streaming server](#streaming-server), [Integrations](#integrations), [IPTV](#iptv), [YouTube](#youtube),
   [Streaming apps](#streaming-apps), [USB drive](#usb-drive),
   [Import configuration file](#import-configuration-file)
 - [Playback](#playback): [Audio](#audio), [Subtitles](#subtitles), [Skipping](#skipping),
@@ -49,6 +49,18 @@ Settings › Content › Addons › *AIOManager* (the sideloaded app or TizenBre
 | *↻ Sync with AIOManager* | | Lists what it would refresh, add or remove, none ticked; *Apply N* does the ticked ones. |
 | *Forget AIOManager* | | Clears the address, the key and the record of what came from it. Your addons stay. |
 
+### Streaming server
+
+A Stremio streaming server or a TorrServer on your network (a computer or a NAS) plays the
+sources that are only torrents; Stremio's can also convert a video the TV can't play.
+
+| Setting | Choices | What it does |
+|---------|---------|--------------|
+| *Server* | **Off**, Stremio server, TorrServer | The one you run. Stremio's comes with the Stremio app for computers (port 11470) or on its own; TorrServer's usual port is 8090. |
+| *Address* | its link, e.g. `http://192.168.0.10:11470` | *Test* says whether it answers. |
+| *Wait for a torrent to start* | 45 seconds, 1, **2**, 3, 5 minutes | How long a torrent source has to start playing before the next source: finding people sharing it takes a while. |
+| *Convert videos the TV can't play* | **Off**, On | Stremio's server only: a source that doesn't start is tried once more, converted by the server, before the next source. The 2017 TV can't play what it converts. |
+
 ### Integrations
 
 | Setting | Choices | What it does |
@@ -67,6 +79,10 @@ then its channels and guide added; OK on it for *Format*: **MPEG-TS** or HLS), �
 them, and OK on one for *Rename*, *Turn off* /
 *Turn on*, *Edit link*, *Guide link* (empty: the playlist's own TV guide), *Reload*, *Remove*.
 Each says whether its guide was read. See [IPTV and radio](USER-GUIDE.md#iptv-and-radio).
+
+| Setting | Choices | What it does |
+|---------|---------|--------------|
+| *Auto-refresh* | **Off**, Every hour, Every 3 hours, Every 6 hours, Every 12 hours | All playlists and their TV guides downloaded again, as *Reload* does. |
 
 ### YouTube
 
@@ -193,10 +209,12 @@ In their default order, all on except the last:
 2. **Not yet cached last.**
 3. **Release type:** remux > Blu-ray > web > unknown > TV rip, CAM far below.
 4. **HDR before SDR.**
-5. **Feed sources order:** your addons' order (below).
-6. **Each addon's own order:** right after *Feed sources order*, each addon's list as it gives
+5. **Seeders (high to low):** the count a torrent source states (Torrentio's 👤 123); sources
+   that don't state one keep their order.
+6. **Feed sources order:** your addons' order (below).
+7. **Each addon's own order:** right after *Feed sources order*, each addon's list as it gives
    it, one addon after another; above it, the addons' lists interleave.
-7. *Cached before unknown* (off).
+8. *Cached before unknown* (off).
 
 ### Formats
 
@@ -225,6 +243,7 @@ them.
 |---------|---------|--------------|
 | *Background* | Black, **Dark**, Light Gray, White | The light ones have dark text; the player keeps its dark controls. |
 | *Accent color* | **Indigo**, and nine others | |
+| *Zoom* | **100%**, 110%, 120%, 130%, 140% | Everything bigger (text, posters, menus, the player's controls) to read from further away; fewer cards fit a row. Subtitles keep their own size. |
 | *Poster orientation* | **Portrait**, Landscape | |
 | *Ratings on posters* | **Off**, On | A title's IMDb rating on its card (★ 7.8), when the catalog gives it. Nothing extra is downloaded. |
 | *Home bar preview* | **Most recent first**, As in Watching, Off | Continue Watching on the TV's own home bar (StremioK must be on it: Apps › StremioK › *Add to Home*): up to 8 tiles of movies and series you can play now. The sideloaded app on Tizen 4 and later only. |

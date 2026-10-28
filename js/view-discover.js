@@ -334,7 +334,7 @@
     }
     function rowHeight() {
         var els = _dv.cardEls, c = cols();
-        return (els.length > c) ? (els[c].getBoundingClientRect().top - els[0].getBoundingClientRect().top) : 0;
+        return (els.length > c) ? (els[c].getBoundingClientRect().top - els[0].getBoundingClientRect().top) / U.zoom() : 0;   // (in the grid's own pixels)
     }
     function drawGrid() {
         var grid = gridEl();

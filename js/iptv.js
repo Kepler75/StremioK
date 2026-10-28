@@ -467,7 +467,7 @@ var IPTV = (function () {
                 var msg = (e && e.message) ? e.message : 'Could not fetch the playlist URL';
                 // status 0 / network error on a URL that opens fine in a browser almost
                 // always means the server sent no Access-Control-Allow-Origin header.
-                if (/HTTP 0\b/.test(msg) || /Network error/i.test(msg)) {
+                if (/HTTP 0\b/.test(msg) || /Network error|^No answer/i.test(msg)) {
                     msg += ' — the playlist server likely isn\'t sending an ' +
                         'Access-Control-Allow-Origin header (CORS). Serve the .m3u with CORS enabled.';
                 }
@@ -543,6 +543,19 @@ var IPTV = (function () {
             if (typeof EPG !== 'undefined' && EPG.start) { EPG.start(id || true); }
             return d;
         });
+    }
+    // Auto-refresh (Settings › Content › IPTV): every this many hours (0: Off), all playlists and
+    // their guides downloaded again, as Reload does (the Home ticker: see view-home's
+    // iptvRefreshTick). EVERY: the choices.
+    var EVERY_KEY = 'stremiok.iptv.every', EVERY = [0, 1, 3, 6, 12];
+    function refreshEvery() { var h = +U.store.get(EVERY_KEY, 0); return EVERY.indexOf(h) !== -1 ? h : 0; }
+    function setRefreshEvery(h) { h = +h; U.store.set(EVERY_KEY, EVERY.indexOf(h) !== -1 ? h : 0); }
+    // When the playlists switched on were last downloaded: the oldest of them (a saved copy's own
+    // date), 0 when one never was.
+    function readAt() {
+        var on = getPlaylists().filter(function (p) { return !p.off; }), t = Infinity;
+        on.forEach(function (p) { var st = _status[p.id]; t = Math.min(t, st && st.fetchedAt ? st.fetchedAt : 0); });
+        return on.length ? t : Infinity;
     }
     function status(id) {
         if (id) { return _status[id] || { id: id, url: '', count: 0, groups: 0, error: '', title: '', fetchedAt: 0 }; }
@@ -649,7 +662,7 @@ var IPTV = (function () {
         removePlaylist: removePlaylist, renamePlaylist: renamePlaylist, setPlaylistOff: setPlaylistOff,
         movePlaylist: movePlaylist, setPlaylistGuide: setPlaylistGuide, label: labelOf,
         xtreamParts: xtreamParts, xtreamUrl: xtreamUrl, xtreamCheck: xtreamCheck, addXtream: addXtream, xtreamFormat: xtreamFormat, setXtreamFormat: setXtreamFormat,
-        isFavorite: isFavorite, setFavorite: setFavorite,
+        isFavorite: isFavorite, setFavorite: setFavorite, refreshEvery: refreshEvery, setRefreshEvery: setRefreshEvery, readAt: readAt,
         channels: function () { return _cache ? _cache.channels : []; }, channel: function (id) { return _cache ? _cache.byId[id] || null : null; }, isEnabled: isEnabled, reset: reset, status: status,
         load: load, reload: reload, catalog: catalog, meta: meta, streams: streams, synthAddon: synthAddon, isReady: isReady,
         onProgress: onProgress

@@ -203,6 +203,10 @@
         if (local) { resumeSources(startPlayback(local, p.id, p.name, how), p.id); return; }
         var st = { url: p.url, name: p.name, _headers: U.sanitizeHeaders(p.headers) || undefined,
             behaviorHints: (p.fileHints && typeof p.fileHints === 'object') ? p.fileHints : undefined };   // (its file: for subtitles made for it)
+        if (p.torrent && typeof p.torrent.infoHash === 'string') {   // (a torrent: its link from the streaming server set now)
+            st = Stremio.torrentSource({ infoHash: p.torrent.infoHash, fileIdx: p.torrent.fileIdx, sources: p.torrent.sources, name: p.name, behaviorHints: st.behaviorHints });
+            if (!st.url) { U.toast('This one plays through a streaming server: Settings › Content › Streaming server', 6000); return; }
+        }
         if (/^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(p.url || '')) { st._yt = true; st.ytPage = p.url; }   // (a YouTube video: through the service again)
         resumeSources(startPlayback(st, p.id, p.name, how), p.id);
     }
@@ -321,7 +325,7 @@
         if (!panel || (' ' + body.className + ' ').indexOf(' series-body ') === -1) { return; }
         var sr = s.getBoundingClientRect(), br = body.getBoundingClientRect();
         if (!(br.height > 0)) { return; }
-        var top = Math.round(br.bottom - sr.top) + PANEL_GAP;
+        var top = Math.round((br.bottom - sr.top) / U.zoom()) + PANEL_GAP;   // (measured on screen, zoomed)
         panel.style.top = Math.max(PANEL_MIN, Math.min(PANEL_MAX, top)) + 'px';
     }
 
@@ -724,7 +728,7 @@
     function fileStreams(v) {
         return v.streams.map(function (st) {
             var s = Object.assign({ name: fileLabel(v) }, st);
-            return Stremio.youTubeSource ? Stremio.youTubeSource(s) : s;
+            return Stremio.torrentSource(Stremio.youTubeSource(s));
         });
     }
 
@@ -1395,6 +1399,8 @@
         uncached: function (a, b) { return (a.info.cache === -1 ? 1 : 0) - (b.info.cache === -1 ? 1 : 0); },
         kind: function (a, b) { return (KIND_SCORE[b.info.kind] || 0) - (KIND_SCORE[a.info.kind] || 0); },
         hdr: function (a, b) { return (b.info.hdr ? 1 : 0) - (a.info.hdr ? 1 : 0); },
+        // (only two sources that both state theirs: the others keep their order)
+        seeds: function (a, b) { return (a.info.seeds >= 0 && b.info.seeds >= 0) ? b.info.seeds - a.info.seeds : 0; },
         addon: function (a, b) { return (a.st._addonRank || 0) - (b.st._addonRank || 0); },
         // each source's place in its addon's own list (an addon's first ties with another's
         // first): a plain key, so it orders consistently wherever it sits among the criteria
@@ -1464,7 +1470,13 @@
     // again), as the player takes a source, or null. total: how many it could try in all.
     // avoid: [{ addon, tag }] — an addon's links through a debrid service that sent an account's
     // notice (access refused, a limit: the player's noticeOf): they'd say the same.
+    // Torrent sources' links from the streaming server set now (Settings may have changed it since
+    // they came: none when it's off).
+    function serverNow(list) {
+        (list || []).forEach(function (st) { if (st && st.infoHash) { Stremio.torrentSource(st); } });
+    }
     function nextSourceFor(tried, avoid) {
+        serverNow(_d && _d.streams);
         var rows = (_d && _d.streams) ? filterRows(rankRowsFor(_d.streams)) : [], seen = {}, all = [];   // (within the filter: Addon ▾ / Resolution ▾)
         rows.forEach(function (r) {
             var st = r.st, id = Stremio.sourceId(st), dt = Stremio.debridOf ? Stremio.debridOf(st) : null;
@@ -1847,6 +1859,7 @@
         // before, 4K, 1080p, …) starts with its heading.
         var heading = streamsHeading();
         if (heading) { listScroll.appendChild(U.el('div', 'stream-for', heading)); }
+        serverNow(_d.streams);   // (a page kept from before: its torrents follow the streaming server set now)
         var list = _d.streams, keepAt = -1, rows = rankRowsFor(list), lastGroup = null;
         // Direct links only (Settings › Source ranking): the sources the TV can't play left out
         // (torrents, links it can't open); where-to-watch apps stay (they open)
@@ -1915,10 +1928,11 @@
             if (row && row.sized) { lines.push('📏 Outside your size limits: ' + row.sized + '  (Settings › Playback › Source ranking)'); }
             if (row && row.blocked) { lines.push('⚠ ' + row.blocked + ' isn’t allowed  (Settings › Playback › Formats)'); }
             if (row && row.bad.length) { lines.push('⚠ Marked “Not working” on this TV: ' + row.bad.join(', ') + '  (Settings › Playback › Formats)'); }
+            if (stream._torrent) { lines.push('🧲 A torrent, through your streaming server (Settings › Content › Streaming server)'); }
             if (opens) {
                 lines.push('▶ OK opens ' + (opens.data ? 'it in ' : '') + opens.app.name);
             } else if (!playable) {
-                if (stream.infoHash) { lines.push('— torrent, needs a debrid/torrent client'); }
+                if (stream.infoHash) { lines.push('— torrent: plays through a streaming server (Settings › Content › Streaming server)'); }
                 else if (stream.externalUrl) {
                     lines.push('— another app' + ((typeof TVApps !== 'undefined' && TVApps.available())
                         ? ': add it in Settings › Content › Streaming apps to open it from here' : ' (not playable here)'));
@@ -1936,7 +1950,7 @@
             }
             node.__onselect = function () {
                 if (opens) { openWhere(opens); return; }
-                if (!playable) { U.toast('This source can’t play directly on the TV.'); return; }
+                if (!playable) { U.toast(stream.infoHash ? 'Torrents play through a streaming server: Settings › Content › Streaming server' : 'This source can’t play directly on the TV.', stream.infoHash ? 6000 : undefined); return; }
                 startPlayback(stream, _d.streamId, _d.streamLabel || _d.meta.name, howHere());
             };
             return node;
@@ -1985,6 +1999,7 @@
     // The player's "Select source" list: each source with the request headers it needs
     // (IPTV), so switching to it sends its own (or none).
     function playableSources(list) {
+        serverNow(list || _d.streams);
         return (list || _d.streams || []).filter(Stremio.isPlayable).map(function (st) {
             var sz = Stremio.streamSize(st);
             var desc = Stremio.streamDescription(st).replace(/\n/g, '   ');
@@ -2001,6 +2016,10 @@
 
     // how (optional): { fromStart } — Play from start (Continue Watching): from 0:00.
     function startPlayback(stream, videoId, label, how) {
+        if (stream && stream.infoHash) {   // (a torrent: its link from the streaming server set now)
+            Stremio.torrentSource(stream);
+            if (!stream.url) { U.toast('Torrents play through a streaming server: Settings › Content › Streaming server', 6000); return null; }
+        }
         // VOD changes progress/watched state. Live playback does not, and keeping Home
         // untouched lets us restore the exact originating card and scroll position.
         if (!(_d && _d.exitToBack)) { markHomeDirty(); }
@@ -2015,8 +2034,10 @@
         var titleId = _d && _d.id, series = _d && _d.type === 'series', vtype = _d && _d.type;
         var remembers = !!(_d && !_d.live);
         // (also for another source picked in the player: what's learned is that one's)
-        function learnFor(st) {
-            var info = Stremio.streamInfo(st), fkeys = Stremio.formatKeys(info);
+        // how.converted: played converted by the streaming server, so its formats aren't learned
+        // (they didn't play on the TV); Played before and the kept source still are.
+        function learnFor(st, how) {
+            var info = Stremio.streamInfo(st), fkeys = (how && how.converted) ? [] : Stremio.formatKeys(info);
             return {
                 // (private viewing: nothing about this playback remembered or forgotten — its own
                 // flag, set when it started, see player-store; what plays on this TV is still learned)
@@ -2199,13 +2220,20 @@
     }
 
     // Load a specific episode's sources and auto-play the first playable one.
+    // The next / previous episode (from the player): its sources asked for, the best like the
+    // last one played. An answer once you've left the page, or asked for another episode since
+    // (_epGen), does nothing: no playback, no page drawn, no spinner change, no note.
+    var _epGen = 0;
     function playEpisode(v) {
+        var still = pageNow(), gen = ++_epGen;
+        function current() { return still() && gen === _epGen; }
         _d.mode = 'streams';
         _d.streamId = v.id;
         _d.season = (v.season === undefined ? 1 : v.season);
         _d.streamLabel = epName(v);
         U.spinner(true);
         Stremio.getStreams(addonType(), v.id).then(function (list) {
+            if (!current()) { return; }
             _d.streams = sortStreams(Stremio.dedupeStreams(list));
             U.spinner(false);
             var pick = pickLikeLast(_d.id, _d.streams);
@@ -2215,7 +2243,7 @@
                 return;
             }
             startPlayback(pick, v.id, _d.streamLabel);
-        }, function () { U.spinner(false); U.toast('Failed to load that episode'); });
+        }, function () { if (!current()) { return; } U.spinner(false); U.toast('Failed to load that episode'); });
     }
 
     // ----- binge: the next episode plays a source like the one you've been watching -----

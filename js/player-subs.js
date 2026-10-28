@@ -48,7 +48,7 @@
 
     // A new playback: no subtitles yet.
     function resetSubs() {
-        _subGen++;
+        _subGen++; stopSubLoad();
         _subTracks = []; _cues = null; _subOn = false; _subLabel = ''; _subTrackUrl = '';
         _subDelay = 0; _subTrackId = null; _embSub = null; _embLang = ''; _embWant = null;
         _embDelay = 0; _embQueue = []; _embNudge = null;
@@ -285,12 +285,52 @@
     // Each choice (a track, Off, a built-in one) is a new one: a download still on its way
     // for an earlier choice is dropped when it comes, without a word (_subGen).
     var _subGen = 0;
+    // A subtitle file's time to arrive: some servers build it when asked (12 s, seen from an
+    // OpenSubtitles proxy); the video plays on meanwhile.
+    var SUB_FILE_MS = 20000;
+    // The download under way (_subLoad: { url, ctx, cancel, timer, done }): the same track picked
+    // again while it comes waits for it (it used to be asked for again, what was on its way
+    // dropped: slow servers took several picks); another choice stops it, its connection freed.
+    // The files downloaded (the last SUB_FILES_MAX, while StremioK runs) come back at once.
+    var _subLoad = null, SUB_FILES_MAX = 8, _subFiles = [];   // ([{ url, text }], newest last)
+    function subFile(url) { for (var i = 0; i < _subFiles.length; i++) { if (_subFiles[i].url === url) { return _subFiles[i].text; } } return null; }
+    function keepSubFile(url, text) {
+        _subFiles = _subFiles.filter(function (f) { return f.url !== url; });
+        _subFiles.push({ url: url, text: text });
+        if (_subFiles.length > SUB_FILES_MAX) { _subFiles.shift(); }
+    }
+    function stopSubLoad() {
+        var l = _subLoad;
+        _subLoad = null;
+        if (l) { clearInterval(l.timer); l.cancel.cancel(); }
+    }
+    // A subtitle file: from those kept, else downloaded (the same one shared by whoever asks).
+    function subText(track, cancel) {
+        var kept = subFile(track.url);
+        if (kept !== null) { return Promise.resolve(kept); }
+        return U.getText(track.url, SUB_FILE_MS, undefined, cancel || null, false, track.headers || null).then(function (text) { keepSubFile(track.url, text); return text; });   // (a USB file's: the service's header where there's no token)
+    }
     function loadTrack(track, onDone) {
         if (!U.parseUrl(track.url)) { U.toast('That subtitle track has no usable link'); return; }   // (http(s) only)
-        U.toast('Loading subtitles…', 1500);
+        var l = _subLoad;
+        if (l && l.url === track.url && l.ctx === S.ctx) {   // (still coming: waited for, not asked for again)
+            if (onDone) { l.done.push(onDone); }
+            U.toast('Still loading subtitles… ' + l.secs + ' s', 1500);
+            return;
+        }
+        stopSubLoad();
         var forCtx = S.ctx, gen = ++_subGen;
         function stale() { return !S.active || S.ctx !== forCtx || gen !== _subGen; }   // (another playback, or another choice, meanwhile)
-        U.getText(track.url, 15000, undefined, null, false, track.headers || null).then(function (text) {   // (a USB file's: the service's header where there's no token)
+        var cancel = U.cancelToken(), mine = { url: track.url, ctx: forCtx, cancel: cancel, secs: 0, done: onDone ? [onDone] : [], timer: null };
+        if (subFile(track.url) === null) {   // (a download: how long it's been, every second, till it's in)
+            _subLoad = mine;
+            U.toast('Loading subtitles…', 1500);
+            mine.timer = setInterval(function () { mine.secs++; if (_subLoad === mine) { U.toast('Loading subtitles… ' + mine.secs + ' s', 1500); } }, 1000);
+        }
+        function finished() { clearInterval(mine.timer); if (_subLoad === mine) { _subLoad = null; } }
+        onDone = function () { mine.done.forEach(function (f) { try { f(); } catch (e) {} }); };
+        subText(track, cancel).then(function (text) {
+            finished();
             if (stale()) { return; }
             var cues = parseCues(text);
             if (!cues.length) { U.toast('Could not parse subtitles'); return; }
@@ -299,8 +339,8 @@
             _subTrackId = (track.id != null) ? track.id : null; _subDelay = 0;
             renderSubs();
             U.toast('Subtitles: ' + (track.lang || 'on'));
-            if (onDone) { onDone(); }
-        }, function () { if (!stale()) { U.toast('Failed to download subtitles'); } });
+            onDone();
+        }, function () { finished(); if (!stale()) { U.toast('Failed to download subtitles'); } });
     }
 
     // ---------- the second subtitle ----------
@@ -323,7 +363,7 @@
         var track = _subTracks.filter(function (t) { return t.url && langMatches(want, t.lang); })[0];
         if (!track || (_cues2 && _sub2Label === track.url)) { if (!track) { secondOff(); } return; }
         var forCtx = S.ctx, gen = ++_sub2Gen;
-        U.getText(track.url, 15000, undefined, null, false, track.headers || null).then(function (text) {
+        subText(track).then(function (text) {
             if (!S.active || S.ctx !== forCtx || gen !== _sub2Gen) { return; }
             var cues = parseCues(text);
             if (!cues.length) { return; }
@@ -374,7 +414,7 @@
     }
 
     function subsOff() {
-        _subGen++;
+        _subGen++; stopSubLoad();   // (a download under way for a track: stopped)
         _subOn = false; _cues = null; _subLabel = ''; _subTrackUrl = ''; _subTrackId = null; _subDelay = 0;
         embOff();
         S.subsEl.className = 'hidden'; U.clear(S.subsEl);

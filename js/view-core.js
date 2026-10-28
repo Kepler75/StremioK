@@ -24,8 +24,9 @@ var ViewParts = {};
     var _modalPrevFocus = null;
     var _modalScope = null;
 
-    // opts (optional): { noLabel, onNo, plain } — another label and an action for the other
-    // button; plain: the confirm button not marked as destructive.
+    // opts (optional): { noLabel, onNo, plain, focusYes } — another label and an action for the
+    // other button; plain: the confirm button not marked as destructive; focusYes: focus starts on
+    // it (not on Cancel).
     function confirm(message, confirmLabel, onYes, opts) {
         opts = opts || {};
         // defensive: never stack modals
@@ -45,7 +46,7 @@ var ViewParts = {};
         overlay.appendChild(box);
         document.body.appendChild(overlay);
 
-        showModal(overlay, no);   // default to Cancel (safe)
+        showModal(overlay, opts.focusYes ? yes : no);   // default to Cancel (safe)
     }
 
     // A QR code for the phone (an addon's link or setup page): the code holds the whole link;
@@ -511,15 +512,27 @@ var ViewParts = {};
             else if (m.key === 'discover') { item('tab-pill', 'discover', 'Discover', '🔭', function () { App.openDiscover(); }, tabbar); }
             else if (m.key === 'search') { item('hchip', 'search', 'Search', '🔍', function () { App.openSearch(); }, tabbar); }
         });
-        head.appendChild(tabbar);
-        item('hchip', 'settings', 'Settings', '⚙', function () { App.openSettings(); }, head);
-
-        head.appendChild(U.el('div', 'spacer'));
+        // The items in one strip that scrolls sideways when they don't all fit (Focus keeps the
+        // focused one in view); the StremioK name outside it, at the right.
+        var strip = U.el('div', 'menu-scroll');
+        strip.appendChild(tabbar);
+        item('hchip', 'settings', 'Settings', '⚙', function () { App.openSettings(); }, strip);
+        head.appendChild(strip);
+        setTimeout(function () { showActiveItem(strip); }, 0);   // (once it's on screen)
         var brand = U.el('div', 'brand');
         brand.innerHTML = 'Stremio<span class="dot">K</span>';
         if (Player.isPrivate && Player.isPrivate()) { brand.className += ' private'; }   // (private viewing on: drawn as an outline)
         head.appendChild(brand);
         return head;
+    }
+
+    // The page's own item scrolled into view (one picked by number, far to the right), with
+    // room for a neighbour on either side; focus may be on the page below.
+    function showActiveItem(strip) {
+        var a = strip.querySelector('.active'), w = strip.clientWidth, mx = 90;
+        if (!a || !w) { return; }
+        if (a.offsetLeft < strip.scrollLeft + mx) { strip.scrollLeft = Math.max(0, a.offsetLeft - mx); }
+        else if (a.offsetLeft + a.offsetWidth > strip.scrollLeft + w - mx) { strip.scrollLeft = a.offsetLeft + a.offsetWidth - w + mx; }
     }
 
     // DOWN from the top menu returns to where focus was before going UP (if it's still
@@ -534,7 +547,7 @@ var ViewParts = {};
         var all = s.querySelectorAll('.focusable');
         for (var i = 0; i < all.length; i++) {
             var r = all[i].getBoundingClientRect();
-            if (r.height > 0 && r.top > 80) { Focus.setFocus(all[i]); return true; }
+            if (r.height > 0 && r.top > 80 * U.zoom()) { Focus.setFocus(all[i]); return true; }   // (below the menu: on screen, zoomed)
         }
         return false;
     }
@@ -639,17 +652,32 @@ var ViewParts = {};
             redrawGuideCards();
         }, 60000);
     }
+    // A hold-OK menu that waits for something first (a channel's schedule, a title's details):
+    // shown only if, when it comes, you're still where you held it: the card in the page, its
+    // screen not hidden (Settings or a title opened meanwhile; Home stays in the page, hidden),
+    // no player, no other menu up, and no hold since (that one's). -> { still(), latest() }
+    var _holdGen = 0;
+    function holdNow(card) {
+        var gen = ++_holdGen, screen = null;
+        for (var n = card; n && !screen; n = n.parentNode) { if (/\bscreen\b/.test(n.className || '')) { screen = n; } }
+        return {
+            latest: function () { return gen === _holdGen; },
+            still: function () {
+                return gen === _holdGen && !!card && document.documentElement.contains(card) && (!screen || !/\bhidden\b/.test(screen.className)) &&
+                    !(typeof Player !== 'undefined' && Player.isActive()) && !isModalOpen();
+            }
+        };
+    }
     // Hold OK on a channel card: ▶ Watch now, ★ Add to / Remove from favorites, and its schedule
     // from 2 hours ago to tomorrow (what's on now marked, and picked); OK on a program says
     // what it is. A channel without a guide: the first two.
-    var _schedGen = 0;
     function liveSchedule(meta, card) {
-        var gen = ++_schedGen;
+        var hold = holdNow(card);
         U.spinner(true);
         EPG.schedule(meta.id).then(null, function () { return []; }).then(function (list) {
-            if (gen !== _schedGen) { return; }   // (held on another card since: its own)
+            if (!hold.latest()) { return; }   // (held on another card since: its own)
             U.spinner(false);
-            if (!document.documentElement.contains(card) || (typeof Player !== 'undefined' && Player.isActive())) { return; }   // (left meanwhile)
+            if (!hold.still()) { return; }   // (left meanwhile)
             var fav = IPTV.isFavorite(meta.id), t = Date.now() / 1000, at = 'play';
             var items = [['play', '▶  Watch now'], ['fav', fav ? '★  Remove from favorites' : '★  Add to favorites']];
             list.forEach(function (p, i) {
@@ -686,10 +714,12 @@ var ViewParts = {};
     // Playing, or mark it watched / unwatched (a series as a whole). The title's details
     // are fetched first (usually cached) so the choices match its current state.
     function posterActions(meta, type, card) {
+        var hold = holdNow(card);
         U.spinner(true);
         titleActions(meta, type).then(function (a) {
+            if (!hold.latest()) { return; }   // (held on another card since: its own)
             U.spinner(false);
-            pickList(a.name, a.items, null, a.run);
+            if (hold.still()) { pickList(a.name, a.items, null, a.run); }   // (not over a screen opened meanwhile)
         });
     }
     // What a title's hold-OK menu offers, wherever it's held (a poster; the player's Cast & more,

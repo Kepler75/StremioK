@@ -35,8 +35,9 @@ video through Samsung's AVPlay API.
 - **YouTube:** live channels, trailers, and your own YouTube channels, playlists and searches,
   with SponsorBlock, DeArrow, chapters and captions.
 - **Local:** the videos on a USB drive, matched to their titles.
+- **Torrents**, through Stremio's streaming server or a TorrServer you run on your network.
 - **Made for the remote:** D-pad navigation throughout; hold OK where an item has more to
-  offer (*Hold OK for more* says so).
+  offer (*Hold OK for more* says so); zoom up to 140% for reading from further away.
 
 ## Install
 
@@ -52,7 +53,8 @@ Three ways, all covered step by step in the **[installation guide](docs/INSTALL.
 
 1. **Addons:** add the addons you use, by link, or bring them in from your Stremio account,
    AIOManager or a configuration file. A stream addon that gives HTTP(S) links (for example
-   through a debrid service) is what makes titles playable.
+   through a debrid service), or a torrent addon with a streaming server you run, is what makes
+   titles playable.
 2. **API keys**, optional: your own TMDB, OMDb and MDBList keys add ratings, *Cast & more*,
    *where to watch* and episode trailers.
 3. **Trakt**, optional: connect your account to share watched marks and Continue Watching.
@@ -67,8 +69,8 @@ Three ways, all covered step by step in the **[installation guide](docs/INSTALL.
 This app hosts **no** media. It is a client for the open Stremio addon protocol: catalogs and
 metadata come from the addons you install (**Cinemeta**, the official one, by default), and
 playable sources come from whatever **stream addons you add yourself** in Settings. Streams
-that only expose a torrent `infoHash` (no HTTP URL) are listed but not playable: AVPlay needs
-a direct HTTP(S)/HLS/DASH URL, and this app embeds no torrent or debrid engine.
+that only expose a torrent `infoHash` play only through a streaming server you run (Stremio's
+or TorrServer): this app embeds no torrent or debrid engine.
 > **Note on WatchHub:** StremioK doesn't install it. Its answers say it's only for clients
 > Stremio authorizes in writing, and StremioK isn't one; "where to watch" comes from TMDB
 > instead (with a TMDB key). You can still add it yourself as a third-party addon (Settings
@@ -85,8 +87,7 @@ your progress, settings and copies that let it start faster (see
 ## Known limitations
 
 - AVPlay behavior varies by TV generation, codec and HLS provider.
-- No torrent playback: sources need a direct HTTP(S)/HLS/DASH URL (e.g. through a debrid
-  addon).
+- Torrents play only through a streaming server you run on your network.
 - Home rows show a catalog's first page (up to 30 titles); Discover pages through the rest.
 - No StremioK account and no profiles: settings, addons and progress stay on the TV. The
   only sync is optional: Trakt (watched marks, Continue Watching, ratings).

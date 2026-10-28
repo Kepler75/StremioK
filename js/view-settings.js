@@ -193,9 +193,13 @@
         var bgs = { dark: 1, black: 1, gray: 1, white: 1 };
         return { accent: ACCENT_NAMES[accent] ? accent : 'indigo', bg: bgs[bg] ? bg : 'dark' };
     }
+    // Zoom: everything bigger (see U.setZoom), in percent.
+    var ZOOMS = [['100', '100%'], ['110', '110%'], ['120', '120%'], ['130', '130%'], ['140', '140%']];
+    function zoomPct() { return Stremio.getPrefs().zoom; }
     function applyAppearance() {
         var a = appearance();
         U.applyTheme(a.accent, a.bg);
+        U.setZoom(zoomPct() / 100);
     }
     function settingsAppearance(wrap) {
         var store = { get: appearance, set: function (cfg) {
@@ -207,6 +211,10 @@
         wrap.appendChild(U.el('h2', null, 'Appearance'));
         wrap.appendChild(subPickRow('Background', BACKGROUNDS, 'bg', store));
         wrap.appendChild(subPickRow('Accent color', accents, 'accent', store));
+        wrap.appendChild(subPickRow('Zoom', ZOOMS, 'zoom', {
+            get: function () { return { zoom: '' + zoomPct() }; },
+            set: function (cfg) { Stremio.setPref('zoom', +cfg.zoom); applyAppearance(); }
+        }));
         wrap.appendChild(subPickRow('Poster orientation', POSTER_SHAPES, 'posterShape', {
             get: function () { return { posterShape: Stremio.getPrefs().posterShape }; },
             set: function (cfg) { Stremio.setPref('posterShape', cfg.posterShape); markHomeDirty(); }   // Home redraws on return
@@ -338,6 +346,7 @@
     var SETTINGS_GROUPS = {
         content: { title: 'Content', rows: [
             ['Addons', 'Catalog, stream & subtitle addons', 'addons'],
+            ['Streaming server', 'Stremio’s streaming server or TorrServer on your network: torrents, and videos the TV can’t play', 'server'],
             ['Integrations', 'API keys (OMDb, TMDB, MDBList), where-to-watch country', 'integrations'],
             ['IPTV', 'Manage M3U playlist URLs', 'iptv'],
             ['YouTube', 'Your YouTube channels, playlists and searches; YouTube in Search', 'youtube'],
@@ -407,6 +416,7 @@
         else if (_settingsSection === 'appshortcuts') { settingsAppShortcuts(wrap); }
         else if (_settingsSection === 'import') { settingsImport(wrap); }
         else if (_settingsSection === 'aiomanager') { settingsAiom(wrap); }
+        else if (_settingsSection === 'server') { settingsServer(wrap); }
         else if (_settingsSection === 'appearance') { settingsAppearance(wrap); }
         else if (_settingsSection === 'formats') { settingsFormats(wrap); }
         else { settingsMenu(wrap); }
@@ -449,7 +459,7 @@
         wrap.appendChild(U.el('h2', null, 'Settings'));
         wrap.appendChild(sectionRow('Content', 'Addons, API keys, IPTV playlists, streaming apps, importing a configuration file', 'content'));
         wrap.appendChild(sectionRow('Playback', 'Audio and subtitles, source ranking, feed sources, formats', 'playback'));
-        wrap.appendChild(sectionRow('Appearance', 'Background, accent color, poster orientation, Home feeds, Search results', 'appearance'));
+        wrap.appendChild(sectionRow('Appearance', 'Background, accent color, zoom, poster orientation, Home feeds, Search results', 'appearance'));
         wrap.appendChild(sectionRow('Diagnostics', 'Logs, storage, installed apps; how StremioK was installed', 'diagnostics'));
         if (typeof YTPlay !== 'undefined' && YTPlay.installMode && YTPlay.installMode() === 'tizenbrew') { wrap.appendChild(U.el('div', 'hint', TIZENBREW_NOTE)); }
         focusBack(wrap);
@@ -972,6 +982,60 @@
             }
         });
     }
+    // Streaming server: Stremio's or TorrServer, on your network (see Stremio.server). Picking one
+    // asks for its address; Test says whether it answers.
+    var SERVERS = [['', 'Off'], ['stremio', 'Stremio server'], ['torrserver', 'TorrServer']];
+    var SERVER_PORT = { stremio: 11470, torrserver: 8090 };
+    var TORRENT_WAITS = [['45', '45 seconds'], ['60', '1 minute'], ['120', '2 minutes'], ['180', '3 minutes'], ['300', '5 minutes']];
+    function askServerAddress(kind, url) {
+        var eg = 'http://192.168.0.10:' + SERVER_PORT[kind];
+        App.openEntry({
+            title: (kind === 'stremio' ? 'Stremio server' : 'TorrServer') + ': address',
+            hint: 'Its address on your network, like ' + eg + '. RETURN cancels.',
+            value: url || 'http://', placeholder: eg, phone: 'server',
+            validate: function (v) { return Stremio.serverAddressProblem(v); },
+            onConfirm: function (v) { Stremio.setServer({ kind: kind, url: v }); App.back(); renderSettings(); }
+        });
+    }
+    function settingsServer(wrap) {
+        wrap.appendChild(U.el('h2', null, 'Streaming server'));
+        wrap.appendChild(U.el('div', 'hint', 'Torrent-only sources play through it; Stremio’s can also convert a video the TV can’t play.'));
+        var sv = Stremio.server();
+        wrap.appendChild(subPickRow('Server', SERVERS, 'kind', {
+            get: function () { return { kind: Stremio.server().kind }; },
+            set: function (cfg) {
+                var cur = Stremio.server();
+                if (!cfg.kind) { Stremio.setServer({ kind: '' }); renderSettings(); return; }
+                askServerAddress(cfg.kind, cur.kind === cfg.kind ? cur.url : '');
+            }
+        }));
+        if (!sv.kind) { return; }
+        var addr = U.el('div', 'addon-item focusable cfg-row');
+        addr.appendChild(U.el('div', 'a-name', 'Address:  ' + sv.url));
+        addr.appendChild(U.el('div', 'a-url', 'Press OK to change'));
+        addr.__onselect = function () { askServerAddress(sv.kind, sv.url); };
+        wrap.appendChild(addr);
+        var test = U.el('div', 'addon-item focusable cfg-row'), said = U.el('div', 'a-url', 'Press OK to see whether it answers');
+        test.appendChild(U.el('div', 'a-name', 'Test'));
+        test.appendChild(said);
+        test.__onselect = function () {
+            said.textContent = 'Asking…';
+            Stremio.testServer().then(function (r) { said.textContent = (r.ok ? '✓ ' : '✗ ') + r.text; });
+        };
+        wrap.appendChild(test);
+        wrap.appendChild(subPickRow('Wait for a torrent to start', TORRENT_WAITS, 'wait', {
+            get: function () { return { wait: '' + Stremio.server().wait }; },
+            set: function (cfg) { Stremio.setServer({ kind: Stremio.server().kind, wait: +cfg.wait }); }
+        }));
+        if (sv.kind === 'stremio') {
+            wrap.appendChild(subPickRow('Convert videos the TV can’t play', [['on', 'On'], ['off', 'Off']], 'convert', {
+                get: function () { return { convert: Stremio.server().convert ? 'on' : 'off' }; },
+                set: function (cfg) { Stremio.setServer({ kind: 'stremio', convert: cfg.convert === 'on' }); }
+            }));
+        }
+    }
+
+    var IPTV_EVERY = [['0', 'Off'], ['1', 'Every hour'], ['3', 'Every 3 hours'], ['6', 'Every 6 hours'], ['12', 'Every 12 hours']];
     function settingsIptv(wrap) {
         wrap.appendChild(U.el('h2', null, 'IPTV'));
         var playlists = Stremio.iptvGetPlaylists ? Stremio.iptvGetPlaylists() : [];
@@ -1058,6 +1122,10 @@
         xt.appendChild(U.el('div', 'a-url', 'Its server, username and password: its channels and TV guide added'));
         xt.__onselect = addXtream;
         wrap.appendChild(xt);
+        if (playlists.length && Stremio.iptvRefreshEvery) {   // (all of them, with their guides, as Reload does)
+            wrap.appendChild(subPickRow('Auto-refresh', IPTV_EVERY, 'every',
+                { get: function () { return { every: String(Stremio.iptvRefreshEvery()) }; }, set: function (c) { Stremio.iptvSetRefreshEvery(+c.every); } }));
+        }
 
         wrap.appendChild(U.el('div', 'hint',
             'Channels are grouped into IPTV and Radio rows on Home. ▲ / ▼ set the playlists\' order: a channel in two playlists comes from the first.'));

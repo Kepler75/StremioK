@@ -14,7 +14,7 @@ var Views = (function (V) {
         renderLive: V.renderLive,
         renderSearch: V.renderSearch, searchFor: function (q) { V.searchFor(q); }, renderDiscover: V.renderDiscover, renderEntry: V.renderEntry, backInDetail: V.backInDetail,
         homeDirty: V.homeDirty, refreshHomeIfStale: V.refreshHomeIfStale, alertNewEpisodes: V.alertNewEpisodes, previewTiles: V.previewTiles, withShowInfo: V.withShowInfo,
-        isModalOpen: V.isModalOpen, closeModal: V.closeModal, moveKey: V.moveKey, availableTabs: V.availableTabs,
+        isModalOpen: V.isModalOpen, closeModal: V.closeModal, confirm: V.confirm, moveKey: V.moveKey, availableTabs: V.availableTabs,
         menuItems: V.menuItems, menuOrder: V.menuOrder, moveMenuItem: V.moveMenuItem
     };
 })(ViewParts);

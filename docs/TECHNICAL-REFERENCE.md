@@ -128,6 +128,14 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
 
 ## Sources
 
+- **Through a streaming server:** a torrent source (`infoHash`, `fileIdx`) becomes a link on it:
+  Stremio's `/{infoHash}/{fileIdx}` (−1: the largest file) with its trackers as `tr`;
+  TorrServer's `/stream/play?link={magnet}&index={fileIdx + 1}&play`, its trackers in the magnet.
+  Without a `fileIdx`, TorrServer's file list (`&stat`) is read first: the episode's file (none:
+  the next source), a film's largest video. Saved sources and Continue Watching keep the torrent, not the link: it's
+  made again from your current server, or isn't playable with none. Converting asks Stremio's
+  `/hlsv2/{id}/master.m3u8` for the failed link (H.264, HEVC; AAC, AC-3, E-AC-3, MP3, 6
+  channels); what plays converted isn't learned in Formats.
 - **Request headers:** a source an addon says needs its own player settings (`proxyHeaders`)
   plays with its User-Agent and Referer, as an IPTV channel's: the only two the TV's player
   takes. Any other header it asks for isn't sent.
@@ -177,48 +185,70 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
 - **Select source** plays as a playback of its own: its quality list, subtitles and captions,
   SponsorBlock sections, request headers and file details are its own, and what's learned
   (Formats, Played before) is about it; the title, its episodes and Private viewing stay.
+
+### Starting and recovering
+
 - **Started means playing:** a source counts as started once its position has moved for a
-  second; being opened isn't enough. A failure before that goes to the next source. With
-  nothing playing after 45 seconds: the next source, or, with none left, it stops and says so
-  (not while you've paused it).
-- **Video quality** reads an HLS stream's quality list only, capped at 512 KB and only if it's a
-  real playlist; a debrid MKV / MP4 or any other direct file is never downloaded "to look". A
-  stream that needs its own User-Agent or Referer has its list read through StremioK's service,
-  with them (a web page can't send those). When the list can't be read, the menu says so,
-  rather than looking like a stream with one quality.
+  second; being opened isn't enough. A failure before that goes to the next source.
+- **Nothing playing after 45 seconds:** the next source, or, with none left, it stops and says
+  so (not while you've paused it).
 - **Jumps after pauses:** after pauses, the TV's player sometimes jumps ahead at the next
   buffering, to where it would be had it never paused. A jump ahead you didn't ask for (more than
   the time that has passed) is taken back to where you were and noted in Diagnostics; the same
   jump twice in a row (a real gap in the file) is let through.
 - **In the background**, the TV's player is suspended and restored when you come back; if it
   can't be restored, the stream opens again where it was.
-- **Skip times** come from TheIntroDB (its v4 API), with SkipDB and then IntroDB filling in when TheIntroDB
-  doesn't answer or lacks a kind of segment (an episode it only has the intro for gets the
-  credits from one of the others; an empty one, ending where it starts or before, counts as
-  missing). They're asked for once the video's length is known (TheIntroDB and SkipDB match
-  it), taken only by the playback that asked (another one started meanwhile: dropped, so one
-  video's credits can't end another), and checked against that length: inside it, in order,
-  credits and preview in its second half, intro and recap in its first. Credits or a preview
-  timed on a longer copy (another release, running past this one's end) are cut at its end
-  rather than dropped. Each lookup is noted in Diagnostics: what each source answered, and
-  anything cut or dropped and why. A preview counts only with an end, before the credits (one
-  running to the end comes with the credits). The 10-second credits stand-in isn't shown on the
-  progress bar. Reaching the credits marks a title watched only once 80% of it has played;
+- **A live channel whose stream ends** is counted like a stall: if it keeps ending, it stops and
+  says so.
+- **An HLS quality that won't start** steps down, then falls back to Auto.
+
+### Video quality
+
+- Read from an HLS stream's quality list only, capped at 512 KB and only if it's a real
+  playlist; a debrid MKV / MP4 or any other direct file is never downloaded "to look".
+- A stream that needs its own User-Agent or Referer has its list read through StremioK's
+  service, with them (a web page can't send those).
+- When the list can't be read, the menu says so, rather than looking like a stream with one
+  quality.
+
+### Skip times
+
+- **Where they come from:** TheIntroDB (its v4 API), with SkipDB and then IntroDB filling in when
+  TheIntroDB doesn't answer or lacks a kind of segment (an episode it only has the intro for gets
+  the credits from one of the others; an empty one, ending where it starts or before, counts as
+  missing).
+- **When:** asked for once the video's length is known (TheIntroDB and SkipDB match it), and
+  taken only by the playback that asked (another one started meanwhile: dropped, so one video's
+  credits can't end another).
+- **Checked against that length:** inside it, in order, credits and preview in its second half,
+  intro and recap in its first. Credits or a preview timed on a longer copy (another release,
+  running past this one's end) are cut at its end rather than dropped. A preview counts only
+  with an end, before the credits (one running to the end comes with the credits).
+- **In Diagnostics:** each lookup, with what each source answered (*nothing* when it has none
+  for it, *no answer* and why when it failed: in that line, not one of its own), and anything
+  cut or dropped and why.
+- **On screen:** the 10-second credits stand-in isn't shown on the progress bar.
+- **Watched:** reaching the credits marks a title watched only once 80% of it has played;
   choosing *Skip Credits → Next* does at once.
-- **Anime** opened by a MyAnimeList or Kitsu id (`mal:…`, `kitsu:…`) gets openings, endings and
-  recaps from AniSkip, the times submitted for a copy closest in length to yours. Whatever
-  AniSkip doesn't give comes from TheIntroDB, SkipDB and IntroDB, asked by the show's IMDb id,
-  season and episode. Those ids come from the title's own details when its addon gives them
-  (AIOMetadata's do), else from [ARM](https://arm.haglund.dev), which matches anime ids across
-  sites. A Tizen 3 TV can't reach AniSkip or ARM (both only take newer secure connections than
-  Tizen 3's browser makes), so there it's the title's own ids and those three sources.
-- **The next episode's source:** the addon's binge group first, then the same addon, resolution
-  and release group; remembered per series. One with no air date counts as out.
+
+### Anime
+
+- A title opened by a MyAnimeList or Kitsu id (`mal:…`, `kitsu:…`) gets openings, endings and
+  recaps from AniSkip, the times submitted for a copy closest in length to yours.
+- Whatever AniSkip doesn't give comes from TheIntroDB, SkipDB and IntroDB, asked by the show's
+  IMDb id, season and episode. Those ids come from the title's own details when its addon gives
+  them (AIOMetadata's do), else from [ARM](https://arm.haglund.dev), which matches anime ids
+  across sites.
+- A Tizen 3 TV can't reach AniSkip or ARM (both only take newer secure connections than Tizen
+  3's browser makes), so there it's the title's own ids and those three sources.
+
+### The next episode
+
+- **Its source:** the addon's binge group first, then the same addon, resolution and release
+  group; remembered per series. One with no air date counts as out.
 - **Not-ready notices:** a movie or episode source shorter than 2 minutes isn't marked watched
   (nor sent to Trakt), put in Continue Watching, followed by the next episode or counted as the
   format working.
-- **Recovery:** a live channel whose stream ends is counted like a stall: if it keeps ending, it
-  stops and says so. An HLS quality that won't start steps down, then falls back to Auto.
 
 ## Subtitles
 
@@ -226,9 +256,9 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
   fingerprint (when the source gives them), as Stremio does. This is kept with Continue
   Watching, so resuming asks the same way. For a matched USB video the fingerprint is the
   OpenSubtitles hash of the file.
-- **Languages:** about 45 languages are known by their 2- and 3-letter codes and names. A file's
-  own tracks are read whichever way the TV reports their language (`language` or `track_lang`,
-  even when its track details aren't clean JSON).
+- **Languages:** every language OpenSubtitles uses is known by its 2- and 3-letter codes and its
+  names. A file's own tracks are read whichever way the TV reports their language (`language` or
+  `track_lang`, even when its track details aren't clean JSON).
 - **The order your language is looked for in:** an addon's, a subtitle file next to a USB video,
   a YouTube caption, or a track built into the video; only when none has it is the second
   choice looked for, in the same order (a track to download first, then a built-in one). A
@@ -249,6 +279,9 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
   files aren't read again), with a drive plugged in only; one already on the drive isn't offered
   for *⬇ Download*.
 - **YouTube's automatic captions** show one line at a time.
+- **A subtitle file** gets 20 seconds to arrive (some subtitle servers build the file when it's
+  asked for); the video plays on meanwhile. Picked again while it comes, it isn't asked for
+  again; another pick (or *Off*) stops it. The last 8 downloaded are kept while StremioK runs.
 
 ## Audio
 
@@ -282,10 +315,12 @@ channels where it gives one; the rest is read from the source's name and file.
 
 ## IPTV
 
-- **Playlist names:** after its file (`…/sports.m3u8`: *sports*; *sports (2)* when another
-  playlist already has that name). A link without a file name (an Xtream `get.php` one), or a
-  name cleared with *Rename*, takes the playlist's own `#PLAYLIST:` / `playlist-name="…"`, else
-  its server.
+### Playlists
+
+- **Names:** after its file (`…/sports.m3u8`: *sports*; *sports (2)* when another playlist
+  already has that name). A link without a file name (an Xtream `get.php` one), or a name
+  cleared with *Rename*, takes the playlist's own `#PLAYLIST:` / `playlist-name="…"`, else its
+  server.
 - **Radio** is recognized by `radio="true"`, `tvg-type="radio"`, a `group-title` containing
   "radio", or an audio file extension (`.mp3`, `.aac`, `.ogg`, `.flac`, `.m4a`).
 - **Sports** counts only `tvg-type="sport"` / `"sports"`, not a group's name.
@@ -294,41 +329,62 @@ channels where it gives one; the rest is read from the source's name and file.
   like `The Book ThiefDrama / 2013 / 7.6`), else its title, looked up on TMDB (with your key,
   Spanish titles too), else Cinemeta (original titles only). One sure match (the same name, and
   the year when known) opens its page; anything else, a show included, opens Search.
-- **YouTube behind a link:** an Xtream channel's link (`…/live/user/pass/id.ext`) is looked at
-  first (redirects followed, the answer not read; where it led is kept 5 minutes, or until the
-  playlists reload, as a server can renumber its channels); one ending on YouTube plays through StremioK's
-  YouTube. A YouTube channel's page (`@handle`, `/channel/`, `/c/`, `/user/`, any tab)
-  plays as given; with no live stream there, its `/live` page, then its Featured tab.
-- **Xtream accounts:** checked with `player_api.php` (its `user_info.auth`), then saved as the
-  account's `get.php` link (`type=m3u_plus`, `output=ts`: servers' own HLS tends to stall
-  minutes in; *Format* switches to `m3u8`). A server without `http(s)://` is `http://`; a pasted Xtream link fills in the login.
-  The player's *Format* swaps one channel's `/live/…/123.ts` and `.m3u8`, kept by channel (the
-  last 300).
-- **TV guide (XMLTV):** a playlist's typed *Guide link*, else its `url-tvg` / `x-tvg-url`, else an
-  Xtream `get.php` link's `xmltv.php` (also in place of a guide the playlist names on its own
-  server without the login). The service downloads it (gzipped or not; up to 60 MB,
-  200 MB unpacked, 5 minutes) and keeps only your channels: the app sends their keys (`tvg-id`,
-  else the name, plain) as a bitset, in a POST's body (a newer TV's service reads 8 KB of a
-  request's address and headers: thousands of channels' keys don't fit there). An answer is
-  kept to 2 MB: the Guide tab asks 20 channels at a time. Programs from 2 hours ago to 30 hours ahead, 150 a
-  channel (held to that as it's read), 60,000 in all, each with its picture (`<icon>`); a
-  channel's `<icon>` stands in for a missing `tvg-logo` (none into your home network from a
-  guide on the internet).
-- **Saved guides:** on the sideloaded app they're saved in its folder (written whole, then
-  swapped in) and read again after 6 hours (a playlist's *Reload*: its guide at once,
-  `&force=1`); under TizenBrew, kept in memory. A channel whose programs don't come (no answer,
-  or past the 2 MB) stays on the Guide tab and is asked again 30 seconds later. Four guides are kept: a fifth's arrival deletes
-  the oldest's file, a file older than 2 days is deleted, one over 32 MB isn't read. The Guide
-  tab draws 10 channels at a time, reading their programs (and the next 10's) as you come to
-  them. *Clear saved copies* (Storage) deletes the saved guides too.
 - **Size:** each playlist is downloaded up to 20 MB and keeps its first 30,000 channels. Big ones
   are read in chunks, with a count ("Reading playlists… 12,000 channels"), so the remote stays
-  responsive. A channel listed twice is shown once only when it's exactly the same (link, name,
-  group and headers). Copies are saved in the TV's database.
+  responsive. Copies are saved in the TV's database.
+- **Duplicates:** a channel listed twice is shown once only when it's exactly the same (link,
+  name, group and headers).
+- **Auto-refresh:** checked every minute, counted from the oldest playlist's download (a saved
+  copy's too, so an old one is read again soon after StremioK starts) and from the last try (a
+  server that's down isn't asked every minute). It waits while something plays, or StremioK is
+  in the background; its guides are read again at once (`&force=1`).
 - **Headers:** a channel's User-Agent and Referer (`#EXTVLCOPT:http-user-agent=` /
   `http-referrer=` or `http-referer=`, the same `#EXTINF` attributes, `#EXTHTTP:{…}`, or after
   a `|` in its link: `…m3u8|Referer=…`) are applied where the TV allows it (these two only,
   printable, within a sane length) and follow the channel when you switch sources.
+
+### Xtream and YouTube links
+
+- **Xtream accounts:** checked with `player_api.php` (its `user_info.auth`), then saved as the
+  account's `get.php` link (`type=m3u_plus`, `output=ts`: servers' own HLS tends to stall
+  minutes in; *Format* switches to `m3u8`). A server without `http(s)://` is `http://`; a
+  pasted Xtream link fills in the login.
+- **A channel's own format:** the player's *Format* swaps one channel's `/live/…/123.ts` and
+  `.m3u8`, kept by channel (the last 300).
+- **YouTube behind a link:** an Xtream channel's link (`…/live/user/pass/id.ext`) is looked at
+  first (redirects followed, the answer not read; where it led is kept 5 minutes, or until the
+  playlists reload, as a server can renumber its channels); one ending on YouTube plays through
+  StremioK's YouTube.
+- **A YouTube channel's page** (`@handle`, `/channel/`, `/c/`, `/user/`, any tab) plays as
+  given; with no live stream there, its `/live` page, then its Featured tab.
+
+### TV guide
+
+- **Where it comes from:** a playlist's typed *Guide link*, else its `url-tvg` / `x-tvg-url`,
+  else an Xtream `get.php` link's `xmltv.php` (also in place of a guide the playlist names on its
+  own server without the login).
+- **Read by the service:** gzipped or not; up to 60 MB, 200 MB unpacked, 5 minutes.
+- **Only your channels:** the app sends their keys (`tvg-id`, else the name, plain) as a bitset,
+  in a POST's body (a newer TV's service reads 8 KB of a request's address and headers:
+  thousands of channels' keys don't fit there).
+- **What's kept:** programs from 2 hours ago to 30 hours ahead, 150 a channel (held to that as
+  it's read), 60,000 in all, each with its picture (`<icon>`). A channel's `<icon>` stands in
+  for a missing `tvg-logo` (none into your home network from a guide on the internet).
+- **Answers:** kept to 2 MB; the Guide tab asks 20 channels at a time. A channel whose programs
+  don't come (no answer, or past the 2 MB) stays on the Guide tab and is asked again 30 seconds
+  later.
+- **Saved guides:** on the sideloaded app they're saved in its folder (written whole, then
+  swapped in) and read again after 6 hours (a playlist's *Reload*: its guide at once,
+  `&force=1`); under TizenBrew, kept in memory.
+- **How many:** four guides are kept: a fifth's arrival deletes the oldest's file, a file older
+  than 2 days is deleted, one over 32 MB isn't read. *Clear saved copies* (Storage) deletes the
+  saved guides too.
+- **The Guide tab** draws 10 channels at a time, reading their programs (and the next 10's) as
+  you come to them. Back from a channel played from it, it moves to the time now, on the channel
+  you ended on.
+
+### Live channels
+
 - **CH+ / CH−:** only the latest choice counts: a slower lookup for one you passed doesn't
   replace it, and the spinner and any error are for the channel chosen last. A channel number
   waits a second and a half for a second digit.
@@ -337,6 +393,8 @@ channels where it gives one; the rest is read from the source's name and file.
   segments; when its sound is cut that way, the channel restarts through the service, which
   repacks the sound (whole frames, each with its own time) and passes the picture as it is.
   Remembered per channel link for two weeks. Not for encrypted streams or sound it can't read.
+  A look still under way stops when you switch channel or close the player, its downloads in the
+  service with it (zapping doesn't pile them up).
 - **Closed captions:** the same look says which caption channels (CC1–CC4) have text, and their
   language (English, Spanish, Portuguese) from its words; none yet: asked next time. On,
   the channel plays through the [relay](#live-relay), as subtitle tracks. HLS only: a plain
@@ -381,48 +439,63 @@ playlist, and reordering or hiding Home feeds fetches nothing at all.
 
 ### Waiting
 
-*Normal* is 12 seconds for a manifest, a catalog page, a title's details or its subtitles, 15
-for sources and 25 for a search; 20, 30, 45 or 60 seconds wait at least that long for all of
+*Normal* is 12 seconds for a manifest, a catalog page or a title's details, 15 for its subtitles
+and sources and 25 for a search; 20, 30, 45 or 60 seconds wait at least that long for all of
 them.
 
 ## Trakt
 
-- **Sign-in:** StremioK is the Trakt app, so its Client ID is built in: a public id, not a
+### Sign-in
+
+- **Client ID:** StremioK is the Trakt app, so its Client ID is built in: a public id, not a
   secret (Trakt gives apps installed on people's devices no secret; signing in always takes the
-  account owner's approval). The QR library is loaded the first time the sign-in opens, not at
-  launch.
-- **Progress:** sent once past the first minute. Stopped past 85% (before the credits) is sent
-  as finished, so Trakt marks it watched, and here it leaves Continue Watching with the next
-  episode queued. Stopped between 80% and 85% is sent as 79.9% (Trakt takes no later place for
-  something paused) while StremioK keeps your exact place. Played to the credits, it's sent as
-  finished too, which also clears a place Trakt kept for it. A show Trakt has a paused episode of
-  isn't added again on its next episode, unless you've since watched that episode or a later one
-  (on any device): that paused place, and one this TV kept, is then left out.
-- **Reading your history:** Trakt sends watched lists a page at a time, and shows with their
-  episodes only when asked. StremioK asks for them, 250 movies or 100 shows a page, and reads
-  every page up to the count Trakt gives (100 pages at most).
-- **The outbox:** changes are sent at once, kept until Trakt confirms them, retried after 30 s,
-  1 min, 2 min… (up to an hour apart, 8 tries; Trakt's Retry-After when it's busy), 100 titles /
-  episodes a request. Of several places for one title waiting, only the latest is sent. Changes
-  to the same title or episode go in the order you made them: a newer one waits for an older one
-  still being retried, and a newer watched / not watched (or a finish) takes back the older ones
-  for it that haven't gone yet, so an old change can't undo a newer one. A change counts as sent
-  only when Trakt's answer confirms it (a reply that isn't Trakt's JSON is retried); a finish
-  Trakt already has (409) counts as sent. At most 200 changes wait. A refresh sends what's
-  waiting first, then reads Trakt.
-- **Shows Trakt splits in two:** an addon may number an episode as season 17 where Trakt has it as
-  season 10 of another show, and Trakt answers 404. StremioK then sends it again by the episode's
-  TheTVDB number when the addon gives it (its `tvdb_id`, or TheTVDB's picture of the episode).
+  account owner's approval).
+- **The QR library** is loaded the first time the sign-in opens, not at launch.
 - **Tokens:** an expired token is never used. Disconnecting stops everything still under way for
   that sign-in (a token renewal, a refresh, a change being sent: their answers are ignored).
+
+### Progress
+
+- **Sent** once past the first minute.
+- **Stopped past 85%** (before the credits) is sent as finished, so Trakt marks it watched, and
+  here it leaves Continue Watching with the next episode queued.
+- **Stopped between 80% and 85%** is sent as 79.9% (Trakt takes no later place for something
+  paused) while StremioK keeps your exact place.
+- **Played to the credits:** sent as finished too, which also clears a place Trakt kept for it.
+- **A show Trakt has a paused episode of** isn't added again on its next episode, unless you've
+  since watched that episode or a later one (on any device): that paused place, and one this TV
+  kept, is then left out.
+
+### Reading Trakt
+
+- **Your history:** Trakt sends watched lists a page at a time, and shows with their episodes
+  only when asked. StremioK asks for them, 250 movies or 100 shows a page, and reads every page
+  up to the count Trakt gives (100 pages at most).
 - **Weighing marks:** a mark made here is weighed against Trakt's history by time: marked not
   watched here, then watched on another device later: watched. Once Trakt confirms a "not
   watched", the mark here is dropped and Trakt decides again.
 - **Limits:** Trakt's answers are limited to 8 MB and checked (IMDb ids, season and episode
-  numbers, lengths) before anything is kept; the watched history is kept in the TV's database;
-  refreshes run one at a time and wait longer after a failure, and not during playback.
+  numbers, lengths) before anything is kept; the watched history is kept in the TV's database.
+- **Refreshes** run one at a time and wait longer after a failure, and not during playback.
 - **Up next** lists the 15 shows you watched most recently, the latest first; finished shows are
   left out.
+
+### Sending changes
+
+- **The outbox:** changes are sent at once and kept until Trakt confirms them, retried after
+  30 s, 1 min, 2 min… (up to an hour apart, 8 tries; Trakt's Retry-After when it's busy), 100
+  titles / episodes a request. At most 200 changes wait. A refresh sends what's waiting first,
+  then reads Trakt.
+- **One place a title:** of several places for one title waiting, only the latest is sent.
+- **In the order you made them:** changes to the same title or episode wait for an older one
+  still being retried, and a newer watched / not watched (or a finish) takes back the older ones
+  for it that haven't gone yet, so an old change can't undo a newer one.
+- **Confirmed means sent:** a change counts as sent only when Trakt's answer confirms it (a reply
+  that isn't Trakt's JSON is retried); a finish Trakt already has (409) counts as sent.
+- **Shows Trakt splits in two:** an addon may number an episode as season 17 where Trakt has it
+  as season 10 of another show, and Trakt answers 404. StremioK then sends it again by the
+  episode's TheTVDB number when the addon gives it (its `tvdb_id`, or TheTVDB's picture of the
+  episode).
 
 ## USB drives
 
@@ -706,6 +779,9 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 - A resumed answer must start exactly where the partial file ends (its `Content-Range`), for the
   same file (`If-Range`, with the ETag or date the download began with); otherwise it starts
   over. The finished file must be the declared size.
+- That ETag or date is kept in StremioK's own folder (the last 64 downloads), never on the
+  drive, where a prepared file could lead elsewhere. The partial file's size is read only from a
+  regular file, not through a link.
 - Checked before it starts: the drive's free space (with 50 MB to spare) and, on a FAT32 drive,
   the 4 GB file limit. The partial file and the finished one must be regular files, not links.
 - A streamed playlist (HLS or DASH, by its type or its first bytes) isn't a file: refused.

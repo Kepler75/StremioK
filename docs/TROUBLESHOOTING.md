@@ -23,7 +23,8 @@ What to do when something doesn't work. For how things are meant to work, see th
 
 - **Settings › Diagnostics › Logs** lists the last 200 problems since StremioK started (failed
   downloads, playback and script errors, storage full), with secrets masked. Many entries below
-  say what they note there.
+  say what they note there. *No answer* means none came at all (the connection refused or
+  blocked, or a certificate the TV doesn't trust); *Timed out after 20 s*, a server too slow.
 - **After a crash** (or the TV closing StremioK), the next launch says so: about when, after how
   long, the memory it used, its last steps and what was logged just before.
 - **Slow to start?** *Startup* in Logs shows how long this launch and the one before took to
@@ -38,6 +39,7 @@ What to do when something doesn't work. For how things are meant to work, see th
 | Tizen Studio: the install fails with a certificate error | A retail TV only takes apps signed with a *Samsung* certificate profile that includes its DUID. Create one in Certificate Manager (Samsung account, the TV's DUID added) and build again; a Tizen-only profile won't install. |
 | An update won't install over StremioK (a certificate mismatch) | It's signed with another certificate than the installed one. Sign with the same profile, or uninstall StremioK first (its settings and progress go with it). |
 | The TV isn't found (Tizen Studio, Apps2Samsung) | Developer Mode on, with *Host PC IP* set to that computer; restart the TV; both on one network. |
+| *Hold BACK to close StremioK* after Exit | The TV didn't let StremioK close itself (it can happen under TizenBrew). Hold BACK for a second: the TV closes it. |
 | TizenBrew: no downloads, drive index or home bar preview | Those need the sideloaded app (see the [installation guide](INSTALL.md#which-way-to-install)). For YouTube, update TizenBrew. |
 
 ## Addons
@@ -60,7 +62,8 @@ What to do when something doesn't work. For how things are meant to work, see th
 |--------------|---------------------|
 | "No sources found" | The page says why for each addon. *Refused* or *didn't answer*: try **↻ Re-scan** in a minute (a rate limit, HTTP 429, passes). *No sources for this*: that addon has nothing for this title. |
 | "None of your addons provide sources" | Add a stream addon (Settings › Content › Addons). Cinemeta and OpenSubtitles give titles and subtitles, not sources. |
-| Sources listed, but only as torrents | The TV's player needs a direct HTTP(S) or HLS link; StremioK has no torrent engine. Use a stream addon with a debrid service. *Sources the TV can't play: Hidden* leaves them out. |
+| Sources listed, but only as torrents | The TV's player needs a direct link. Set a [streaming server](SETTINGS.md#streaming-server), or use a stream addon with a debrid service. |
+| A torrent source doesn't start | Settings › Content › Streaming server › *Test*: the server must answer. A torrent few people share starts slowly, or never. |
 | A source is at the bottom, "Not working or not allowed on this TV" | A format in it failed twice before, or its resolution isn't allowed. Settings › Playback › [Formats](SETTINGS.md#formats) shows which, and OK switches it back to *Working*. |
 | A source is at the bottom under "Outside your size limits" or "Hidden by your words" | Your [size limits or words](SETTINGS.md#source-ranking). It stays listed, a press away. |
 | *🕘 From earlier* sources don't play | The addon didn't answer in time, so the links it gave earlier are shown; they may have expired. Open the title again later to ask the addon fresh. |
@@ -99,7 +102,7 @@ sources. Try again later.
 | An HLS quality won't start | It steps down a quality, then falls back to *Auto*. |
 | A live channel keeps reconnecting | Its connection drops, or its server stops the stream; StremioK opens it again ("Connection lost — reconnecting…"). How often is up to *Reconnect live channels* (Settings › Playback › Seeking & buffering). |
 | A live channel closes when it drops | *Reconnect live channels* is Off, or it dropped 3 times in 5 minutes ("This channel keeps dropping"). *Keep trying* never gives up. |
-| After a pause, it jumps ahead | The TV's player sometimes does this. StremioK takes it back on its own and notes it in Diagnostics (see the [technical reference](TECHNICAL-REFERENCE.md#playback)). |
+| After a pause, it jumps ahead | The TV's player sometimes does this. StremioK takes it back on its own and notes it in Diagnostics (see the [technical reference](TECHNICAL-REFERENCE.md#starting-and-recovering)). |
 | No speed control, no HDR / frame-rate switching | Not available: the TV's player mutes audio at other speeds, and web apps can't switch modes on Tizen 3. |
 
 ## Audio and subtitles

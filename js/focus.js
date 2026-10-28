@@ -42,7 +42,7 @@ var Focus = (function () {
     // Scrolls each overflowing box around the node so it's in view, with a margin. A box
     // marked __noScroll only clips (a page's text block): it never moves.
     function ensureVisible(node) {
-        var p = node.parentNode;
+        var p = node.parentNode, z = (typeof U !== 'undefined' && U.zoom) ? U.zoom() : 1;   // (rects are on screen, zoomed; scrolling isn't)
         while (p && p.nodeType === 1 && p !== document.body) {
             var canX = !p.__noScroll && p.scrollWidth > p.clientWidth + 2;
             var canY = !p.__noScroll && p.scrollHeight > p.clientHeight + 2;
@@ -51,13 +51,13 @@ var Focus = (function () {
                 var nr = node.getBoundingClientRect();
                 if (canX) {
                     var mx = 90;
-                    if (nr.left < pr.left + mx) { p.scrollLeft -= (pr.left + mx - nr.left); }
-                    else if (nr.right > pr.right - mx) { p.scrollLeft += (nr.right - (pr.right - mx)); }
+                    if (nr.left < pr.left + mx) { p.scrollLeft -= (pr.left + mx - nr.left) / z; }
+                    else if (nr.right > pr.right - mx) { p.scrollLeft += (nr.right - (pr.right - mx)) / z; }
                 }
                 if (canY) {
                     var my = 70;
-                    if (nr.top < pr.top + my) { p.scrollTop -= (pr.top + my - nr.top); }
-                    else if (nr.bottom > pr.bottom - my) { p.scrollTop += (nr.bottom - (pr.bottom - my)); }
+                    if (nr.top < pr.top + my) { p.scrollTop -= (pr.top + my - nr.top) / z; }
+                    else if (nr.bottom > pr.bottom - my) { p.scrollTop += (nr.bottom - (pr.bottom - my)) / z; }
                 }
             }
             p = p.parentNode;

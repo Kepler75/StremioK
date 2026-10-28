@@ -178,11 +178,19 @@ var PlayerParts = {};
         } else {
             all[k] = { id: S.ctx.id, type: S.ctx.type, name: S.ctx.name, poster: S.ctx.poster, background: S.ctx.background, parent: S.ctx.parent,
                        position: Math.floor(S.cur), duration: Math.floor(S.dur), updated: Date.now(),
-                       url: S.ctx.yt || S.ctx.url, headers: S.ctx._headers,   // the exact stream, to resume it directly (YouTube: its page)
+                       url: S.ctx.yt || savedUrl(S.ctx), headers: S.ctx._headers,   // the exact stream, to resume it directly (YouTube: its page)
+                       torrent: torrentOf(S.ctx.stream),   // (through a streaming server: its link made again from the one set then)
                        fileHints: (P.fileHints && P.fileHints(S.ctx.subExtra)) || undefined,   // (its file, for subtitles made for it)
                        added: added || undefined };
         }
         writeProgress(all);
+    }
+    // What's saved to resume: a converted playback's own link (not the server's conversion), and a
+    // torrent's infoHash, file and trackers (its link depends on the server set when it resumes).
+    function savedUrl(ctx) { return (ctx._convertedFrom && /\/hlsv2\//.test(ctx.url || '')) ? ctx._convertedFrom : ctx.url; }
+    function torrentOf(st) {
+        if (!st || !st._torrent) { return undefined; }
+        return { infoHash: st.infoHash, fileIdx: st.fileIdx, sources: Array.isArray(st.sources) ? st.sources.slice(0, 20) : undefined };
     }
 
     // ---------- OSD ----------
@@ -400,7 +408,7 @@ var PlayerParts = {};
         ctx.localSubs = s.localSubs; ctx.localFile = s.localFile; ctx.subExtra = s.subExtra; ctx.sourceSubs = s.sourceSubs;
         ctx.formatInfo = (s.stream && typeof Stremio !== 'undefined' && Stremio.streamInfo) ? Stremio.streamInfo(s.stream) : undefined;
         ctx.stream = s.stream;   // (the addon's source: ⬇ Download, player-controls)
-        var learn = (old.learnFor && s.stream) ? old.learnFor(s.stream) : {};
+        var learn = (old.learnFor && s.stream) ? old.learnFor(s.stream, { converted: !!s.converted }) : {};   // (converted: not what the TV plays itself)
         ctx.onStarted = learn.onStarted; ctx.onFailed = learn.onFailed;
         ctx.resumeSec = keep ? old.resumeSec : (S.isLive ? 0 : S.cur);
         if (keep) { ctx.fromStart = old.fromStart; }
@@ -414,6 +422,8 @@ var PlayerParts = {};
         // Replacing a YouTube stream that's playing (CH+/CH− to the next channel): the TV's
         // player can freeze on an open straight after closing it, so settle first (startAV).
         var settle = !!(S.active && S.ctx && S.ctx.yt);
+        if (S.ctx !== ctx) { stopLiveLook(); }   // (another channel: the look at the one before stopped)
+        stopFileLook();
         S.ctx = ctx; _onExit = onExit;
         // (private viewing, a link played as it is, or one started from a private playback —
         // a video followed from it, another source: nothing recorded, see player-store)
@@ -445,7 +455,27 @@ var PlayerParts = {};
         renderOSD();   // show the NEW title immediately (not the previous item's)
         U.spinner(true, ctx.switching ? 'Switching source…' : ctx.initialQualityHeight ? 'Opening stream at ' + ctx.initialQualityHeight + 'p…' : 'Opening stream…');
 
-        if (useAV) { startLive(ctx, settle); } else { startHTML5(ctx.url); }
+        // (a TorrServer torrent that doesn't say which of its files: its file list asked for first)
+        var go = function () { if (useAV) { startLive(ctx, settle); } else { startHTML5(ctx.url); } };
+        if (ctx.stream && ctx.stream._pickFile && typeof Stremio !== 'undefined' && Stremio.torrentFile) {
+            // (the source before stopped first: its callbacks are about it, not this one)
+            ++_playToken; _openedAt = 0;
+            if (useAV) { try { avplay.stop(); } catch (e0) {} try { avplay.close(); } catch (e1) {} }
+            else if (S.videoEl) { try { S.videoEl.pause(); S.videoEl.removeAttribute('src'); } catch (e2) {} }
+            U.spinner(true, 'Asking your streaming server for the torrent’s files…');
+            var ep = /:(\d+):(\d+)$/.exec(ctx.id || ''), look = _fileLook = U.cancelToken();
+            Stremio.torrentFile(ctx.stream, ep ? +ep[1] : 0, ep ? +ep[2] : 0, look).then(function (url) {
+                if (look.cancelled || S.ctx !== ctx || !S.active) { return; }
+                _fileLook = null;
+                if (url) { ctx.url = url; go(); return; }
+                var why = 'The torrent has no file for S' + ep[1] + 'E' + ep[2];   // (another episode isn't played in its place)
+                U.log('player', why);
+                U.spinner(false);
+                if (nextSourceOnFail({ text: why })) { return; }
+                U.toast(why + '. Try another source.', 6000);
+                exitLater();
+            });
+        } else { go(); }
 
         // A YouTube video (not a live channel): its audio languages and its links (end screen,
         // cards) from the service, for the menu and the overlays (player-quality / -controls).
@@ -660,7 +690,7 @@ var PlayerParts = {};
             });
             try { avplay.setStreamingProperty('ADAPTIVE_INFO', adaptiveInfo()); } catch (e0) {}
             _openedAt = Date.now();
-            setTimeout(startCheck, AV_START_MS + 500);
+            setTimeout(startCheck, startMs() + 500);
             avplay.prepareAsync(function () {
                 if (!S.active || token !== _playToken) { return; }
                 U.spinner(false);
@@ -1022,6 +1052,21 @@ var PlayerParts = {};
         U.spinner(true, msg); U.toast(msg, notice ? 7000 : 4000);
         return true;
     }
+    // With Stremio's streaming server (Settings › Content › Streaming server, Convert on): a source
+    // the TV refused is tried once more, converted by the server, before the next source. Once a
+    // playback (the next sources aren't). Not a source that needs its own request headers.
+    function convertOnFail() {
+        var c = S.ctx;
+        if (!c || !S.active || S.playing || S.isLive || c.trailer || c.yt || c.localFile || !c.stream || c._converted || c._headers) { return false; }
+        var u = (typeof Stremio !== 'undefined' && Stremio.convertUrl) ? Stremio.convertUrl(c.url) : null;
+        if (!u) { return false; }
+        c._converted = true; c._convertedFrom = c.url;   // (kept by what replaces it: Continue Watching saves its own link)
+        var msg = 'Didn’t start: converting it on your streaming server…';
+        U.log('player', 'Source didn’t start: converting it on the streaming server');
+        replaceSource({ url: u, stream: c.stream, subExtra: c.subExtra, sourceSubs: c.sourceSubs, localSubs: c.localSubs, converted: true }, true);
+        U.spinner(true, msg); U.toast(msg, 5000);
+        return true;
+    }
     // A start that failed: is the link a debrid addon's notice video (Torrentio's failed_access,
     // limits_exceeded…: noticeOf)? Then that's said, and for the account's ones the next source
     // skips the addon's links through that service; then the next source, or what's to say.
@@ -1033,6 +1078,7 @@ var PlayerParts = {};
                 U.log('player', 'The source sent a notice: ' + notice.kind + (notice.service ? ' (' + notice.service + ')' : ''));
                 if (notice.account && notice.tag) { c._avoid = (c._avoid || []).concat([{ addon: st._addon, tag: notice.tag }]); }
             }
+            if (!notice && convertOnFail()) { return; }
             if (nextSourceOnFail(notice)) { return; }
             U.toast(notice ? notice.text : why, notice ? 8000 : undefined);
             exitLater();
@@ -1072,15 +1118,21 @@ var PlayerParts = {};
         return n;
     }
     // Not playing after AV_START_MS (no answer from the server, or opened and nothing shown): the
-    // next source when there's one; else it stops and says so (not while you've paused it).
+    // next source when there's one; else it stops and says so (not while you've paused it). A
+    // torrent through a streaming server has longer (Settings › Content › Streaming server: finding
+    // people sharing it takes a while).
+    function startMs() {
+        var st = S.ctx && S.ctx.stream;
+        return (st && st._torrent && typeof Stremio !== 'undefined' && Stremio.server) ? Stremio.server().wait * 1000 : AV_START_MS;
+    }
     function startCheck() {
-        if (!S.active || S.playing || !useAV || !_openedAt || Date.now() - _openedAt < AV_START_MS) { return; }
+        if (!S.active || S.playing || !useAV || !_openedAt || Date.now() - _openedAt < startMs()) { return; }
         if (_reco.tries) { liveDropped('Couldn’t reconnect'); return; }   // (a reconnect's try: the next one)
         if (nextSourceOnFail()) { return; }
         if (S.playStarted && isPaused()) { return; }
-        U.log('player', 'Didn’t start: nothing played in ' + (AV_START_MS / 1000) + ' s (' + where(S.ctx && S.ctx.url) + ')');
+        U.log('player', 'Didn’t start: nothing played in ' + (startMs() / 1000) + ' s (' + where(S.ctx && S.ctx.url) + ')');
         U.spinner(false);
-        U.toast('Didn’t start: nothing played in ' + (AV_START_MS / 1000) + ' seconds. Try another source.', 6000);
+        U.toast('Didn’t start: nothing played in ' + (startMs() / 1000) + ' seconds. Try another source.', 6000);
         exitLater();
     }
     P.startCheck = startCheck;
@@ -1147,6 +1199,12 @@ var PlayerParts = {};
             startAV(ctx.url, settle);
         }, function () { if (S.ctx === ctx && S.active) { startAV(ctx.url, settle); } });
     }
+    // The look under way (_liveLook, a cancel token): stopped when another channel starts or the
+    // player closes (stopLiveLook), the service's downloads for it with it.
+    var _fileLook = null;   // (TorrServer's file list asked for: see play)
+    function stopFileLook() { if (_fileLook) { _fileLook.cancel(); _fileLook = null; } }
+    var _liveLook = null;
+    function stopLiveLook() { if (_liveLook) { _liveLook.cancel(); _liveLook = null; } }
     function liveCheck() {
         var ctx = S.ctx;
         if (!ctx || ctx._liveChecked || !liveFixable(ctx)) { return; }
@@ -1154,7 +1212,10 @@ var PlayerParts = {};
         var known = liveKnown(ctx.url);
         if (known && ccOf(known)) { return; }
         var url = ctx.url;
-        YTPlay.liveOpen(url, ctx._headers, false).then(function (r) {
+        stopLiveLook();
+        var look = _liveLook = U.cancelToken();
+        YTPlay.liveOpen(url, ctx._headers, false, null, look).then(function (r) {
+            if (_liveLook === look) { _liveLook = null; }
             if (!r || !r.sure) { return; }   // (couldn't tell: asked again next time)
             var cc = (r.ccSure || r.cc === undefined) ? (ccOf(r) || []) : null, fix = known ? !!known.fix : !!r.fix;   // (captions with no text yet: asked again next time; the sound's answer: as first found)
             liveKeep(url, fix, cc);
@@ -1278,6 +1339,7 @@ var PlayerParts = {};
 
     function exit() {
         if (!S.active) { return; }
+        stopLiveLook(); stopFileLook();
         if (U.crumb) { U.crumb('player closed'); }
         if (P.sleepClear) { P.sleepClear(); }   // (the sleep timer: this playback's)
         saveProgress();

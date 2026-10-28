@@ -130,14 +130,14 @@
     var SIZE_PX = { small: 28, medium: 36, large: 46, xlarge: 58 };
     function styleSpan(span) {
         var cfg = getSubCfg();
-        span.style.fontSize = (SIZE_PX[cfg.size] || 36) + 'px';
+        span.style.fontSize = (SIZE_PX[cfg.size] || 36) / U.zoom() + 'px';   // (their own size, whatever the zoom)
         span.style.fontFamily = subFontFamily(cfg.font);
         span.style.color = pick3(SUB_COLORS, cfg.color)[2];
         span.style.background = pick3(SUB_BGS, cfg.bg)[2];
         span.style.textShadow = pick3(SUB_EDGES, cfg.edge)[2];
         if (span.parentNode) { span.parentNode.style.bottom = Math.max(subsPosPx(), (P.S && P.S.subsLift) || 0) + 'px'; }   // (raised over the progress bar: core's liftSubs)
     }
-    function subsPosPx() { return pick3(SUB_POSITIONS, getSubCfg().pos)[2]; }
+    function subsPosPx() { return pick3(SUB_POSITIONS, getSubCfg().pos)[2] / U.zoom(); }
 
     // ---------- progress (Continue Watching) ----------
     function progressAll() { return U.store.get(PROGRESS_KEY, {}); }

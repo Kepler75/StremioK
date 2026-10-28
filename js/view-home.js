@@ -164,17 +164,31 @@
     // reordered): reload just its rows; every other row keeps what it has, with no request.
     // url: the addon ('local:iptv' for IPTV); none: nothing to fetch (only the set / order
     // of rows changed). Calls before the reload runs add up.
+    // An addon Home had no rows from (IPTV read after your addons, a first playlist) is one too:
+    // its rows asked for, its tabs added to the menu when they come.
     var _reloadOnly = null;   // { addon url: 1 } for the next reload, else a full one
-    var _homeAddons = {};     // { addon url: 1 } the addons Home's last load had catalogs from
     function refreshAddonRows(url) {
         if (_homeCatalogs === null) { clearCatalogCache(); return; }   // nothing loaded yet: a full load anyway
-        // an addon Home didn't load rows from (the first playlist added: IPTV): a full load, its tab with it
-        if (url && !_homeAddons[url]) { clearCatalogCache(); return; }
         _reloadOnly = _reloadOnly || {};
         if (url) { _reloadOnly[url] = 1; }
         _homeDirty = true;
         if (_current() === scr('home') && !isModalOpen() && !Player.isActive()) { loadHomeCatalogs(); }
     }
+
+    // Auto-refresh (Settings › Content › IPTV): every minute, whether the playlists are due —
+    // their oldest download (a saved copy's own date) and the last try both that long ago — then
+    // all of them and their guides read again, as Reload does, and their rows with them. Not
+    // while something plays or StremioK is in the background: at the next minute after.
+    var _iptvTriedAt = 0, _iptvReading = false;
+    function iptvRefreshTick() {
+        var h = Stremio.iptvRefreshEvery ? Stremio.iptvRefreshEvery() : 0;
+        if (!h || _iptvReading || document.hidden || Player.isActive()) { return; }
+        var due = h * 3600000, now = Date.now(), at = Stremio.iptvReadAt();
+        if (at === Infinity || now - at < due || now - _iptvTriedAt < due) { return; }
+        _iptvTriedAt = now; _iptvReading = true;
+        Stremio.iptvReload().then(function () { _iptvReading = false; refreshAddonRows('local:iptv'); }, function () { _iptvReading = false; });
+    }
+    setInterval(iptvRefreshTick, 60000);
 
     // The Home rows are also saved on the TV, trimmed to what a card and the details strip
     // use, so a launch shows the last rows at once and refreshes them in the background
@@ -1179,7 +1193,10 @@
     }
 
     // Switch the active home tab (from the shared top menu) and show it.
-    function setHomeTab(key) { _homeTab = key || _homeTab; _focusFirstCard = 'new'; }
+    function setHomeTab(key) { _homeTab = key || _homeTab; _focusFirstCard = 'new'; _wantTab = null; }
+    // A tab asked for whose rows are still coming (a first playlist's IPTV tab): shown when they
+    // come, if Home is still on the tab it showed instead. { key, instead }
+    var _wantTab = null;
 
     // prevFocus: a Home card to put focus back on after the rebuild (the card a title
     // was opened from). Otherwise the card currently focused on Home is kept, so rows
@@ -1206,7 +1223,9 @@
         // Keep the active tab valid for what's actually available.
         var avail = availableTabs();
         if (!_homeTab || !avail.some(function (t) { return t.key === _homeTab; })) {
+            var asked = _homeTab;
             _homeTab = avail.length ? avail[0].key : 'movie';
+            if (asked && (_homeLoading || _reloadOnly)) { _wantTab = { key: asked, instead: _homeTab }; }
         }
 
         s.appendChild(buildTopMenu(_homeTab));
@@ -1416,12 +1435,12 @@
             _homeLoading = false;
             _homeFirstLoad = false;
             if (first) { U.spinner(false); }
-            if (_reloadOnly && onHome()) { setTimeout(loadHomeCatalogs, 0); }   // (rows asked for meanwhile: the IPTV ones, read after the addons)
+            // (rows asked for meanwhile: the IPTV ones, read after the addons; unless the redraw
+            // that follows has asked for them already)
+            if (_reloadOnly && onHome()) { setTimeout(function () { if (_reloadOnly) { loadHomeCatalogs(); } }, 0); }
         }
         function onHome() { return _current() === s && !isModalOpen() && !Player.isActive(); }
         Stremio.catalogsForHome().then(function (cats) {
-            _homeAddons = {};
-            cats.forEach(function (cat) { if (cat.addon && cat.addon.url) { _homeAddons[cat.addon.url] = 1; } });
             var acc = cats.map(function (cat) { return copyCat({ name: cat.name, type: cat.type, yt: isYouTubeCat(cat) }, []); });
             var arrived = cats.map(function () { return false; }), shown = 0, partialTimer = null;
             // First load: publish each row as soon as it arrives, in its own place (a slower one above
@@ -1458,11 +1477,16 @@
             U.settleAll(tasks, 3).then(function () {
                 _homeCatalogs = splitOtherCatalogs(acc).filter(function (c) { return c.metas && c.metas.length; });
                 done();
+                var want = _wantTab;
+                _wantTab = null;
+                if (want && _homeTab === want.instead && onHome() && availableTabs().some(function (t) { return t.key === want.key; })) {
+                    setHomeTab(want.key);
+                }
                 saveHomeCache();
                 // The tab on screen is redrawn only if what it shows changed: redrawing rebuilds
                 // every card (and reloads its artwork), which shows as a flicker. Continue
                 // Watching doesn't come from catalogs at all. Other tabs rebuild when opened.
-                var same = (before !== null && shownSig() === before) || ownTabStill();
+                var same = (before !== null && shownSig() === before && menuSig() === _renderedMenu) || ownTabStill();
                 var keep = {};
                 if (same && _tabRows[_homeTab]) { keep[_homeTab] = _tabRows[_homeTab]; }
                 _tabRows = keep;
@@ -1473,6 +1497,7 @@
             });
         }, function () {
             done();
+            _wantTab = null;
             if (first) { U.toast('Failed to load addons. Check network / Settings.'); }
         });
     }

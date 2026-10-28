@@ -3,6 +3,28 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.2.2 — 2026-10-28
+- **Torrents through a streaming server** (Settings › Content › Streaming server): with Stremio's
+  streaming server or a TorrServer running on your network (a computer or a NAS), torrent-only
+  sources play like any other. *Test* says whether it answers; torrents get longer to start (2
+  minutes by default).
+- **Seeders** in Source ranking: torrent sources with more people sharing them first.
+- **Zoom** (Settings › Appearance): 100% to 140%, everything bigger to read from further away;
+  subtitles keep their own size.
+- **Leaving StremioK:** BACK on Home's top menu asks *Exit StremioK?* (OK exits), instead of
+  pressing BACK twice (#3).
+- **The top menu scrolls** when its items don't all fit, the StremioK name staying at the right.
+- **IPTV Auto-refresh** (Settings › Content › IPTV, *Off* by default): every 1, 3, 6 or 12 hours,
+  your playlists and their TV guides are read again; never while something plays.
+- **Quicker switching:** subtitles (a track still coming isn't started over, the last 8 files
+  come back at once) and channels (what StremioK checks on each one stops when you move on).
+- **Diagnostics says what went wrong** (*Timed out after 20 s*, *No answer…*) instead of
+  "HTTP 0"; slow subtitle servers get longer: 20 seconds for a file, 15 for an addon's list.
+- **USB downloads:** a drive prepared with links can no longer make StremioK read or overwrite a
+  file outside it.
+- **Fixed:** your IPTV rows (and the Radio tab) missing from Home at start-up until a Reload; a
+  next episode or a hold menu whose details came late opening after you'd left.
+
 ## 2.2.1 — 2026-10-24
 - **Every language OpenSubtitles uses** (94, Indonesian among them, #1) for subtitles and audio:
   to pick as your default, second choice or second subtitle, listed by name, and each track

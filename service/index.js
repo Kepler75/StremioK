@@ -1589,6 +1589,29 @@ function openPart(fs, part, append, cb) {
         });
     });
 }
+// A partial download's version tag (ETag / Last-Modified), for resuming it after a restart: kept
+// in StremioK's own folder by the partial file's path (DL_VALIDATORS at most, the oldest dropped),
+// never on the drive, where a prepared file could be a link elsewhere (read: its contents sent
+// as If-Range; written: overwritten). None to keep it in (TizenBrew): downloads are closed there.
+var DL_VALIDATORS = 64;
+function dlValFile() { var d = tokenDir(); return d ? d + '/dl-validators.json' : null; }
+function dlValAll() {
+    var f = dlValFile(), o = null;
+    if (!f) { return {}; }
+    try { o = JSON.parse(require('fs').readFileSync(f, 'utf8')); } catch (e) { o = null; }
+    return o && typeof o === 'object' && !Array.isArray(o) ? o : {};
+}
+function dlValGet(part) { var v = dlValAll()[part]; return typeof v === 'string' ? v.slice(0, 300) : ''; }
+function dlValSet(part, v) {
+    var f = dlValFile();
+    if (!f) { return; }
+    var all = dlValAll();
+    delete all[part];
+    if (v) { all[part] = String(v).slice(0, 300); }
+    var keys = Object.keys(all);
+    while (keys.length > DL_VALIDATORS) { delete all[keys.shift()]; }
+    try { require('fs').writeFileSync(f, JSON.stringify(all), { mode: 384 }); } catch (e) { log('download version not kept: ' + (e && (e.code || e.message))); }
+}
 function dlRun(e) {
     var fs = require('fs'), part = e.dir + '/' + e.name + '.part';
     e.state = 'downloading'; e.err = '';
@@ -1601,17 +1624,17 @@ function dlRun(e) {
     fs.mkdir(e.dir, function () {
         fsRealOk(e.dir, function (bad) {
             if (bad) { dlEnd(e, 'failed', 'the folder: ' + bad.message); return; }
-            fs.stat(part, function (se, st) {
+            fs.lstat(part, function (se, st) {   // (not through a link: a partial file is a regular one, see openPart)
+                if (!se && !st.isFile()) { dlEnd(e, 'failed', 'the partial file isn\'t a regular file'); return; }
                 var have = se ? 0 : st.size;
                 if (!have || e.answered) { get(e.url, 0, have); return; }   // (this one's own, from this run: picked up as it was)
-                fs.readFile(part + '.v', 'utf8', function (ve, v) {   // (a partial file from before a restart: resumed only with its validator)
-                    e.validator = ve ? '' : String(v).trim().slice(0, 300);
-                    if (e.validator) { get(e.url, 0, have); } else { dropPart(function () { get(e.url, 0, 0); }); }
-                });
+                e.validator = dlValGet(part);   // (a partial file from before a restart: resumed only with its version kept)
+                if (e.validator) { get(e.url, 0, have); } else { dropPart(function () { get(e.url, 0, 0); }); }
             });
         });
     });
-    function dropPart(then) { fs.unlink(part + '.v', function () { fs.unlink(part, function () { then(); }); }); }
+    // (….part.v: where 2.1.17–2.2.1 kept the version, removed; a link removed, not what it points to)
+    function dropPart(then) { dlValSet(part, ''); fs.unlink(part + '.v', function () { fs.unlink(part, function () { then(); }); }); }
     function get(u, hops, have) {
         if (e.state !== 'downloading') { return; }
         var pu = urllib.parse(u), mod = pu.protocol === 'https:' ? https : http;
@@ -1647,7 +1670,7 @@ function dlRun(e) {
             if (!resumed) {   // (asked again on a resume: If-Range; kept beside the partial file, for one after a restart)
                 var et = resp.headers.etag;
                 e.validator = et && !/^W\//.test(et) ? et : (resp.headers['last-modified'] || '');
-                fs.writeFile(part + '.v', e.validator, { mode: 384 }, function () {});
+                dlValSet(part, e.validator);
             }
             if (isPlaylistAnswer(resp.headers['content-type'], '')) { resp.resume(); closed = true; dlEnd(e, 'failed', 'a streamed playlist (HLS or DASH), not a file: it can\'t be downloaded'); return; }
             var total = 0, cr = /\/(\d+)\s*$/.exec(resp.headers['content-range'] || '');
@@ -1715,7 +1738,7 @@ function dlRun(e) {
                     fs.rename(part, final, function (re) {
                         if (re) { dlEnd(e, 'failed', 'couldn\'t finish the file: ' + (re.code || re.message)); return; }
                         e.name = final.split('/').pop(); e.tries = 0;
-                        fs.unlink(part + '.v', function () {});
+                        dlValSet(part, ''); fs.unlink(part + '.v', function () {});
                         dlEnd(e, 'done');
                     });
                 });
@@ -3057,7 +3080,8 @@ function epgControl(req, res, path, query) {
 var ENTRY_PORT = PORT + 10, ENTRY_MS = 5 * 60 * 1000, ENTRY_IDLE_MS = 30000, ENTRY_MAX = 8192;
 var ENTRY_OPEN_MAX = 2, ENTRY_OPENS = 12, ENTRY_CONNECTIONS = 8, ENTRY_VISIT_MS = 20000, ENTRY_QUIET_MS = 10000;
 var ENTRY_TITLES = { link: 'Play a link on StremioK', addon: 'Add an addon to StremioK', playlist: 'Add an IPTV playlist to StremioK', config: 'Import a configuration file into StremioK',
-    search: 'Search on StremioK', youtube: 'Add a YouTube catalog to StremioK', aiom: 'Your AIOManager address for StremioK', aiomkey: 'Your AIOManager API key for StremioK' };
+    search: 'Search on StremioK', youtube: 'Add a YouTube catalog to StremioK', aiom: 'Your AIOManager address for StremioK', aiomkey: 'Your AIOManager API key for StremioK',
+    server: 'Your streaming server’s address for StremioK' };
 var ENTRY_TEXT = { search: 'Words to search for', youtube: 'A channel, a playlist link, or words to search YouTube for', aiomkey: 'Your account API key' };   // (plain text, not a link)
 var _entries = Object.create(null), _entryServer = null, _entrySockets = [], _entryOpened = [];
 function lanAddress() {

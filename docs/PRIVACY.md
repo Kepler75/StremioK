@@ -9,6 +9,7 @@ no account and no server of its own: it talks directly to the services below, fr
 - [Links that carry your tokens](#links-that-carry-your-tokens)
 - [Sending text from your phone](#sending-text-from-your-phone)
 - [Your home network](#your-home-network)
+- [A streaming server](#a-streaming-server)
 - [StremioK's service on the TV](#stremioks-service-on-the-tv)
 - [TizenBrew shares storage](#tizenbrew-shares-storage)
 - [Clearing what's kept](#clearing-whats-kept)
@@ -22,6 +23,7 @@ Kept on the TV, in StremioK's own storage:
 - per-title choices: subtitle and audio tracks and timing, sources marked not suitable, the
   sources that played (the last 3 for each movie or episode, 150 in all), formats learned;
 - saved copies to start quickly: Home rows, addon manifests, IPTV playlists, USB drive indexes;
+- for a USB download not finished yet, the server's version tag for its file (to resume it);
 - your channels' TV guides, up to 2 days old, each with its link (an Xtream one has your
   username and password in it);
 - with Trakt connected: your Trakt history and sign-in tokens.
@@ -89,6 +91,13 @@ sources and subtitles, and YouTube, SponsorBlock and the skip-time services, as 
   the TV stops asking for it (StremioK closed or in the background).
 - Its address has a random one-time code, and it takes one entry.
 - Its port listens on the TV's home-network address only, and only while a page is open.
+
+## A streaming server
+
+With a [streaming server](SETTINGS.md#streaming-server) set, StremioK sends it a torrent source's
+id, file number and trackers. Converting sends it the source's whole link, with any debrid or
+access token in it. Torrents are downloaded from the people sharing them, who see your server's
+internet address.
 
 ## Your home network
 

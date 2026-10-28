@@ -65,14 +65,15 @@ var YTPlay = (function () {
     // { fix, sure, why, url, cc: [{ ch, lang }] (its closed captions), ccSure }. force: the relay
     // at once (the channel's already known to need it). h: the channel's own User-Agent /
     // Referer ({ ua, ref }). opts (with force): { fix: false (the sound as it is), cc: the caption
-    // channels to add as subtitle tracks }.
-    function liveOpen(url, h, force, opts) {
+    // channels to add as subtitle tracks }. cancel (a U.cancelToken): the look stopped, the
+    // service's downloads with it (another channel, the player closed).
+    function liveOpen(url, h, force, opts, cancel) {
         if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
         var cc = opts && opts.cc ? opts.cc.map(function (c) { return c.ch + (c.lang ? '-' + c.lang : ''); }).join(',') : '';
         return ensureService().then(entryAuth).then(function (a) {
             var q = '/live/open?u=' + encodeURIComponent(url) + (h && h.ua ? '&ua=' + encodeURIComponent(h.ua) : '') + (h && h.ref ? '&ref=' + encodeURIComponent(h.ref) : '') + (force ? '&force=1' : '') +
                 (force && opts && opts.fix === false ? '&fix=0' : '') + (force && cc ? '&cc=' + encodeURIComponent(cc) : '');
-            return U.getJSON(PROXY + q + a.q, force ? 5000 : 30000, 65536, null, a.h);
+            return U.getJSON(PROXY + q + a.q, force ? 5000 : 30000, 65536, cancel || null, a.h);
         });
     }
     // An HLS stream's quality list, read by the service with the stream's own User-Agent /

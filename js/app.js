@@ -5,7 +5,6 @@ var App = (function () {
     var _current = 'home';
     var _stack = [];   // frames: { screen, focus }
     var _lastBackAt = 0;   // debounce BACK across keydown + tizenhwkey
-    var _exitArmedAt = 0;  // double-Back-to-exit guard on the home root
 
     function screenEl(name) { return U.byId('screen-' + name); }
 
@@ -121,8 +120,8 @@ var App = (function () {
     }
 
     // On a main page (Home's tabs, Discover, Search, Settings), BACK goes to the top menu first
-    // (its current item; DOWN comes back), and from there does what it did: the page before,
-    // or "Press Back again to exit" on Home. Also a way out if focus is ever lost on a page.
+    // (its current item; DOWN comes back), and from there to the page before, or (nothing
+    // before: Home) asks "Exit StremioK?". Also a way out if focus is ever lost on a page.
     var MAIN_SCREENS = { home: 1, discover: 1, search: 1, settings: 1 };
     function toTopMenu() {
         if (!MAIN_SCREENS[_current]) { return false; }
@@ -145,7 +144,7 @@ var App = (function () {
         if (_current === 'home' && Views.backInLocal && Views.backInLocal()) { return; }   // (the Local tab: up a folder)
         if (toTopMenu()) { return; }
         var f = _stack.pop();
-        if (!f) { tryExitApp(); return; }
+        if (!f) { askExit(); return; }
         if (f.screen !== _current) { abandon(_current); }
         showScreen(f.screen);
         if (f.detail) { Views.restoreDetail(f.detail); return; }   // the previous title / person page
@@ -158,21 +157,21 @@ var App = (function () {
         }
     }
 
-    // Require a deliberate double-Back from the home root to exit, so a single stray
-    // Back (e.g. left over from closing the player) can never close the app by accident.
-    function tryExitApp() {
-        var now = Date.now();
-        if (now - _exitArmedAt < 3000) {
-            try {
-                if (window.tizen && tizen.application) {
-                    U.sessionState('exit');
-                    tizen.application.getCurrentApplication().exit();
-                    return;
-                }
-            } catch (e) {}
-        }
-        _exitArmedAt = now;
-        U.toast('Press Back again to exit', 3000);
+    // Asked, so a stray BACK (one left over from closing the player) never closes the app; focus
+    // starts on Exit, so BACK, OK leaves.
+    function askExit() { Views.confirm('Exit StremioK?', 'Exit', exitApp, { plain: true, focusYes: true }); }
+    // The TV's own exit where StremioK has it (the sideloaded app). A TizenBrew module's page
+    // doesn't get it: the window closed instead, and if it's still open, the TV's way said.
+    function exitApp() {
+        U.sessionState('exit');
+        try {
+            if (window.tizen && tizen.application) { tizen.application.getCurrentApplication().exit(); return; }
+        } catch (e) { U.log('app', 'Exit: the TV\'s exit failed (' + e.message + ')'); }
+        try { window.close(); } catch (e2) {}
+        setTimeout(function () {
+            U.log('app', 'Exit: still open after closing the window (' + (typeof YTPlay !== 'undefined' && YTPlay.installMode ? YTPlay.installMode() : '?') + ')');
+            U.toast('Hold BACK to close StremioK', 4000);
+        }, 500);
     }
 
     function onKey(action) {
