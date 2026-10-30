@@ -48,7 +48,9 @@ html, body {
 .row { margin: 0 0 16px 0; }
 .row-title { font-size: 26px; font-weight: bold; margin: 0 0 8px 60px; color: #c7cbd4; }
 /* vertical padding leaves room for the scaled focus ring (overflow clips the rest) */
-.row-scroller { white-space: nowrap; padding: 26px 60px; overflow: hidden; }
+/* Its own GPU layer: on the 2017 TV a D-pad move reached the screen a quarter or more sooner
+   (65 -> 47 ms sideways, 96 -> 72 ms up / down, measured); a layer per card was no better overall. */
+.row-scroller { white-space: nowrap; padding: 26px 60px; overflow: hidden; -webkit-transform: translateZ(0); transform: translateZ(0); }
 
 /* --- Cards --- */
 .card {

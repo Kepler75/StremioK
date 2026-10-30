@@ -199,7 +199,8 @@ and takes one entry (see [Privacy and data](PRIVACY.md#sending-text-from-your-ph
   it lists, or, when that's unclear, to Discover only. Picking a tab puts focus on its first title. Put the
   menu in your own order, or hide a tab you never use, in Settings › Appearance › *Menu*; order
   and hide the rows in *Home feeds*.
-- A row shows a catalog's first page; [Discover](#discover) has the rest.
+- A row shows up to 30 of a catalog's titles (up to 200: Settings › Appearance › *Titles in a
+  Home row*); [Discover](#discover) has the rest.
 - A details strip above the rows describes the focused title: its logo (or name), year,
   runtime, rating, genres and synopsis.
 - StremioK opens on the rows it showed last time and refreshes them in the background, and
@@ -536,7 +537,7 @@ Atmos · 5.1 · MKV`).
 ### Choosing
 
 - Tracks are grouped by language ("en", "eng" and "English" are one), with regional tags such
-  as `es-419` kept.
+  as `es-419` kept. Within a language: your addon order, each addon's best match first.
 - Your **default language** (Settings › Playback › Subtitles) turns one on by itself, from
   wherever it is. When nothing is in it, your **second choice** is looked for the same way.
 - **Green** (or *Subtitles* in the DOWN menu) picks a language, then a track. A slow one says so
@@ -584,7 +585,10 @@ moves up above it.
 Settings › Content › **IPTV** › *Add playlist*, or a configuration file. A playlist is named
 after its file (`…/sports.m3u8`: *sports*) or its own name. **An Xtream account** (*Add Xtream
 account*): its server, username and password, a page each; once the server accepts them, its
-channels are a playlist (*Xtream · server*), with its TV guide. Each shows its channel and group
+channels are a playlist (*Xtream · server*), with its TV guide. **A Stalker portal** (*Add Stalker
+portal*): its address (`http://portal.example.com/c/`) and the MAC address your provider
+registered; once the portal accepts them, its channels are a playlist (*Stalker · portal*), a row
+per genre. Its own TV guide isn't read: set one with *Guide link*. Each shows its channel and group
 counts, when it was last downloaded, and what went wrong (a failed refresh keeps the saved copy).
 
 - **▲ / ▼** set the order: a channel in two playlists comes from the first, and rows follow
@@ -595,11 +599,30 @@ counts, when it was last downloaded, and what went wrong (a failed refresh keeps
   TV guides are downloaded again, as *Reload* does, so a channel whose guide came late is back
   on the Guide tab. Never while something plays.
 
+### Films and series from an Xtream account
+
+An Xtream account's films and series come with its channels:
+
+- **Browse:** the Movies and Series tabs get a row per account, newest first (a show is one
+  tile, its episodes on its page); Discover lists them by the provider's categories (as genres),
+  and Search looks through them. The IPTV tab keeps the account's live channels only.
+- **On your own titles:** a film or episode you open from your addons lists the provider's copy
+  among its sources (*Xtream*). Order it, or turn it off, in Source ranking's addons list.
+- **The first time,** the account's list is read (a minute or two for a big one, then once a
+  day): until then the row, Search and the copies on your titles stay empty. *Reload* on the
+  account (Settings › Content › IPTV) reads its films and series again at once.
+- A copy plays only if the TV plays its file: MKV with DTS sound often doesn't.
+- An account whose server lists no films or series (some offer only live channels) adds
+  nothing; its entries play as the server marks them (live: no seeking).
+
 ### Watching
 
 - **★ Favorites:** hold OK on a channel card, then *Add to favorites*. Your favorites are a
-  row of their own, first on the IPTV tab, and come first on the Guide tab.
+  row of their own, first on the IPTV tab with all of them (up to 300), and come first on the
+  Guide tab.
 - **IPTV** and **Radio** rows, a row per group; a channel's details name its playlist.
+- **Films in a playlist:** a link to a file (`.mkv`, `.mp4`…, an Xtream `/movie/` or
+  `/series/` one) plays as a film you can scrub through; Continue Watching doesn't keep it.
 - **Sports:** channels marked `tvg-type="sport"` (or `"sports"`) go to the **Sports** tab instead.
   StremioK's own mark: other players ignore it.
 - **Guide only:** channels marked `tvg-type="guide"` (no link needed) show on the Guide tab

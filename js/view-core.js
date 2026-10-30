@@ -341,6 +341,7 @@ var ViewParts = {};
         reload.__onselect = function () {
             closeModal();
             U.toast('Reloading playlist…', 4000);
+            if (typeof XtVod !== 'undefined' && XtVod.reload) { XtVod.reload(playlist.id); }   // (an Xtream account: its films and series too)
             Stremio.iptvReload(playlist.id).then(function () {
                 refreshAddonRows('local:iptv');
                 var st = Stremio.iptvStatus(playlist.id);
@@ -706,6 +707,15 @@ var ViewParts = {};
             if (!sib[i].__meta) { continue; }
             if (sib[i] === card) { idx = list.length; }
             list.push({ meta: sib[i].__meta, card: sib[i] });
+        }
+        // (a long row: the channels whose cards aren't built yet too; a card made when it's asked for)
+        var row = card.parentNode && card.parentNode.parentNode;
+        if (row && row.__rest && row.__more) {
+            row.__rest().forEach(function (m) {
+                var e = { meta: m };
+                Object.defineProperty(e, 'card', { get: function () { return row.__cardOf(m); } });
+                list.push(e);
+            });
         }
         return { list: list, idx: idx };
     }

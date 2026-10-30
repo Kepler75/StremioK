@@ -30,6 +30,7 @@ var IPTV = (function () {
                 if (typeof p.name === 'string' && p.name.trim()) { o.name = p.name.trim().slice(0, NAME_MAX); }
                 if (p.off === true) { o.off = true; }
                 if (typeof p.guide === 'string' && U.parseUrl(p.guide)) { o.guide = p.guide; }   // (its TV guide, yours: see EPG.guideUrl)
+                if (macOf(p.mac)) { o.mac = macOf(p.mac); }   // (a Stalker portal: see addStalker)
                 return o;
             });
     }
@@ -185,6 +186,45 @@ var IPTV = (function () {
         return id;
     }
 
+    // ---- A Stalker portal: its address and the MAC address your provider registered ----
+    // Read by StremioK's service, which asks as a MAG box does (YTPlay.stalkerList): its channels
+    // come as an M3U playlist, and a channel's link is asked for each time it plays (streams). Saved
+    // as a playlist with its MAC ({ url: the portal, mac }).
+    var STB_UA = 'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3';
+    // A MAC address as typed (00:1A:79:12:34:56, with dashes, or none): 00:1A:79:12:34:56, or ''.
+    function macOf(v) {
+        var h = ('' + (v || '')).trim().toUpperCase().replace(/[:\-.\s]/g, '');
+        return /^[0-9A-F]{12}$/.test(h) ? h.match(/../g).join(':') : '';
+    }
+    // The portal as typed (http:// when it has no scheme): its address, or ''.
+    function stalkerPortal(v) {
+        var s = ('' + (v || '')).trim();
+        if (s && !/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) { s = 'http://' + s.replace(/^\/+/, ''); }
+        return checkedUrl(s);
+    }
+    function isStalker(p) { return !!(p && p.mac); }
+    // Checked through the service (its channels read): { ok, count }, { refused, why },
+    // { unreachable, why } or { noService } (a desktop browser).
+    function stalkerCheck(portal, mac) {
+        if (typeof YTPlay === 'undefined' || !YTPlay.stalkerList) { return Promise.resolve({ noService: true }); }
+        return YTPlay.stalkerList(portal, mac).then(function (r) {
+            if (r && typeof r.m3u === 'string') { return { ok: true, count: r.count || 0 }; }
+            return r && r.refused ? { refused: true, why: '' + (r.why || '') } : { unreachable: true, why: '' + ((r && r.why) || '') };
+        }, function (e) { return /no service/.test((e && e.message) || '') ? { noService: true } : { unreachable: true, why: U.problem(e) }; });
+    }
+    // Added (named after its server: "Stalker · portal.example.com"), or the one already there with
+    // that portal and MAC. Its id.
+    function addStalker(portal, mac) {
+        portal = stalkerPortal(portal); mac = macOf(mac);
+        if (!portal || !mac) { return false; }
+        var list = getPlaylists();
+        for (var i = 0; i < list.length; i++) { if (list[i].url === portal && list[i].mac === mac) { return list[i].id; } }
+        var id = newId(), u = U.parseUrl(portal);
+        list.push({ id: id, url: portal, mac: mac, name: freeName('Stalker · ' + (u ? u.host : 'portal'), list) });
+        savePlaylists(list);
+        return id;
+    }
+
     function updatePlaylist(id, url) {
         url = checkedUrl(url);
         if (!url) { return false; }
@@ -249,6 +289,10 @@ var IPTV = (function () {
         if (n === 'user-agent') { c.ua = v; } else if (n === 'referer' || n === 'referrer') { c.ref = v; }
     }
 
+    // A link to a file, not a stream: a film or an episode (an Xtream account's /movie/… and
+    // /series/… links, or a video file's name), played as one (seeking; see Player's isLive).
+    var VOD_LINK = /\.(mkv|mp4|m4v|avi|mov|wmv|mpg|mpeg|webm)(?:[?#]|$)/i;
+    var XTREAM_VOD = /^https?:\/\/[^\/]+(?:\/[^?#]*)?\/(movie|series)\/[^\/?#]+\/[^\/?#]+\/\d+\.[a-z0-9]{2,4}(?:[?#]|$)/i;
     function truthy(v) { return /^(?:1|true|yes)$/i.test(('' + (v || '')).trim()); }
 
     function audioUrl(u) {
@@ -328,6 +372,7 @@ var IPTV = (function () {
                         cur._yt =
                             /^https?:\/\/(?:[^\/]+\.)?youtube\.com(?::\d+)?(?:\/|$)/i.test(u) ||
                             /^https?:\/\/youtu\.be(?::\d+)?(?:\/|$)/i.test(u);
+                        if (VOD_LINK.test(u) || XTREAM_VOD.test(u)) { cur.vod = true; }   // (a film's file: played as one, see plainStreams)
                         add(cur);
                     }
                     cur = null;
@@ -427,8 +472,9 @@ var IPTV = (function () {
         var st = { id: playlist.id, url: playlist.url, count: 0, groups: 0, error: '', uncached: false, title: '', fetchedAt: 0, stale: false };
         _status[playlist.id] = st;
         if (/^http:/i.test(playlist.url)) {   // (Settings › Diagnostics › Logs)
-            U.log('iptv', 'Playlist “' + label(playlist) + '” is downloaded over unencrypted http:// — anyone on the network path can see or change it (and any username / password in its link)');
+            U.log('iptv', 'Playlist “' + label(playlist) + '” is downloaded over unencrypted http:// — anyone on the network path can see or change it (and ' + (isStalker(playlist) ? 'its MAC address' : 'any username / password in its link') + ')');
         }
+        var src = playlist.url + (playlist.mac ? '#mac=' + playlist.mac : '');   // (its saved copy: this portal and MAC's)
 
         function finish(text, at) {
             st.fetchedAt = at || 0;
@@ -437,7 +483,13 @@ var IPTV = (function () {
                 st.title = r.title || '';
                 st.guides = r.guides || [];
                 _sources = null;
-                return counted(tagChannels(r.channels, playlist.id));
+                // An Xtream account's films and episodes: its Movies and Series (js/xtvod.js), not channels
+                var channels = r.channels;
+                if (isXtream(playlist.url) && typeof XtVod !== 'undefined' && XtVod.hidesVodLines && XtVod.hidesVodLines(playlist.id)) {
+                    channels = channels.filter(function (c) { return !XTREAM_VOD.test(c.url); });
+                    st.vodLines = r.channels.length - channels.length;
+                }
+                return counted(tagChannels(channels, playlist.id));
             });
         }
         function counted(channels) {
@@ -445,7 +497,7 @@ var IPTV = (function () {
             channels.forEach(function (c) { groups[c.type + '|' + c.group] = 1; });
             st.count = channels.length;
             st.groups = Object.keys(groups).length;
-            if (!channels.length && !st.error) {
+            if (!channels.length && !st.error && !st.vodLines) {
                 st.error = 'No channels parsed (is the URL returning the .m3u file?)';
             }
             return channels;
@@ -453,13 +505,23 @@ var IPTV = (function () {
 
         var saved = force ? Promise.resolve(null) : readPersist(playlist.id);
         return saved.then(function (p) {
-            if (p && p.url === playlist.url && typeof p.text === 'string') { return finish(p.text, p.at); }
+            if (p && p.url === src && typeof p.text === 'string') { return finish(p.text, p.at); }
             return fetchIt();
         });
+        // A Stalker portal's channels, from the service (see stalkerCheck): its M3U text.
+        function stalkerText() {
+            if (typeof YTPlay === 'undefined' || !YTPlay.stalkerList) { return Promise.reject(new Error('Stalker portals are read by StremioK’s service (not in a desktop browser)')); }
+            return YTPlay.stalkerList(playlist.url, playlist.mac).then(function (r) {
+                if (r && typeof r.m3u === 'string') { return r.m3u; }
+                throw new Error((r && r.refused ? 'The portal refused it: ' : 'Couldn’t read the portal: ') + ((r && r.why) || 'no answer'));
+            }, function (e) {
+                throw new Error(/no service/.test((e && e.message) || '') ? 'Stalker portals are read by StremioK’s service (not in a desktop browser)' : 'Couldn’t reach StremioK’s service: ' + U.problem(e));
+            });
+        }
         function fetchIt() {
-            return U.getText(playlist.url, 15000, PLAYLIST_MAX).then(function (text) {
+            return (isStalker(playlist) ? stalkerText() : U.getText(playlist.url, 15000, PLAYLIST_MAX)).then(function (text) {
                 var at = Date.now();
-                return writePersist(playlist.id, playlist.url, text, at).then(function (ok) {
+                return writePersist(playlist.id, src, text, at).then(function (ok) {
                     st.uncached = !ok;
                     return finish(text, at);
                 });
@@ -467,14 +529,14 @@ var IPTV = (function () {
                 var msg = (e && e.message) ? e.message : 'Could not fetch the playlist URL';
                 // status 0 / network error on a URL that opens fine in a browser almost
                 // always means the server sent no Access-Control-Allow-Origin header.
-                if (/HTTP 0\b/.test(msg) || /Network error|^No answer/i.test(msg)) {
+                if (!isStalker(playlist) && (/HTTP 0\b/.test(msg) || /Network error|^No answer/i.test(msg))) {
                     msg += ' — the playlist server likely isn\'t sending an ' +
                         'Access-Control-Allow-Origin header (CORS). Serve the .m3u with CORS enabled.';
                 }
                 st.error = msg;
                 // Fall back to this playlist's saved copy so a failed refresh doesn't wipe it.
                 return readPersist(playlist.id).then(function (prev) {
-                    if (!(prev && prev.url === playlist.url && typeof prev.text === 'string')) { return []; }
+                    if (!(prev && prev.url === src && typeof prev.text === 'string')) { return []; }
                     st.stale = true;   // (the channels are the saved copy's)
                     return finish(prev.text, prev.at);
                 });
@@ -629,6 +691,8 @@ var IPTV = (function () {
             if (c._yt) {
                 return [{ url: c.url, _yt: true, ytPage: c.url, name: c.name, title: 'YouTube · ' + c.group }];
             }
+            var list = getPlaylists(), pl = list[find(list, c._playlistId)];
+            if (isStalker(pl)) { return stalkerStreams(c, pl); }
             return youTubeEnd(c.url).then(function (page) {
                 if (page) { return [{ url: page, _yt: true, ytPage: page, name: c.name, title: 'YouTube · ' + c.group }]; }
                 return plainStreams(c);
@@ -638,9 +702,29 @@ var IPTV = (function () {
     function plainStreams(c) {
         var from = sourceOf(c);
         var st = { url: c.url, name: c.name, title: 'IPTV · ' + c.group + (from ? ' · ' + from : '') };
+        if (c.vod) { st._vod = true; }
         var h = U.sanitizeHeaders({ ua: c.ua, ref: c.ref });   // (only what the player takes, checked)
         if (h) { st._headers = h; }
         return [st];
+    }
+
+    // A Stalker portal's channel: its link asked for now (create_link: most portals' links work for
+    // a short while, or once), played with a MAG User-Agent. None given: the one in its playlist,
+    // unless that's a stand-in (http://localhost/ch/…), which plays nothing.
+    function stalkerStreams(c, pl) {
+        var asked = typeof YTPlay !== 'undefined' && YTPlay.stalkerLink ? YTPlay.stalkerLink(pl.url, pl.mac, c.url) : Promise.reject(new Error('no service'));
+        return asked.then(function (r) {
+            if (r && r.url) { return r.url; }
+            U.log('iptv', 'Stalker: no link for “' + c.name + '” (' + ((r && r.why) || 'no answer') + ')');
+            return '';
+        }, function (e) { U.log('iptv', 'Stalker: no link for “' + c.name + '” (' + U.problem(e) + ')'); return ''; }).then(function (url) {
+            if (!url && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(c.url)) { return []; }
+            var st = plainStreams(c)[0];
+            st.url = url || c.url;
+            var h = U.sanitizeHeaders({ ua: STB_UA, ref: c.ref });
+            if (h) { st._headers = h; }
+            return [st];
+        });
     }
 
     // A local addon object shaped like the HTTP addons in Stremio.loadAddons().
@@ -661,6 +745,7 @@ var IPTV = (function () {
         getPlaylists: getPlaylists, addPlaylist: addPlaylist, updatePlaylist: updatePlaylist,
         removePlaylist: removePlaylist, renamePlaylist: renamePlaylist, setPlaylistOff: setPlaylistOff,
         movePlaylist: movePlaylist, setPlaylistGuide: setPlaylistGuide, label: labelOf,
+        macOf: macOf, stalkerPortal: stalkerPortal, stalkerCheck: stalkerCheck, addStalker: addStalker, isStalker: isStalker,
         xtreamParts: xtreamParts, xtreamUrl: xtreamUrl, xtreamCheck: xtreamCheck, addXtream: addXtream, xtreamFormat: xtreamFormat, setXtreamFormat: setXtreamFormat,
         isFavorite: isFavorite, setFavorite: setFavorite, refreshEvery: refreshEvery, setRefreshEvery: setRefreshEvery, readAt: readAt,
         channels: function () { return _cache ? _cache.channels : []; }, channel: function (id) { return _cache ? _cache.byId[id] || null : null; }, isEnabled: isEnabled, reset: reset, status: status,

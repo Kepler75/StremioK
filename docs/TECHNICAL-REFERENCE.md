@@ -32,14 +32,21 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
   lists: mostly films or series (60% of its items), there; title ids (IMDb, TMDB, TVDB, Kitsu,
   MAL, AniList) and "anime", "series" or "show" in its name or type: Series ("movie" or
   "film": Movies). Anything still unclear isn't on Home, only in Discover.
+- **Painting:** each row is its own GPU layer (`translateZ(0)`): on the 2017 TV a D-pad move
+  reached the screen a quarter or more sooner, more than any other change measured.
+- **Long rows:** a row builds its first 30 cards, then 30 more when focus is within 8 of the end.
+  Pictures load for the cards on screen and near it; the others when focus is within 10 of them,
+  or one at a time, nearest first, once no key has been pressed for 3 seconds (not while playing).
+- **A row's length:** a catalog that pages (`skip`) is asked for more pages (skip = titles so
+  far, 10 at most) until the row is full or a page brings nothing new.
 - The last Home rows and addon manifests are saved on the TV, so a launch shows them at once
   and refreshes them in the background.
 - **Nothing waits on something unrelated:** your addons load without waiting for the IPTV
   playlists (a big one takes a while to read); the IPTV rows join Home once they're read. On a
   first load, each row shows as soon as its catalog answers, in its own place: a slower row above
   it keeps its place with *Loading…* until it comes.
-- **Saved only when it changed:** playback progress is saved every 5 seconds while it moves (not
-  while paused), the downloads list only when something in it changed, and a second subtitle's
+- **Saved only when it changed:** playback progress is saved once a minute while it moves (not
+  while paused; always on stopping or leaving), the downloads list only when something in it changed, and a second subtitle's
   style only when its settings change.
 - The rows are saved twice: a small snapshot (40 rows of 20 cards, just poster and name) in the
   settings storage, read at once, and the whole (up to 60 rows, about 1.5 MB) in the TV's
@@ -343,12 +350,16 @@ channels where it gives one; the rest is read from the source's name and file.
   a `|` in its link: `…m3u8|Referer=…`) are applied where the TV allows it (these two only,
   printable, within a sane length) and follow the channel when you switch sources.
 
-### Xtream and YouTube links
+### Xtream, Stalker and YouTube links
 
 - **Xtream accounts:** checked with `player_api.php` (its `user_info.auth`), then saved as the
   account's `get.php` link (`type=m3u_plus`, `output=ts`: servers' own HLS tends to stall
   minutes in; *Format* switches to `m3u8`). A server without `http(s)://` is `http://`; a
   pasted Xtream link fills in the login.
+- **Stalker portals:** read by the service as a MAG box asks (the MAC in a cookie, a MAG
+  User-Agent, a `handshake` token) at `portal.php`, else `server/load.php`. Channels
+  (`get_all_channels`, else `get_ordered_list` pages) become an M3U playlist, genres as groups;
+  a channel's link comes from `create_link` each time it plays, with the MAG User-Agent.
 - **A channel's own format:** the player's *Format* swaps one channel's `/live/…/123.ts` and
   `.m3u8`, kept by channel (the last 300).
 - **YouTube behind a link:** an Xtream channel's link (`…/live/user/pass/id.ext`) is looked at
@@ -357,6 +368,26 @@ channels where it gives one; the rest is read from the source's name and file.
   StremioK's YouTube.
 - **A YouTube channel's page** (`@handle`, `/channel/`, `/c/`, `/user/`, any tab) plays as
   given; with no live stream there, its `/live` page, then its Featured tab.
+
+### Xtream films and series
+
+- **Browsing,** from the TV (`player_api.php`): categories (kept a day) as Discover's genres, a
+  category's titles 100 at a time, a title's `get_vod_info` / `get_series_info` for its page;
+  it plays `…/movie/user/pass/<id>.<ext>` or `…/series/user/pass/<episode id>.<ext>`.
+- **The index,** by the service (`/xtvod/…`): `get_vod_streams` and `get_series` whole, read a
+  piece at a time (150 MB, 6 minutes, 100,000 titles each at most) into id, name, year, TMDB
+  id and date added; saved in the app's folder a title a line, read and written in small pieces
+  so YouTube, guides and the live relay aren't held up. Unused for 30 minutes it leaves memory
+  (but for the newest row), and comes back from the file when asked. A list not refreshed for 3
+  days is deleted when a guide or list is next asked for; *Clear saved copies* deletes them all.
+  While one is being read Home shows *Loading…* and looks again, then redraws. Read again after a day (*Reload* on the
+  account: at once, its categories too). It answers the newest row (200), Search and matching.
+- **Its playlist:** the `/movie/` and `/series/` lines of an account whose server lists films or
+  series are left out of IPTV (shown through the API instead); the IPTV rows are made again,
+  from the saved copy, once its categories say whether it has any.
+- **Matching** a title from your addons: its TMDB id, else its name and year, both without a
+  language tag (`EN - `, `|EN|`), brackets, quality words or accents. An episode: its show,
+  then the season and number in `get_series_info`.
 
 ### TV guide
 
@@ -699,6 +730,8 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 | Downloads | `/fsdl/add`, `list`, `cancel`, `clear`, `space` | Downloads to a USB drive, and a drive's free space | + token or header |
 | Phone page | `/entry/open`, `poll`, `close` | Opens, polls and closes the one-time page | + token or header |
 | AIOManager | `/aiom/addons` | Reads an account's addons | + token or header |
+| Xtream films and series | `/xtvod/list`, `/xtvod/find` | An account's newest titles and Search; a title's copies | + token or header |
+| Stalker | `/stalker/list`, `/stalker/link` | A portal's channels as an M3U playlist; a channel's link to play | + token or header |
 | TV guide | `/epg/load`, `/epg/get` | Reads a playlist's guide for your channels; their programs | + token or header |
 | Live relay | `/live/open`, then `/live/<id>/…` | Checks a channel's sound and captions; relays it repacked, captions as subtitles | open: + token or header |
 

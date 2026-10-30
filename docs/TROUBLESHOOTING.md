@@ -144,6 +144,9 @@ sources. Try again later.
 | A big playlist is missing channels | A playlist keeps its first 30,000 channels (up to 20 MB); the status line says when channels were left out. |
 | A playlist didn't refresh | The saved copy keeps showing, and the playlist says what went wrong. *Reload* tries again. |
 | No TV guide on the cards | The playlist's line says why. Not every channel is in a guide; set another with *Guide link*. |
+| An Xtream account's films aren't offered on a title | Its list is read once a day, the first time in a minute or two. A copy needs the same TMDB id, or the same name and year. Not in a desktop browser. |
+| A Stalker portal refuses its MAC address | Use the one your provider registered. Portals that also want a login aren't supported. |
+| A Stalker channel doesn't start | A portal may play one channel at a time per MAC: stop it on your other box. |
 
 ## Trakt
 

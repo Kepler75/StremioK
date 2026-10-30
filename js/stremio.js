@@ -163,6 +163,7 @@ var Stremio = (function () {
         var p = U.store.get(PREFS_KEY, {}) || {};
         return { posterShape: p.posterShape || 'portrait', accent: p.accent || 'indigo', bg: p.bg || 'dark',
             zoom: [110, 120, 130, 140].indexOf(p.zoom) !== -1 ? p.zoom : 100,   // Settings > Appearance: everything bigger (percent)
+            rowCards: [50, 100, 200].indexOf(p.rowCards) !== -1 ? p.rowCards : 30,   // Settings > Appearance: titles in a Home row
             formatsAuto: p.formatsAuto !== false,   // Settings > Formats: mark "Not working" on its own
             allowLocal: p.allowLocal === true,      // Settings > Addons: home-network links from internet addons
             addonWait: ADDON_WAITS.indexOf(p.addonWait) !== -1 ? p.addonWait : 0,   // Settings > Addons: seconds to wait for an addon (0: Normal)
@@ -434,6 +435,7 @@ var Stremio = (function () {
             // Appearance > Home feeds; there's no cap on how many rows or feeds).
             if (iptvNow) { addons.unshift(IPTV.synthAddon()); }
             else if (iptvOn) { iptvJoin(addons, rev); }
+            if (typeof XtVod !== 'undefined' && XtVod.isEnabled()) { addons.push(XtVod.synthAddon()); }   // (your Xtream accounts' films and series: after your addons)
             if (hasYouTube()) { addons.push(YouTube.synthAddon()); }   // (after your addons: its rows last on Home)
             if (typeof Trakt !== 'undefined' && Trakt.isConnected()) { addons.push(Trakt.synthAddon()); }   // (your Watchlist and Up next)
             _loaded = addons;
@@ -488,6 +490,11 @@ var Stremio = (function () {
         configChanged();
         return id;
     }
+    function iptvAddStalker(portal, mac) {   // (as an Xtream account)
+        var id = _hasIptv ? IPTV.addStalker(portal, mac) : false;
+        configChanged();
+        return id;
+    }
     function iptvSetXtreamFormat(id, fmt) {
         var changed = _hasIptv ? IPTV.setXtreamFormat(id, fmt) : false;
         configChanged();
@@ -504,6 +511,16 @@ var Stremio = (function () {
     function iptvReadAt() { return _hasIptv && IPTV.readAt ? IPTV.readAt() : Infinity; }
     function iptvStatus(id) { return _hasIptv ? IPTV.status(id) : { error: 'IPTV unavailable' }; }
     // Force a re-fetch of one playlist (Settings → Reload) and rebuild the addon list.
+    // An Xtream account turned out to have films and series, or none (XtVod.onVodChange): the IPTV
+    // rows made again from the saved copies (its film and episode lines in or out), not downloaded.
+    function iptvRebuild() {
+        if (!_hasIptv) { return; }
+        IPTV.reset();
+        configChanged();
+        loadAddons().then(null, function () {});
+    }
+    if (typeof XtVod !== 'undefined' && XtVod.onVodChange) { XtVod.onVodChange(iptvRebuild); }
+    if (typeof XtVod !== 'undefined' && XtVod.onChange) { XtVod.onChange(function () { sourcesChanged(); }); }   // (its list read: its copies, on titles asked before)
     function iptvReload(id) {
         configChanged();
         return _hasIptv ? IPTV.reload(id) : Promise.resolve(null);
@@ -761,14 +778,14 @@ var Stremio = (function () {
     function addonKey(a) { return (a.manifest && a.manifest.id) || a.url; }
     function streamAddons() {
         return loadAddons().then(function (addons) {
-            return addons.filter(function (a) { return !a.__local && supports(a, 'stream'); }).map(function (a) {
+            return addons.filter(function (a) { return (!a.__local || a.__sources) && supports(a, 'stream'); }).map(function (a) {
                 return { key: addonKey(a), name: (a.manifest && a.manifest.name) || a.url, addon: a };
             });
         });
     }
     var sourceFeeds = feedList(SOURCE_FEEDS_KEY, streamAddons, function (x) { return x.key; });
     // Whether any addon you have provides sources (true while the addons aren't loaded yet)
-    function hasStreamAddons() { return !_loaded || _loaded.some(function (a) { return !a.__local && supports(a, 'stream'); }); }
+    function hasStreamAddons() { return !_loaded || _loaded.some(function (a) { return (!a.__local || a.__sources) && supports(a, 'stream'); }); }
     function sourcesChanged() { _streamCache = {}; _streamOrder = []; }   // (cached lists came from the old set)
 
     // ---- Source ranking (Settings > Source ranking) ----
@@ -781,7 +798,7 @@ var Stremio = (function () {
         ['uncached', 'Not yet cached last', 'sources an addon marks as not cached on your debrid service yet (they can’t start right away)'],
         ['kind', 'Release type', 'remux > Blu-ray > web > unknown > TV rip, CAM rips far below'],
         ['hdr', 'HDR before SDR', 'HDR10 / HDR10+ / Dolby Vision first'],
-        ['seeds', 'Seeders (high to low)', 'torrent sources with more people sharing them first, by the count they state (Torrentio’s 👤 123); the others keep their order'],
+        ['seeds', 'Seeders (high to low)', 'torrent sources with more people sharing them first, by the count they state (👤 123, or Seeders: 123); the others keep their order'],
         ['addon', 'Feed sources order', 'your order of the addons (at the bottom of this page)'],
         ['within', 'Each addon\'s own order', 'the order an addon lists its sources in (its first, then its second…); right after Feed sources order: each addon\'s list as it gives it'],
         ['cached', 'Cached before unknown', 'sources an addon marks as cached ahead of ones with no mark']
@@ -872,6 +889,9 @@ var Stremio = (function () {
         if (/^ytk:/.test(id) && typeof YouTube !== 'undefined') {
             return YouTube.meta(id).then(function (m) { if (!m) { throw new Error('Not found on YouTube'); } return m; });
         }
+        if (/^xv[ms]\./.test(id) && typeof XtVod !== 'undefined') {
+            return XtVod.meta(type, id).then(function (m) { if (!m) { throw new Error('Not found on the Xtream server'); } return m; });
+        }
         if (/^iptv:/.test(id)) {
             return IPTV.meta(id).then(function (m) {
                 if (!m) { throw new Error('IPTV channel not found'); }
@@ -939,6 +959,9 @@ var Stremio = (function () {
         if (/^iptv:/.test(id)) {
             return IPTV.streams(id).then(function (l) { if (onUpdate) { onUpdate(l, 0); } return l; });
         }
+        if (/^xv[ms]\./.test(id) && typeof XtVod !== 'undefined') {   // (an Xtream account's own film or episode)
+            return XtVod.streams(type, id).then(function (l) { l.forEach(function (s) { s._addon = 'Xtream'; }); if (onUpdate) { onUpdate(l, 0); } return l; });
+        }
         var key = type + ':' + id, e = _streamCache[key];
         if (e && !force && (e.pending > 0 || Date.now() - e.at < STREAM_TTL)) {
             syncLocal(e, type, id);   // (the addons' answers kept; the USB drive's matches as they are now)
@@ -972,8 +995,10 @@ var Stremio = (function () {
                 return U.settleAll(providers.map(function (a, i) {
                     return function () {
                         var url = a.base + '/stream/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '.json';
-                        return U.getJSON(url, addonMs(15000)).then(function (res) {
-                            var arr = U.listOf(fromAddon(a, res, 'sources').streams, MAX_STREAMS).map(youTubeSource).map(torrentSource), said = notes.length;
+                        // (StremioK's own source, your Xtream accounts' copies: asked here, with the title's details)
+                        var asked = a.__impl ? metaFirst(type, id).then(function (m) { return a.__impl.streams(type, id, m); }).then(function (l) { return { streams: l }; }) : U.getJSON(url, addonMs(15000));
+                        return asked.then(function (res) {
+                            var arr = U.listOf(a.__impl ? res.streams : fromAddon(a, res, 'sources').streams, MAX_STREAMS).map(youTubeSource).map(torrentSource), said = notes.length;
                             arr = arr.filter(function (s) {   // (an addon's notices: what it removed and why, its errors; not sources)
                                 if (!isNotice(s)) { return true; }
                                 notes.push({ addon: a.manifest.name || 'Addon', title: ('' + (s.name || '')).replace(/\s+/g, ' ').trim().slice(0, 120),
@@ -1030,6 +1055,15 @@ var Stremio = (function () {
         return e.promise;
     }
 
+    // A title's details, if its page has them (a series': its show's): for StremioK's own sources.
+    function metaKept(type, id) { return _metaCache[type + ':' + (type === 'series' ? ('' + id).split(':')[0] : id)] || null; }
+    // ...asked for when it doesn't yet (a film's sources are asked for alongside its details): the
+    // others' sources don't wait for this one's.
+    function metaFirst(type, id) {
+        var m = metaKept(type, id);
+        if (m) { return Promise.resolve(m); }
+        return getMeta(type, type === 'series' ? ('' + id).split(':')[0] : id).then(null, function () { return null; });
+    }
     function isTimeout(err) { return /^(Timeout|Timed out)/.test((err && err.message) || ''); }
     // Why an addon's sources didn't come, in a few words (its link, and any token in it, left out):
     // "refused (HTTP 429 · rate_limited)", "didn't answer in time", "couldn't be reached"…
@@ -1171,10 +1205,13 @@ var Stremio = (function () {
                     r.value.forEach(function (s) {
                         if (!s || !s.url || seen[s.url]) { return; }
                         seen[s.url] = 1;
+                        s._at = out.length;   // (your addon order, then each addon's own: the order within a language)
                         out.push(s);
                     });
                 });
-                out.sort(function (a, b) { return ('' + (a.lang || '')).localeCompare('' + (b.lang || '')); });
+                // By language, and within one as they came (the TV's sort doesn't keep the order of
+                // equal items: an addon's best match could end up anywhere among its language's).
+                out.sort(function (a, b) { return ('' + (a.lang || '')).localeCompare('' + (b.lang || '')) || a._at - b._at; });
                 return out;
             });
         });
@@ -1822,7 +1859,7 @@ var Stremio = (function () {
         return getSearchCatalogs().then(function (cats) {
             var out = [], local = {};
             cats.forEach(function (c) {
-                if (c.addon && c.addon.__impl) {   // StremioK's own YouTube: "YouTube · Videos"
+                if (c.addon && c.addon.__impl) {   // StremioK's own YouTube and Xtream: "YouTube · Videos"
                     var nm = prettyType(c.type) + '  ·  ' + ((c.def && c.def.name) || c.id);
                     out.push({ key: catalogKey(c), cats: [c], title: nm, name: nm.replace(/  ·  /g, ' · '), pages: true });
                     return;
@@ -2237,7 +2274,7 @@ var Stremio = (function () {
         importSetupList: importSetupList, savedManifest: savedManifest, isAddonOff: isAddonOff, setAddonOff: setAddonOff, onIptvReady: onIptvReady, streamListenerCount: function (type, id) { var e = _streamCache[type + ':' + id]; return e ? e.listeners.length : 0; },
         iptvGetPlaylists: iptvGetPlaylists, iptvAddPlaylist: iptvAddPlaylist,
         iptvUpdatePlaylist: iptvUpdatePlaylist, iptvRemovePlaylist: iptvRemovePlaylist,
-        iptvRenamePlaylist: iptvRenamePlaylist, iptvSetPlaylistGuide: iptvSetPlaylistGuide, iptvAddXtream: iptvAddXtream, iptvSetXtreamFormat: iptvSetXtreamFormat, iptvRefreshEvery: iptvRefreshEvery, iptvSetRefreshEvery: iptvSetRefreshEvery, iptvReadAt: iptvReadAt, iptvSetPlaylistOff: iptvSetPlaylistOff, iptvMovePlaylist: iptvMovePlaylist, iptvLabel: iptvLabel,
+        iptvRenamePlaylist: iptvRenamePlaylist, iptvSetPlaylistGuide: iptvSetPlaylistGuide, iptvAddXtream: iptvAddXtream, iptvAddStalker: iptvAddStalker, iptvSetXtreamFormat: iptvSetXtreamFormat, iptvRefreshEvery: iptvRefreshEvery, iptvSetRefreshEvery: iptvSetRefreshEvery, iptvReadAt: iptvReadAt, iptvSetPlaylistOff: iptvSetPlaylistOff, iptvMovePlaylist: iptvMovePlaylist, iptvLabel: iptvLabel,
         iptvLoad: iptvLoad, iptvStatus: iptvStatus, iptvReload: iptvReload
     };
 })();

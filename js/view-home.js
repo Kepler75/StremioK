@@ -229,7 +229,7 @@
         if (what === _savedHomeSig) { return; }
         _savedHomeSig = what;
         (_homeCatalogs || []).slice(0, HOME_ROWS_MAX).forEach(function (c) {
-            if (bytes > _homeBytesMax) { return; }
+            if (bytes > _homeBytesMax || c.loading) { return; }
             var metas = c.metas.map(trimMeta);
             metas.forEach(function (m) { bytes += sizeOf(m); });
             if (bytes <= _homeBytesMax) { cats.push(copyCat(c, metas)); }
@@ -1359,6 +1359,12 @@
         if (!node || !scr('home').contains(node)) { return; }
         if (_homeInfoTimer) { clearTimeout(_homeInfoTimer); }
         _homeInfoTimer = setTimeout(function () { _homeInfoTimer = null; fillHomeInfo(node.__meta); }, 120);
+        var row = node.parentNode && node.parentNode.parentNode;
+        if (row && row.__more) {   // (a long row: its next cards, as focus nears the end)
+            var left = 0, n = node;
+            while (left < ROW_NEAR && n.nextElementSibling) { n = n.nextElementSibling; left++; }
+            if (left < ROW_NEAR) { row.__more(); }
+        }
     });
 
     // Identify a Home card by its row title + content id, to find it again after a rebuild.
@@ -1375,6 +1381,10 @@
             if (!title || title.textContent !== key.row) { continue; }
             var cards = rows[i].querySelectorAll('.card');
             for (var j = 0; j < cards.length; j++) { if (cards[j].getAttribute('data-id') === key.id) { return cards[j]; } }
+            if (rows[i].__more) {   // (a long row: it may be among those not built yet)
+                while (rows[i].__more) { rows[i].__more(); }
+                i--;
+            }
         }
         return null;
     }
@@ -1412,6 +1422,7 @@
     }
     // The IPTV playlists read after your addons loaded (they aren't waited for): their rows join.
     if (typeof Stremio !== 'undefined' && Stremio.onIptvReady) { Stremio.onIptvReady(function () { refreshAddonRows('local:iptv'); }); }
+    if (typeof XtVod !== 'undefined' && XtVod.onChange) { XtVod.onChange(function () { refreshAddonRows('local:xtvod'); }); }   // (an Xtream account's films and series, once its categories came)
     var PARTIAL_DELAY = 150;   // coalesces catalogs that arrive together into one redraw
     function loadHomeCatalogs() {
         if (_homeLoading) { return; }
@@ -1420,8 +1431,8 @@
         var only = first ? null : _reloadOnly;   // a partial reload: just these addons' rows
         _reloadOnly = null;
         _homeFirstLoad = first;
-        var old = {};
-        (_homeCatalogs || []).forEach(function (c) { old[c.type + '|' + c.name] = c.metas; });
+        var old = {}, oldLoading = {};
+        (_homeCatalogs || []).forEach(function (c) { old[c.type + '|' + c.name] = c.metas; if (c.loading) { oldLoading[c.type + '|' + c.name] = true; } });
         function oldFor(cat) {
             return cat.type === 'other'
                 ? (old['movie|' + otherRowName('Movies', cat.name)] || []).concat(old['series|' + otherRowName('Series', cat.name)] || [])
@@ -1441,7 +1452,7 @@
         }
         function onHome() { return _current() === s && !isModalOpen() && !Player.isActive(); }
         Stremio.catalogsForHome().then(function (cats) {
-            var acc = cats.map(function (cat) { return copyCat({ name: cat.name, type: cat.type, yt: isYouTubeCat(cat) }, []); });
+            var acc = cats.map(function (cat) { return copyCat({ name: cat.name, type: cat.type, yt: isYouTubeCat(cat) }, [], cat.def && cat.def._favs ? { all: true } : null); });   // (all: IPTV's ★ Favorites, every one)
             var arrived = cats.map(function () { return false; }), shown = 0, partialTimer = null;
             // First load: publish each row as soon as it arrives, in its own place (a slower one above
             // it held by a "Loading…" placeholder, so nothing jumps when it comes), and redraw when
@@ -1467,15 +1478,16 @@
                 return function () {
                     if (only && !only[cat.addon.url]) {   // not the addon that changed: keep its rows
                         acc[i].metas = oldFor(cat); arrived[i] = true;
+                        if (oldLoading[cat.type + '|' + cat.name]) { acc[i].loading = true; }   // (its Loading… stays: an Xtream list still being read)
                         return Promise.resolve();
                     }
-                    return Stremio.getCatalog(cat).then(function (metas) { acc[i].metas = metas; }, function () {
+                    return catalogUpTo(cat, rowCards()).then(function (metas) { acc[i].metas = metas; if (metas.pending) { acc[i].loading = true; } }, function () {
                         acc[i].metas = oldFor(cat);
                     }).then(function () { arrived[i] = true; partial(); });
                 };
             });
             U.settleAll(tasks, 3).then(function () {
-                _homeCatalogs = splitOtherCatalogs(acc).filter(function (c) { return c.metas && c.metas.length; });
+                _homeCatalogs = splitOtherCatalogs(acc).filter(function (c) { return c.loading || (c.metas && c.metas.length); });
                 done();
                 var want = _wantTab;
                 _wantTab = null;
@@ -1504,25 +1516,77 @@
 
     // Catalogs of type "other" (e.g. Torrentio's RealDebrid downloads) aren't live TV:
     // their items go to a Movies row and a Series row, split by the release name.
-    // Everything is capped to the ROW_CARDS cards a Home row shows.
+    // Everything is capped to the cards a Home row shows (Settings › Appearance › Titles in a Home
+    // row), but for IPTV's ★ Favorites (all: every one you picked, up to the 300 kept).
     var ROW_CARDS = 30;
+    function rowCards() { return Stremio.getPrefs().rowCards || ROW_CARDS; }
+    // A row's titles, up to n: a catalog that pages (skip) is asked for its next pages (skip =
+    // titles so far, as Discover does) until there are n, a page brings nothing new or fails (what
+    // came is kept), or HOME_PAGES pages. IPTV's and YouTube's own: as they come.
+    var HOME_PAGES = 10;
+    function catalogPages(cat) {
+        var def = cat.def || {};
+        return (def.extra || []).some(function (e) { return e && e.name === 'skip'; }) || (def.extraSupported || []).indexOf('skip') !== -1;
+    }
+    function catalogUpTo(cat, n) {
+        return Stremio.getCatalog(cat).then(function (first) {
+            if ((cat.addon && cat.addon.__local) || first.stale || !first.length || first.length >= n || !catalogPages(cat)) { return first; }
+            var out = first.slice(), seen = {};
+            out.forEach(function (m) { seen[m.id] = 1; });
+            function next(page) {
+                if (out.length >= n || page > HOME_PAGES) { return out; }
+                return Stremio.getCatalog(cat, { skip: out.length }).then(function (more) {
+                    var added = 0;
+                    more.forEach(function (m) { if (!seen[m.id]) { seen[m.id] = 1; out.push(m); added++; } });
+                    return added ? next(page + 1) : out;
+                }, function () { return out; });
+            }
+            return next(2);
+        });
+    }
     var SERIES_NAME = /(^|[^a-z0-9])(s\d{1,2}(e\d{1,3})?|\d{1,2}x\d{2}|season[\s._-]*\d+|temporada[\s._-]*\d+|complete[\s._-]*series)([^a-z0-9]|$)/i;
     function otherRowName(kind, name) { return kind + ' · ' + ('' + name).replace(/^Other · /, ''); }
     function splitOtherCatalogs(list) {
         var out = [];
         list.forEach(function (c) {
             if (c.loading) { if (c.type !== 'other' || c.yt) { out.push(copyCat(c, [], { loading: true })); } return; }   // (a placeholder: still loading)
-            if (c.type !== 'other' || c.yt) { out.push(copyCat(c, c.metas.slice(0, ROW_CARDS))); return; }   // (a YouTube one as it is, whatever its type)
+            if (c.type !== 'other' || c.yt) { out.push(copyCat(c, c.all ? c.metas.slice() : c.metas.slice(0, rowCards()))); return; }   // (a YouTube one as it is, whatever its type)
             var movies = [], series = [];
             c.metas.forEach(function (m) { (SERIES_NAME.test(m.name || '') ? series : movies).push(m); });
-            out.push({ name: otherRowName('Movies', c.name), type: 'movie', metas: movies.slice(0, ROW_CARDS) });
-            out.push({ name: otherRowName('Series', c.name), type: 'series', metas: series.slice(0, ROW_CARDS) });
+            out.push({ name: otherRowName('Movies', c.name), type: 'movie', metas: movies.slice(0, rowCards()) });
+            out.push({ name: otherRowName('Series', c.name), type: 'series', metas: series.slice(0, rowCards()) });
         });
         return out;
     }
 
+    // A long row (up to 200 titles, ★ Favorites up to 300) builds ROW_FIRST cards, not all of them
+    // in one go with the remote waiting, then ROW_MORE at a time when focus is within ROW_NEAR of
+    // the end (Home's Focus.onFocus). row.__rest(): the titles not built yet (CH+ / CH− go through
+    // them); row.__cardOf(meta): its card, built if it wasn't.
+    var ROW_FIRST = 30, ROW_MORE = 30, ROW_NEAR = 8;
+    function lateCards(row, c) {
+        var at = ROW_FIRST, scroller = row.querySelector('.row-scroller');
+        function add(n) {
+            var end = Math.min(c.metas.length, at + n), first = scroller.firstChild, nav = first && first.__navDOWN;
+            for (; at < end; at++) {
+                var card = posterCard(c.metas[at], c.type);
+                if (nav) { card.__navDOWN = nav; }   // (the rows below it, as its neighbors)
+                scroller.appendChild(card);
+            }
+            if (at >= c.metas.length) { row.__more = null; }
+        }
+        row.__more = function () { add(ROW_MORE); };
+        row.__rest = function () { return c.metas.slice(at); };
+        row.__cardOf = function (m) {
+            var want = c.metas.indexOf(m), kids = scroller.children;
+            if (want === -1) { return null; }
+            add(want + 1 - at);
+            return kids[want] || null;
+        };
+    }
+
     // Render cats[from .. from+ROW_BATCH) into `rows`. A large IPTV list can have 50+
-    // groups x ROW_CARDS cards; building them all up front bloats the DOM, the poster queue
+    // groups x rowCards() cards; building them all up front bloats the DOM, the poster queue
     // and every D-pad scan. While more remain, DOWN on either of the last two rendered
     // rows renders the next batch first, then the normal DOWN move continues into it.
     function appendRows(rows, cats, from, atLeast) {
@@ -1530,7 +1594,8 @@
         var built = [];
         for (var i = from; i < to; i++) {
             var c = cats[i];
-            var row = buildRow(c.name, c.metas.map(function (m) { return posterCard(m, c.type); }));
+            var row = buildRow(c.name, c.metas.slice(0, ROW_FIRST).map(function (m) { return posterCard(m, c.type); }));
+            if (c.metas.length > ROW_FIRST) { lateCards(row, c); }
             if (c.loading) { row.className += ' row-loading'; row.appendChild(U.el('div', 'row-empty', 'Loading…')); }   // (its place kept: nothing to focus)
             rows.appendChild(row);
             built.push(row);

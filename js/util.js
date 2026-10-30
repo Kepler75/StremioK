@@ -21,7 +21,7 @@ var U = (function () {
        are read %-decoded (%70assword is password), and a #fragment is masked the same way
        (name=value pairs, or one token). Scheme, host, port and the rest of the path stay
        readable. */
-    var SECRET_PARAM = /^(pass(word)?|pwd|passwd|user(name)?|login|token|access_token|refresh_token|auth(orization)?|key|apikey|api_key|api-key|secret|client_secret|sig|signature|session|sid|hash)$/i;
+    var SECRET_PARAM = /^(pass(word)?|pwd|passwd|user(name)?|login|token|access_token|refresh_token|auth(orization)?|key|apikey|api_key|api-key|secret|client_secret|sig|signature|session|sid|hash|mac)$/i;
     function looksLikeToken(seg) {
         if (seg.length < 20 || !/^[A-Za-z0-9._~+=%-]+$/.test(seg)) { return false; }
         if (/%3A%2F%2F/i.test(seg)) { return false; }   // an encoded URL (a YouTube page for the service), not a token
@@ -1028,12 +1028,14 @@ var U = (function () {
         // settings, addons or playlists clears regenerable caches (in CACHES order) until it
         // fits; if it still doesn't, it's logged and you're told (once a minute at most).
         // A cache that doesn't fit simply isn't saved.
-        set: function (key, value) {
+        // keep: what was saved stays in memory as it is, so the next read needn't parse it again
+        // (the playback progress, saved over and over).
+        set: function (key, value, keep) {
             delete _memo[key];
             _writes++;
             var text;
             try { text = JSON.stringify(value); } catch (e0) { return false; }
-            if (tryWrite(key, text)) { return true; }
+            if (tryWrite(key, text)) { if (keep) { _memo[key] = { missing: false, val: value }; } return true; }
             if (isCacheKey(key)) { return false; }
             var freed = [];
             for (var i = 0; i < CACHES.length; i++) {
@@ -1129,6 +1131,79 @@ var U = (function () {
             l.cancel();
         });
     }
+    // A sideways row's picture far off screen waits on its card (__parked), not costing a download
+    // and a decode that compete with the remote, until focus comes near it (unparkNear). On a
+    // hidden screen (nothing measures) it loads as before.
+    var PARK_X = 600, PARK_Y = 450, SCREEN_W = 1920, SCREEN_H = 1080, UNPARK_CARDS = 10, UNPARK_ROWS = 2, CARD_GAP = 22;
+    function parkIt(item) {
+        if (item.bg || item.wanted) { return false; }
+        var card = item.img.parentNode, sc = card && card.parentNode;
+        if (!sc || (' ' + (sc.className || '') + ' ').indexOf(' row-scroller ') === -1) { return false; }
+        var r = item.img.getBoundingClientRect();
+        if (!(r.width > 0)) { return false; }
+        if (r.right > -PARK_X && r.left < SCREEN_W + PARK_X && r.bottom > -PARK_Y && r.top < SCREEN_H + PARK_Y) { return false; }
+        card.__parked = item;
+        _parkedItems.push(item);
+        if (!_lastMove) { _lastMove = Date.now(); }
+        scheduleIdle(IDLE_WAIT_MS);
+        return true;
+    }
+    // Parked pictures, while nothing is going on: no key for IDLE_WAIT_MS and nothing else to load,
+    // one at a time, nearest to focus first (an image's decode competes with the remote). A key
+    // puts it off again; nothing while something plays or on a hidden screen.
+    var _parkedItems = [], _idleTimer = null, _lastMove = 0, _lastCard = null, IDLE_WAIT_MS = 3000, IDLE_GAP_MS = 300, IDLE_BUSY_MS = 1500;
+    function scheduleIdle(ms) { if (_idleTimer === null) { _idleTimer = setTimeout(idleStep, ms); } }
+    function idleStep() {
+        _idleTimer = null;
+        _parkedItems = _parkedItems.filter(function (it) { return it.img.parentNode && it.img.parentNode.__parked === it && onPage(it.img); });
+        if (!_parkedItems.length) { return; }
+        var wait = _lastMove + IDLE_WAIT_MS - Date.now();
+        if (wait > 0) { scheduleIdle(wait); return; }
+        if (isHidden() || _imageActive > 0 || _imageQueue.length || (typeof Player !== 'undefined' && Player.isActive && Player.isActive())) { scheduleIdle(IDLE_BUSY_MS); return; }
+        var f = _lastCard && onPage(_lastCard) ? _lastCard.getBoundingClientRect() : { left: 0, top: 0 }, best = null, bestD = Infinity;
+        _parkedItems.forEach(function (it) {
+            var r = it.img.getBoundingClientRect();
+            if (!(r.width > 0)) { return; }
+            var d = Math.abs(r.top - f.top) * 4 + Math.abs(r.left - f.left);   // (its own row first)
+            if (d < bestD) { bestD = d; best = it; }
+        });
+        if (!best) { scheduleIdle(IDLE_BUSY_MS); return; }
+        best.img.parentNode.__parked = null;
+        best.wanted = true;
+        _imageQueue.unshift(best);
+        scheduleImagePump(0);
+        scheduleIdle(IDLE_GAP_MS);
+    }
+    function unparkRange(sc, from, to) {
+        var kids = sc.children, any = false;
+        for (var i = Math.max(0, from); i <= to && i < kids.length; i++) {
+            var it = kids[i].__parked;
+            if (!it) { continue; }
+            kids[i].__parked = null;
+            it.wanted = true;
+            _imageQueue.unshift(it);
+            any = true;
+        }
+        return any;
+    }
+    // Focus on this card: its row's pictures around it, and the rows just above and below, around
+    // where each is scrolled to.
+    function unparkNear(card) {
+        var sc = card.parentNode, row = sc && sc.parentNode;
+        if (!row || (' ' + (sc.className || '') + ' ').indexOf(' row-scroller ') === -1) { return; }
+        var at = Array.prototype.indexOf.call(sc.children, card);
+        unparkRange(sc, at - UNPARK_CARDS, at + UNPARK_CARDS);
+        ['previousElementSibling', 'nextElementSibling'].forEach(function (dir) {
+            var r = row;
+            for (var n = 0; n < UNPARK_ROWS && r; n++) {
+                r = r[dir];
+                var osc = r && r.querySelector ? r.querySelector('.row-scroller') : null, first = osc && osc.children[0];
+                if (!first) { continue; }
+                var from = Math.floor((osc.scrollLeft || 0) / ((first.offsetWidth || 200) + CARD_GAP));
+                unparkRange(osc, from - UNPARK_CARDS, from + UNPARK_CARDS);
+            }
+        });
+    }
     function pumpImages() {
         dropUnwanted();
         if (isHidden()) { return; }   // (in the background: nothing new until StremioK is back)
@@ -1139,6 +1214,7 @@ var U = (function () {
             if (!onPage(img) || img.__queuedImage !== item) {
                 continue;
             }
+            if (parkIt(item)) { continue; }
             img.__queuedImage = null;
             if (_inflight[item.src]) { _inflight[item.src].push(item); continue; }   // already loading
             _imageActive++;
@@ -1277,7 +1353,10 @@ var U = (function () {
     // Called after focus/scroll changes. Load the focused card first, then its
     // closest horizontal neighbors, while the rest continue in the background.
     function prioritizeImages(node) {
+        _lastMove = Date.now();
         if (!node || !node.querySelector || !node.classList.contains('card')) { return; }
+        _lastCard = node;
+        unparkNear(node);
         var nearby = [node];
         var prev = node.previousElementSibling;
         var next = node.nextElementSibling;

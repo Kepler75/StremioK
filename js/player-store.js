@@ -142,7 +142,7 @@
     // ---------- progress (Continue Watching) ----------
     function progressAll() { return U.store.get(PROGRESS_KEY, {}); }
     function progressKey(ctx) { return ctx.type + ':' + ctx.id; }
-    function writeProgress(all) { U.store.set(PROGRESS_KEY, all); }
+    function writeProgress(all) { U.store.set(PROGRESS_KEY, all, true); }
 
     // "Add to Continue Watching": list a title there without playing it. Also how
     // a show's next episode is queued (credits, marking episodes watched): like an added

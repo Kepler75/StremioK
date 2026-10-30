@@ -128,7 +128,7 @@ var PlayerParts = {};
         saveProgress();
         // (where you stopped to Trakt; past 80% nothing: Trakt takes no paused place there, and you
         // may come back)
-        if (!S.isLive && !_creditsHandled && S.ctx && !S.ctx.trailer && !S.ctx.private && !isNotice() && S.cur > 60 && typeof Trakt !== 'undefined' && Trakt.onProgress &&
+        if (!S.isLive && !_creditsHandled && S.ctx && !S.ctx.trailer && !S.ctx.private && !isNotice() && !/^iptv:/.test(S.ctx.id || '') && S.cur > 60 && typeof Trakt !== 'undefined' && Trakt.onProgress &&
             !(S.dur > 0 && S.cur / S.dur >= 0.8)) {
             Trakt.onProgress(S.ctx.type, S.ctx.id, S.cur, S.dur, S.ctx.name);
         }
@@ -157,14 +157,14 @@ var PlayerParts = {};
 
     function isActive() { return S.active; }
 
-    // fromTicker: the 5-second save while it plays: skipped when nothing moved since the last one
-    // (paused); a stop, a leave or a jump always saves.
-    var _savedSig = '';
+    // fromTicker: the save while it plays, at most every SAVE_EVERY_MS: skipped when nothing moved
+    // since the last one (paused); a stop, a leave or a jump always saves.
+    var _savedSig = '', _savedAt = 0, SAVE_EVERY_MS = 60000;
     function saveProgress(fromTicker) {
-        if (!S.ctx || !S.dur || S.isLive || S.ctx.trailer || S.ctx.private || isNotice()) { return; }   // (a notice clip, private viewing: nothing saved, nothing removed)
+        if (!S.ctx || !S.dur || S.isLive || S.ctx.trailer || S.ctx.private || isNotice() || /^iptv:/.test(S.ctx.id || '')) { return; }   // (a notice clip, private viewing, a film in a playlist: nothing saved, nothing removed)
         var sig = progressKey(S.ctx) + '|' + Math.floor(S.cur) + '|' + Math.floor(S.dur);
-        if (fromTicker && sig === _savedSig) { return; }
-        _savedSig = sig;
+        if (fromTicker && (sig === _savedSig || Date.now() - _savedAt < SAVE_EVERY_MS)) { return; }
+        _savedSig = sig; _savedAt = Date.now();
         // Past the credits the episode is watched: its entry was removed and the next one
         // queued (handleCredits). Saving again would put it back next to the next episode.
         if (_creditsHandled) { return; }
@@ -433,7 +433,7 @@ var PlayerParts = {};
         if (U.crumb) { U.crumb('play ' + (ctx.type || '') + ' ' + (ctx.private ? '(private)' : /^file:/i.test(ctx.url || '') ? 'file .' + ('' + ctx.url).split('.').pop() : ('' + (ctx.url || '')).replace(/^https?:\/\/([^\/?#]+).*$/i, '$1'))); }   // (Diagnostics, after an unexpected close)
         S.active = true; S.cur = 0; S.dur = 0; _bg = null; S.actual = null;
         // Stremio "tv" and "radio" types are strong live hints; refined after prepare.
-        S.isLive = (ctx.type === 'tv' || ctx.type === 'radio') || /^iptv:/.test(ctx.id || '') || !!ctx.isLive;   // (an IPTV channel: live, a sports one too)
+        S.isLive = !(ctx.stream && ctx.stream._vod) && ((ctx.type === 'tv' || ctx.type === 'radio') || /^iptv:/.test(ctx.id || '') || !!ctx.isLive);   // (an IPTV channel: live, a sports one too; a film in a playlist isn't)
         formatStart(ctx);
         S.ctx.resumeSec = (ctx.trailer || ctx.fromStart) ? 0 : (ctx.resumeSec || getResume(ctx.type, ctx.id));   // (Play from start: 0:00)
 
@@ -580,7 +580,7 @@ var PlayerParts = {};
 
     // Decides live vs VOD from the reported duration (0 / non-finite = live).
     function markLiveFromDuration() {
-        if (S.ctx && (S.ctx.type === 'tv' || S.ctx.type === 'radio' || /^iptv:/.test(S.ctx.id || ''))) { S.isLive = true; }
+        if (S.ctx && !(S.ctx.stream && S.ctx.stream._vod) && (S.ctx.type === 'tv' || S.ctx.type === 'radio' || /^iptv:/.test(S.ctx.id || ''))) { S.isLive = true; }
         if (!S.dur || S.dur <= 0 || !isFinite(S.dur)) { S.isLive = true; }
     }
 

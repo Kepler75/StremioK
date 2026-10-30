@@ -75,7 +75,8 @@ sources that are only torrents; Stremio's can also convert a video the TV can't 
 ### IPTV
 
 Your M3U playlists: *Add playlist*, *Add Xtream account* (server, username, password: checked,
-then its channels and guide added; OK on it for *Format*: **MPEG-TS** or HLS), ▲ / ▼ to order
+then its channels and guide added; OK on it for *Format*: **MPEG-TS** or HLS), *Add Stalker portal*
+(its address and MAC address: checked, then its channels added), ▲ / ▼ to order
 them, and OK on one for *Rename*, *Turn off* /
 *Turn on*, *Edit link*, *Guide link* (empty: the playlist's own TV guide), *Reload*, *Remove*.
 Each says whether its guide was read. See [IPTV and radio](USER-GUIDE.md#iptv-and-radio).
@@ -244,6 +245,7 @@ them.
 | *Background* | Black, **Dark**, Light Gray, White | The light ones have dark text; the player keeps its dark controls. |
 | *Accent color* | **Indigo**, and nine others | |
 | *Zoom* | **100%**, 110%, 120%, 130%, 140% | Everything bigger (text, posters, menus, the player's controls) to read from further away; fewer cards fit a row. Subtitles keep their own size. |
+| *Titles in a Home row* | **30**, 50, 100, 200 | How many titles a Home row holds. A catalog that comes a page at a time is asked for more pages to fill it, so Home takes longer to load. ★ Favorites always shows all yours. |
 | *Poster orientation* | **Portrait**, Landscape | |
 | *Ratings on posters* | **Off**, On | A title's IMDb rating on its card (★ 7.8), when the catalog gives it. Nothing extra is downloaded. |
 | *Home bar preview* | **Most recent first**, As in Watching, Off | Continue Watching on the TV's own home bar (StremioK must be on it: Apps › StremioK › *Add to Home*): up to 8 tiles of movies and series you can play now. The sideloaded app on Tizen 4 and later only. |
@@ -272,7 +274,7 @@ with its last steps. *Startup* shows how long this launch and the one before too
 | *Use the TV's database* | **On**, Off | The database holds StremioK's big copies (Home's saved rows, IPTV playlist copies, USB drive indexes, your Trakt history). Off, they're kept in the settings storage instead (about 5 MB in all) and the database is deleted. |
 | *TV storage* | | What StremioK keeps, item by item, with sizes (its saved TV guides too), and the TV's free disk space. |
 | *Tidy up the TV's database* | | Gives back the space of old versions the TV hasn't cleared out. |
-| *Clear saved copies* | | Gives up the copies that can be made again (Home's saved rows, IPTV playlist copies, saved TV guides, the USB index). |
+| *Clear saved copies* | | Gives up the copies that can be made again (Home's saved rows, IPTV playlist copies, saved TV guides and Xtream lists, the USB index). |
 
 ### Installed apps
 

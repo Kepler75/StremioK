@@ -215,6 +215,10 @@
             get: function () { return { zoom: '' + zoomPct() }; },
             set: function (cfg) { Stremio.setPref('zoom', +cfg.zoom); applyAppearance(); }
         }));
+        wrap.appendChild(subPickRow('Titles in a Home row', [['30', '30'], ['50', '50'], ['100', '100'], ['200', '200']], 'rowCards', {
+            get: function () { return { rowCards: '' + Stremio.getPrefs().rowCards }; },
+            set: function (cfg) { Stremio.setPref('rowCards', +cfg.rowCards); clearCatalogCache(); }   // (the rows read again, with more pages or fewer)
+        }));
         wrap.appendChild(subPickRow('Poster orientation', POSTER_SHAPES, 'posterShape', {
             get: function () { return { posterShape: Stremio.getPrefs().posterShape }; },
             set: function (cfg) { Stremio.setPref('posterShape', cfg.posterShape); markHomeDirty(); }   // Home redraws on return
@@ -982,6 +986,38 @@
             }
         });
     }
+    // + Add Stalker portal: its address, then its MAC address; checked (its channels read through
+    // the service), then added (Stremio.iptvAddStalker).
+    function addStalker() {
+        function done(portal, mac) {
+            U.toast('Checking the portal…', 60000);
+            IPTV.stalkerCheck(portal, mac).then(function (r) {
+                if (r.noService) { U.toast('Stalker portals are read by StremioK’s service, which a desktop browser doesn’t have (nothing was saved)', 5000); return; }
+                if (r.unreachable) { U.toast('Couldn’t read the portal' + (r.why ? ' (' + r.why + ')' : '') + ': nothing was saved', 6000); return; }
+                if (r.refused) { U.toast('The portal refused that MAC address' + (r.why ? ' (' + r.why + ')' : '') + ': nothing was saved', 6000); return; }
+                Stremio.iptvAddStalker(portal, mac);
+                refreshAddonRows('local:iptv');
+                U.toast('Stalker portal added: ' + r.count + ' channels', 4000);
+                renderSettings();
+            });
+        }
+        App.openEntry({
+            title: 'Stalker portal: address', phone: 'playlist',
+            hint: 'The portal address your provider gave you (http://portal.example.com/c/). RETURN cancels.',
+            value: 'http://', placeholder: 'http://portal.example.com/c/',
+            validate: function (v) { return IPTV.stalkerPortal(v) ? null : 'That isn’t a portal address'; },
+            onConfirm: function (v) {
+                var portal = IPTV.stalkerPortal(v);
+                App.back();
+                App.openEntry({
+                    title: 'Stalker portal: MAC address', phone: 'mac',
+                    hint: 'The MAC address your provider registered for you (00:1A:79:…), kept on the TV. RETURN cancels.', value: '00:1A:79:', placeholder: '00:1A:79:00:00:00',
+                    validate: function (m) { return IPTV.macOf(m) ? null : 'A MAC address is six pairs, like 00:1A:79:12:34:56'; },
+                    onConfirm: function (m) { App.back(); done(portal, IPTV.macOf(m)); }
+                });
+            }
+        });
+    }
     // Streaming server: Stremio's or TorrServer, on your network (see Stremio.server). Picking one
     // asks for its address; Test says whether it answers.
     var SERVERS = [['', 'Off'], ['stremio', 'Stremio server'], ['torrserver', 'TorrServer']];
@@ -1064,7 +1100,7 @@
             var btns = orderButtons(function (dir, name) { move(dir, name)(); }, ctl);
             var item = ctl(U.el('div', 'addon-item focusable playlist-item'), 'item');
             item.appendChild(U.el('div', 'a-name', label + (playlist.off ? '   (off)' : '')));
-            item.appendChild(U.el('div', 'a-url', U.redactUrl(playlist.url)));   // (credentials masked)
+            item.appendChild(U.el('div', 'a-url', U.redactUrl(playlist.url) + (playlist.mac ? '  ·  MAC ' + playlist.mac.slice(0, 8) + ':••:••:••' : '')));   // (credentials masked; a Stalker portal's MAC too)
             var info = U.el('div', 'a-url playlist-info', playlistInfo(playlist));
             var problem = U.el('div', 'a-url addon-said', playlistProblem(playlist));
             item.appendChild(info);
@@ -1122,6 +1158,11 @@
         xt.appendChild(U.el('div', 'a-url', 'Its server, username and password: its channels and TV guide added'));
         xt.__onselect = addXtream;
         wrap.appendChild(xt);
+        var sk = U.el('div', 'addon-item focusable add-row');
+        sk.appendChild(U.el('div', 'a-name', '+  Add Stalker portal'));
+        sk.appendChild(U.el('div', 'a-url', 'Its address and MAC address: its channels added'));
+        sk.__onselect = addStalker;
+        wrap.appendChild(sk);
         if (playlists.length && Stremio.iptvRefreshEvery) {   // (all of them, with their guides, as Reload does)
             wrap.appendChild(subPickRow('Auto-refresh', IPTV_EVERY, 'every',
                 { get: function () { return { every: String(Stremio.iptvRefreshEvery()) }; }, set: function (c) { Stremio.iptvSetRefreshEvery(+c.every); } }));
@@ -1775,6 +1816,7 @@
             line('Settings storage: ' + fmtBytes(inf.ls) + ' (progress, watched marks, settings…)' + (inf.lsTop.length ? '; the largest:' : ''));
             inf.lsTop.forEach(function (e) { line('   ' + fmtBytes(e.bytes) + '   ' + e.key); });
             if (inf.guides && inf.guides.count) { line('Saved TV guides (in StremioK’s folder): ' + fmtBytes(inf.guides.bytes) + ' in ' + inf.guides.count + (inf.guides.count === 1 ? ' file' : ' files')); }
+            if (inf.guides && inf.guides.xtv && inf.guides.xtv.count) { line('Saved Xtream film and series lists (in StremioK’s folder): ' + fmtBytes(inf.guides.xtv.bytes) + ' in ' + inf.guides.xtv.count + (inf.guides.xtv.count === 1 ? ' file' : ' files')); }
             if (inf.disk) { line('The TV’s own disk: ' + fmtBytes(inf.disk.free) + ' free of ' + fmtBytes(inf.disk.total) + '  (what the TV allows StremioK follows it: freeing space, unused apps for one, raises it)'); }
         }
         r.__onselect = function () {
@@ -1816,9 +1858,9 @@
         }
         var clr = U.el('div', 'addon-item focusable');
         clr.appendChild(U.el('div', 'a-name', 'Clear saved copies'));
-        clr.appendChild(U.el('div', 'a-url', 'Home’s saved rows, IPTV playlist copies, saved TV guides, the USB index: made again when needed (playlists and guides download again)'));
+        clr.appendChild(U.el('div', 'a-url', 'Home’s saved rows, IPTV playlist copies, saved TV guides and Xtream lists, the USB index: made again when needed (playlists, guides and lists download again)'));
         clr.__onselect = function () {
-            confirm('Clear the copies StremioK can make again (Home rows, playlist copies, TV guides, USB index)?', 'Clear', function () {
+            confirm('Clear the copies StremioK can make again (Home rows, playlist copies, TV guides, Xtream lists, USB index)?', 'Clear', function () {
                 U.bigStore.keys().then(function (ks) {
                     return Promise.all(ks.filter(function (k) { return /^stremiok\.(homecache|local\.index|iptv\.cache\.)/.test(k); }).map(function (k) { return U.bigStore.remove(k); }));
                 }).then(function () {

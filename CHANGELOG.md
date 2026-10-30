@@ -3,6 +3,25 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.2.3 — 2026-10-30
+- **Xtream films and series:** an account's films and series in the Movies and Series tabs (a show
+  is one tile, its episodes on its page), Discover by its categories, and Search. The IPTV tab
+  keeps its live channels. Home says *Loading…* while a long list is read; *Reload* on the account
+  reads them again.
+- **Its copies on your titles:** a film or episode from your addons lists the account's copy among
+  its sources (*Xtream*), matched by TMDB id, or by name and year.
+- **Stalker portals, experimental** (Settings › Content › IPTV › *Add Stalker portal*): its address and MAC
+  address; its channels are a playlist, a row per genre.
+- **★ Favorites** shows all your favorites, not the last 30 picked.
+- **Titles in a Home row** (Settings › Appearance): 30, 50, 100 or 200; a catalog that comes a page
+  at a time is asked for more pages to fill the row.
+- **Films in a playlist** (a link to a file) play as films you can scrub through, not as live TV.
+- **Subtitles** within a language come in your addon order, each addon's best match first (they
+  were shuffled on older TVs).
+- **Smoother on older TVs:** D-pad moves reach the screen a quarter or more sooner on the 2017 TV;
+  long rows build as you reach them, and pictures off screen load while you aren't pressing keys.
+- **Progress** is saved once a minute while playing, and at once when you stop or leave.
+
 ## 2.2.2 — 2026-10-28
 - **Torrents through a streaming server** (Settings › Content › Streaming server): with Stremio's
   streaming server or a TorrServer running on your network (a computer or a NAS), torrent-only

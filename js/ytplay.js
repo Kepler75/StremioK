@@ -96,6 +96,29 @@ var YTPlay = (function () {
             return U.getJSON(PROXY + '/aiom/addons?base=' + encodeURIComponent(base) + a.q, 40000, 1048576, null, h);
         });
     }
+    // A Stalker portal, through the service (a web page can't send its MAC address cookie or a MAG
+    // User-Agent): stalkerList -> { m3u, count } or { refused | unreachable, why }: its channels as
+    // an M3U playlist; stalkerLink -> { url } or { why }: a channel's link (u, from that playlist)
+    // to play now. portal: its address; mac: 00:1A:79:… (see service/index.js, stalkerControl).
+    function stalkerAsk(path, portal, mac, more, ms, max, cancel) {
+        if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
+        return ensureService().then(entryAuth).then(function (a) {
+            return U.getJSON(PROXY + path + '?portal=' + encodeURIComponent(portal) + '&mac=' + encodeURIComponent(mac) + more + a.q, ms, max, cancel || null, a.h);
+        });
+    }
+    function stalkerList(portal, mac) { return stalkerAsk('/stalker/list', portal, mac, '', 90000, 48 * 1048576); }
+    function stalkerLink(portal, mac, u, cancel) { return stalkerAsk('/stalker/link', portal, mac, '&u=' + encodeURIComponent(u), 25000, 65536, cancel); }
+    // An Xtream account's films or series, kept by the service (see service/index.js, xtvControl;
+    // user= and pass=: names Diagnostics masks):
+    // path 'list' (the newest; more: &q= for a search, &skip=) or 'find' (a title's copies: &tmdb=
+    // &name= &year=) -> { state, at, error, items: [{ id, name, year, tmdb, cat, ext, pic, rating }] }.
+    function xtvodAsk(path, acc, type, more) {
+        if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
+        return ensureService().then(entryAuth).then(function (a) {
+            return U.getJSON(PROXY + '/xtvod/' + path + '?base=' + encodeURIComponent(acc.base) + '&user=' + encodeURIComponent(acc.user) + '&pass=' + encodeURIComponent(acc.pass) +
+                '&type=' + type + (more || '') + a.q, 30000, 4 * 1048576, null, a.h);
+        });
+    }
     // A playlist's TV guide, read and kept by the service (see service/index.js, epgControl):
     // epgLoad asks it to read it for these channels (k: their keys as a bitset, EPG.bitsFor) ->
     // { state, at, channels, programmes, partial, error }; epgGet: their programs -> { <key>:
@@ -230,6 +253,6 @@ var YTPlay = (function () {
         return MODE === 'tizenbrew' ? 'TizenBrew module' : MODE === 'wgt' ? 'Sideloaded app (.wgt)' : 'Browser (development)';
     }
 
-    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, hlsMaster: hlsMaster, aiomAddons: aiomAddons, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
+    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, hlsMaster: hlsMaster, aiomAddons: aiomAddons, stalkerList: stalkerList, stalkerLink: stalkerLink, xtvodAsk: xtvodAsk, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
         installLabel: installLabel, unavailableMessage: unavailableMessage, isRunning: isRunning, port: PORT };
 })();

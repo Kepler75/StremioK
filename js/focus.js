@@ -85,12 +85,23 @@ var Focus = (function () {
         // UP/DOWN in a list of rows (Home, Search, Cast & more): only the next / previous
         // row's items are candidates, not every card on the screen (thousands on a big IPTV
         // tab). No row that way: as below (the top menu, …).
+        _rowsAsked = false;
         if ((dir === 'UP' || dir === 'DOWN') && (best = nextRowPick(dir, r))) { setFocus(enterGroup(best)); return; }
+        // A card in a sideways row: only its neighbor can be next along the row, and no other
+        // row's card is ever on its line. So the next one first, and at the row's end (or going
+        // up or down with no row that way) other rows' cards aren't measured at all.
+        var inRow = isRowCard(_current);
+        if ((dir === 'LEFT' || dir === 'RIGHT') && inRow) {
+            var nb = _current[dir === 'RIGHT' ? 'nextElementSibling' : 'previousElementSibling'];
+            best = nb ? pick(dir, r, [nb]) : null;
+            if (best) { setFocus(enterGroup(best)); return; }
+        }
+        var skip = (inRow && (dir === 'LEFT' || dir === 'RIGHT' || _rowsAsked)) ? isRowCard : null;
         // LEFT/RIGHT fast path: in a carousel row the only same-row candidates are the
         // card's siblings, so skip measuring the whole screen. At a row end (nothing
         // there) fall back to the full scan, which may reach a non-sibling on the same
         // line (e.g. last tab pill -> Search).
-        if ((dir === 'LEFT' || dir === 'RIGHT') && _current.parentNode) {
+        if ((dir === 'LEFT' || dir === 'RIGHT') && _current.parentNode && !inRow) {
             best = pick(dir, r, _current.parentNode.children);
         }
         // UP/DOWN: stay inside the scrolling area focus is in (Home rows, a Settings
@@ -100,11 +111,17 @@ var Focus = (function () {
         // jump to the menu (or skip a row) instead of the row just scrolled out of view.
         if (dir === 'UP' || dir === 'DOWN') {
             for (var p = _current.parentNode; !best && p && p !== _scope && p.nodeType === 1; p = p.parentNode) {
-                if (p.scrollHeight > p.clientHeight + 2) { best = pick(dir, r, p.querySelectorAll('.focusable')); }
+                if (p.scrollHeight > p.clientHeight + 2) { best = pick(dir, r, p.querySelectorAll('.focusable'), skip); }
             }
         }
-        if (!best) { best = pick(dir, r, _scope.querySelectorAll('.focusable')); }
+        if (!best) { best = pick(dir, r, _scope.querySelectorAll('.focusable'), skip); }
         if (best) { setFocus(enterGroup(best)); }
+    }
+
+    var _rowsAsked = false;   // (this move: every row that way was looked at, by nextRowPick)
+    function isRowCard(n) {
+        var p = n.parentNode;
+        return !!p && (' ' + (p.className || '') + ' ').indexOf(' row-scroller ') !== -1;
     }
 
     function nextRowPick(dir, r) {
@@ -115,6 +132,7 @@ var Focus = (function () {
             if (row && /\s(rows|search-results|more-rows)\s/.test(cn)) { box = p; break; }
         }
         if (!row || !box) { return null; }
+        _rowsAsked = true;
         // a row that's a grid (Watching's): its next / previous line first (a sideways row has
         // one line: nothing more to measure)
         var grid = _current.parentNode && (' ' + (_current.parentNode.className || '') + ' ').indexOf(' card-grid ') !== -1 ? _current.parentNode : null;
@@ -139,8 +157,9 @@ var Focus = (function () {
         return target;
     }
 
-    // Best focusable in `nodes` for a move in `dir` from rect `r` (null if none).
-    function pick(dir, r, nodes) {
+    // Best focusable in `nodes` for a move in `dir` from rect `r` (null if none). skip(node): ones
+    // that can't be it.
+    function pick(dir, r, nodes, skip) {
         var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
 
         // Collect candidates in the pressed direction with their primary (distance
@@ -150,6 +169,7 @@ var Focus = (function () {
         for (var i = 0; i < nodes.length; i++) {
             var node = nodes[i];
             if (node === _current || !node.classList || !node.classList.contains('focusable')) { continue; }
+            if (skip && skip(node)) { continue; }   // (without measuring it)
             var b = node.getBoundingClientRect();
             if (b.width <= 0 || b.height <= 0) { continue; }
             var bx = b.left + b.width / 2, by = b.top + b.height / 2;

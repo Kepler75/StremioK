@@ -20,6 +20,16 @@
  *   /aiom/addons?base=<AIOManager address> (+ X-AIOM-Key: the account's API key) -> JSON
  *                       { addons: [{ url, name, enabled }] }: the account's addons (its Hydra
  *                       API), StremioK registered as a Pull app; StremioK only (entryAllowed)
+ *   /xtvod/list?base=<server>&user=<user>&pass=<password>&type=movie|series[&q=<words>][&skip=n][&force=1] -> JSON
+ *                       { state, at, items: [{ id, name, year, tmdb, cat, ext, pic, rating }] }: an Xtream
+ *                       account's newest films or series (200), or those whose names have the words
+ *                       (force: its list read again now, as Reload asks);
+ *                       /xtvod/find?…&type&[tmdb=][&name=&year=] -> the same: a title's copies there
+ *                       (see xtvControl); StremioK only (entryAllowed)
+ *   /stalker/list?portal=<address>&mac=<MAC> -> JSON { m3u, count } or { refused | unreachable,
+ *                       why }: a Stalker portal's channels as an M3U playlist; /stalker/link?portal&mac
+ *                       &u=<a channel's link in it> -> JSON { url } or { why }: its link to play now
+ *                       (see stalkerControl); StremioK only (entryAllowed)
  *   /epg/load?u=<guide>&k=<bitset>[&force=1] (or POSTed: the same in its body, as StremioK
  *                       asks) -> JSON { state, at, channels, programmes, partial,
  *                       error }: a playlist's TV guide (XMLTV) read for StremioK's channels
@@ -27,7 +37,8 @@
  *                       [[start, stop, title, desc, picture?, about?]], _icons: { <key>: logo } }: their programs and
  *                       the guide's logos for them (see epgControl)
  *   /epg/ticket -> JSON { ticket }: for guide POSTs from an app without the token (see hasTicket)
- *   /epg/files -> JSON { count, bytes }: the saved guides; /epg/clear (POST) -> { cleared }: deleted
+ *   /epg/files -> JSON { count, bytes, xtv: { count, bytes } }: the saved guides, and Xtream lists;
+ *                       /epg/clear (POST) -> { cleared }: all of them deleted
  *   /live/open?u=<playlist>[&ua=&ref=&force=1] -> JSON { fix, sure, why, url }: is a live HLS
  *                       channel's AAC sound cut mid-frame (the TV's player stutters on it)?
  *                       If so, url: a relay that repacks it (/live/<id>/m|s?n=, see liveControl)
@@ -1806,7 +1817,9 @@ function handle(req, res) {
             return;
         }
         if (/^\/epg\//.test(path)) { epgControl(req, res, path, parts[1]); return; }   // (a playlist's TV guide: see epgControl)
-        if (path === '/aiom/addons') { aiomControl(req, res, parts[1], leaving); return; }   // (AIOManager's addons: see aiomControl)   // (a live channel's sound repacked: see liveControl)   // (the phone's one-time page: see below)
+        if (path === '/aiom/addons') { aiomControl(req, res, parts[1], leaving); return; }
+        if (path === '/xtvod/list' || path === '/xtvod/find') { xtvControl(req, res, path, parts[1]); return; }   // (an Xtream account's films and series: see xtvControl)
+        if (path === '/stalker/list' || path === '/stalker/link') { stalkerControl(req, res, path, parts[1], leaving); return; }   // (a Stalker portal: see stalkerControl)   // (AIOManager's addons: see aiomControl)   // (a live channel's sound repacked: see liveControl)   // (the phone's one-time page: see below)
         if (path === '/fsfile') {   // a USB file over HTTP, with Range: the player reads a big one from here (see fsfile in the header)
             var whyF = fsAllowed(req, parts[1]);
             if (whyF) { send(res, 403, 'text/plain', 'not allowed (' + whyF + ')'); return; }
@@ -2667,6 +2680,502 @@ function aiomControl(req, res, query, leaving) {
     }));
 }
 
+// ---- Xtream films and series (/xtvod/list, /xtvod/find) ----
+// An Xtream account's whole list of films (get_vod_streams) and series (get_series), read a piece
+// at a time (xtvItems: one title parsed at a time, never the whole answer) into a small record each
+// ({ i: id, n: name, k: name to match, y: year, t: TMDB id, c: category, a: added, e: file type,
+// p: picture, r: rating }), up to XTV_MAX bytes, XTV_MS and XTV_ITEMS titles. Kept XTV_KEEP accounts
+// and types at once; on the sideloaded app saved in its folder (xtvSave), read again after
+// XTV_FRESH_MS. While it's read again, what's asked is answered with the old list. One download at
+// a time.
+var XTV_SLICE = 2000, XTV_IDLE_MS = 30 * 60000, XTV_FILE_MS = 3 * 86400000;
+var XTV_MAX = 150 * 1048576, XTV_MS = 6 * 60000, XTV_ITEMS = 100000, XTV_FRESH_MS = 86400000, XTV_RETRY_MS = 10 * 60000, XTV_KEEP = 4, XTV_NEWEST = 200, XTV_FOUND = 100;
+var _xtv = Object.create(null), _xtvQueue = [], _xtvBusy = false;
+// A name to match: no language tag (EN - , |EN|, [EN]), brackets, year, quality words or accents.
+var XTV_WORDS = /\b(4k|uhd|fhd|hd|sd|hdr|hevc|x265|h265|1080p|720p|2160p|multi|multisub|vostfr|vost|dual|sub|subs|dub|dubbed|latino|castellano|vf|vo)\b/g;
+function xtvKey(name) {
+    var s = String(name || '').toLowerCase().replace(/[áàâäãåéèêëíìîïóòôöõúùûüñç]/g, function (c) { return EPG_ACCENTS[c]; });
+    for (var i = 0; i < 3; i++) { s = s.replace(/^\s*(\|[^|]{1,12}\||\[[^\]]{1,12}\]|[a-z]{2,3}\s*[-:|]\s+)\s*/, ''); }
+    return s.replace(/\([^()]*\)|\[[^\[\]]*\]/g, ' ').replace(XTV_WORDS, ' ').trim().replace(/\b(19|20)\d{2}$/, ' ').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+function xtvYear(o, name) {
+    var y = parseInt(o.year, 10) || parseInt(String(o.releaseDate || o.release_date || '').slice(0, 4), 10);
+    if (!(y > 1880 && y < 2100)) { var n = String(name || '').trim(), m = /[(\s\[](19\d{2}|20\d{2})[)\]]?$/.exec(n) || /\((19\d{2}|20\d{2})\)/.exec(n); y = m ? +m[1] : 0; }
+    return y > 1880 && y < 2100 ? y : 0;
+}
+function xtvRecord(o, type) {
+    if (!o || typeof o !== 'object') { return null; }
+    var id = type === 'movie' ? o.stream_id : o.series_id, name = String(o.name || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    if (!(+id > 0) || !name) { return null; }
+    var r = { i: +id, n: name, k: xtvKey(name), y: xtvYear(o, name), c: String(o.category_id || '').slice(0, 20), a: +(o.added || o.last_modified || 0) || 0 };
+    var t = parseInt(o.tmdb || o.tmdb_id, 10);
+    if (t > 0) { r.t = t; }
+    if (type === 'movie' && /^[a-z0-9]{2,5}$/i.test(String(o.container_extension || ''))) { r.e = String(o.container_extension).toLowerCase(); }
+    var pic = String(o.stream_icon || o.cover || '');
+    if (/^https?:\/\//i.test(pic) && pic.length < 600) { r.p = pic; }
+    var rating = parseFloat(o.rating_5based ? o.rating_5based * 2 : o.rating);
+    if (rating > 0 && rating <= 10) { r.r = Math.round(rating * 10) / 10; }
+    return r;
+}
+// The titles in a JSON array, one at a time: feed(text) as it comes; onItem(each object directly
+// in the array). A title bigger than 1 MB is skipped.
+function xtvItems(onItem) {
+    var depth = 0, inStr = false, esc = false, inItem = false, carry = '', skip = false;
+    return function (text) {
+        var start = inItem ? 0 : -1;
+        for (var i = 0; i < text.length; i++) {
+            var ch = text.charCodeAt(i);
+            if (inStr) { if (esc) { esc = false; } else if (ch === 92) { esc = true; } else if (ch === 34) { inStr = false; } continue; }
+            if (ch === 34) { inStr = true; }
+            else if (ch === 123 || ch === 91) { depth++; if (depth === 2 && ch === 123 && !inItem) { inItem = true; start = i; carry = ''; skip = false; } }
+            else if (ch === 125 || ch === 93) {
+                if (depth === 2 && inItem) {
+                    var piece = carry + text.slice(start, i + 1);
+                    inItem = false; carry = '';
+                    if (!skip) { try { onItem(JSON.parse(piece)); } catch (e) {} }
+                }
+                depth--;
+            }
+        }
+        if (inItem && !skip) { carry += text.slice(start); if (carry.length > 1048576) { skip = true; carry = ''; } }
+    };
+}
+// A GET read as it comes (onText each piece, as text): redirects on the same server, XTV_MAX bytes,
+// XTV_MS in all. cb(err) once it's done.
+function xtvGet(url, onText, cb) {
+    cb = once(cb);
+    var first = null, r = null, size = 0, done = false;
+    try { first = urllib.parse(url); } catch (e) { first = null; }
+    var timer = setTimeout(function () { finish(upError('took too long', 504)); }, XTV_MS);
+    function finish(err) { if (done) { return; } done = true; clearTimeout(timer); try { if (err && r) { r.abort(); } } catch (e) {} cb(err); }
+    function go(u, hops) {
+        var pu;
+        try { pu = urllib.parse(u); } catch (e) { finish(upError('bad address', 400)); return; }
+        if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !dlHostOk(pu.hostname)) { finish(upError('an address it can\'t reach', 400)); return; }
+        var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, method: 'GET', headers: { 'User-Agent': TV_UA, 'Accept': 'application/json', 'Accept-Encoding': 'identity' } };
+        if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
+        try {
+            r = (pu.protocol === 'https:' ? https : http).request(opts, function (resp) {
+                if (done) { resp.resume(); return; }
+                var sc = resp.statusCode;
+                if (sc >= 300 && sc < 400 && resp.headers.location && hops < 4) {
+                    resp.resume();
+                    var next = urllib.resolve(u, resp.headers.location), np = null;
+                    try { np = urllib.parse(next); } catch (e) { np = null; }
+                    if (!sameServerRedirect(first, np)) { finish(upError('redirected to another server: not followed (your login stays with it)', 502)); return; }
+                    go(next, hops + 1);
+                    return;
+                }
+                if (sc !== 200) { resp.resume(); finish(upError('HTTP ' + sc, sc === 401 || sc === 403 ? 401 : 502)); return; }
+                var dec = new StringDecoder('utf8');
+                resp.on('data', function (c) {
+                    if (done) { return; }
+                    size += c.length;
+                    if (size > XTV_MAX) { finish(upError('too large', 502)); return; }
+                    try { onText(dec.write(c)); } catch (e) { finish(e); }
+                });
+                resp.on('end', function () { if (!done) { try { onText(dec.end()); } catch (e) {} finish(null); } });
+                resp.on('error', function (e) { finish(e); });
+            });
+            r.on('error', function (e) { finish(upError('couldn\'t reach it (' + (e.code || e.message) + ')', 502)); });
+            guardSelf(r, function () { finish(upError('an address it can\'t reach', 400)); });
+            r.end();
+        } catch (e) { finish(e); }
+    }
+    go(url, 0);
+}
+// The saved list: xtv-<hash>.jsonl in the app's folder, a line for its key and date, then a line a
+// title, written and read in small pieces (the service also relays live channels, YouTube and
+// guides: nothing here holds it up for long). Saved lists not used for XTV_FILE_MS are deleted.
+function xtvFile(key) { var d = tokenDir(); return d ? d + '/xtv-' + epgHash(key).toString(36) + '.jsonl' : null; }
+var _xtvSwept = false, XTV_FILES = /^xtv-[0-9a-z]+\.jsonl?(\.part)?$/;
+function xtvSweep() {
+    if (_xtvSwept) { return; }
+    _xtvSwept = true;
+    var d = tokenDir(), fs = require('fs');
+    if (!d) { return; }
+    fs.readdir(d, function (err, names) {
+        (err ? [] : names).filter(function (n) { return XTV_FILES.test(n); }).forEach(function (n) {
+            if (/\.json$/.test(n)) { fs.unlink(d + '/' + n, noop); return; }   // (the first version's)
+            fs.stat(d + '/' + n, function (e, st) { if (!e && st && Date.now() - st.mtime.getTime() > XTV_FILE_MS) { fs.unlink(d + '/' + n, noop); } });
+        });
+    });
+}
+function xtvSave(x) {
+    var f = xtvFile(x.key), fs = require('fs'), items = x.items, at = 0, failed = false, s;
+    if (!f) { return; }
+    try { s = fs.createWriteStream(f + '.part', { mode: 384 }); } catch (e) { return; }
+    s.on('error', function (e) { failed = true; log('Xtream list not saved (' + (e.code || e.message) + ')'); });
+    s.write(JSON.stringify({ key: x.key, at: x.at }) + '\n');
+    (function more() {
+        if (failed) { return; }
+        var lines = [], end = Math.min(items.length, at + XTV_SLICE);
+        for (; at < end; at++) { lines.push(JSON.stringify(items[at])); }
+        var room = s.write(lines.length ? lines.join('\n') + '\n' : '');
+        if (at >= items.length) {
+            s.end(function () {
+                if (failed) { return; }
+                if (_xtv[x.key] !== x) { fs.unlink(f + '.part', noop); return; }   // (cleared meanwhile: Clear saved copies)
+                fs.rename(f + '.part', f, function (e) { if (!e && x.items === items) { x.saved = true; xtvIdle(x); } });
+            });
+            return;
+        }
+        if (room) { setTimeout(more, 0); } else { s.once('drain', more); }
+    })();
+}
+// cb(items, at): the saved list, or nothing (none, another's, unreadable).
+function xtvLoad(x, cb) {
+    var f = xtvFile(x.key), fs = require('fs'), items = [], at = 0, first = true, rest = '', dec = new StringDecoder('utf8'), s;
+    cb = once(cb);
+    try { s = fs.createReadStream(f, { highWaterMark: 65536 }); } catch (e) { cb(); return; }
+    function line(l) {
+        if (!l) { return; }
+        var o = null;
+        try { o = JSON.parse(l); } catch (e) { o = null; }
+        if (first) {
+            first = false;
+            if (!o || o.key !== x.key) { items = null; try { s.destroy(); } catch (e2) {} cb(); return; }
+            at = +o.at || 0;
+        } else if (o && items) { items.push(o); }
+    }
+    s.on('data', function (c) {
+        var ls = (rest + dec.write(c)).split('\n');
+        rest = ls.pop();
+        ls.forEach(line);
+    });
+    s.on('end', function () { line(rest); if (items && items.length) { cb(items, at); } else { cb(); } });
+    s.on('error', function () { cb(); });
+}
+// The newest titles, without sorting the whole list: the XTV_NEWEST latest kept in order.
+function xtvNewestOf(items) {
+    var top = [];
+    items.forEach(function (r) {
+        if (top.length >= XTV_NEWEST && r.a <= top[top.length - 1].a) { return; }
+        var lo = 0, hi = top.length;
+        while (lo < hi) { var mid = (lo + hi) >> 1; if (top[mid].a >= r.a) { lo = mid + 1; } else { hi = mid; } }
+        top.splice(lo, 0, r);
+        if (top.length > XTV_NEWEST) { top.pop(); }
+    });
+    return top;
+}
+function xtvHave(x, items, at) {
+    x.items = items; x.at = at; x.newest = xtvNewestOf(items); x.state = 'ready'; x.error = '';
+    xtvIdle(x);
+}
+// Unused for XTV_IDLE_MS, a list that's saved leaves memory (its newest titles stay: Home's row),
+// and comes back from the file when it's asked for.
+function xtvIdle(x) {
+    if (x.idleTimer) { return; }
+    x.idleTimer = setTimeout(function () {
+        x.idleTimer = null;
+        if (_xtv[x.key] !== x || !x.items) { return; }
+        if (!x.saved || x.busy || Date.now() - x.used < XTV_IDLE_MS) { xtvIdle(x); return; }
+        x.items = null; x.triedFile = false; x.state = 'new';
+    }, XTV_IDLE_MS);
+    if (x.idleTimer.unref) { x.idleTimer.unref(); }
+}
+// What it needs now: its saved list read (at once: one account's download doesn't hold up
+// another's file), or its list downloaded (queued, one at a time). Those waiting for the file are
+// answered when it's read.
+function xtvDue(x, force) {
+    if (force) { x.force = true; }
+    if (x.busy || _xtvQueue.indexOf(x) !== -1) { return; }
+    if (!x.items && !x.triedFile && xtvFile(x.key)) {
+        x.triedFile = true; x.busy = true; x.loading = true; x.state = 'reading';
+        xtvLoad(x, function (items, at) {
+            x.busy = false; x.loading = false;
+            if (items) { x.saved = true; xtvHave(x, items, at); } else { x.state = 'new'; }
+            xtvDue(x);
+            var w = x.waiters; x.waiters = [];
+            w.forEach(function (fn) { try { fn(); } catch (e) {} });
+        });
+        return;
+    }
+    var stale = x.force || !x.at || Date.now() - x.at > XTV_FRESH_MS, retry = x.force || Date.now() - (x.failedAt || 0) > XTV_RETRY_MS;
+    if (!stale || !retry) { return; }
+    if (!x.items) { x.state = 'queued'; }
+    _xtvQueue.push(x);
+    xtvPump();
+}
+// The list of this account and type: kept, saved, or read (queued); x.state 'ready' with x.items.
+function xtvList(base, user, pass, type, force) {
+    var key = base + '|' + user + '|' + type, x = _xtv[key];
+    xtvSweep();
+    if (!x) {
+        var keys = Object.keys(_xtv);
+        if (keys.length >= XTV_KEEP) { keys.sort(function (a, b) { return _xtv[a].used - _xtv[b].used; }); delete _xtv[keys[0]]; }
+        x = _xtv[key] = { key: key, base: base, user: user, pass: pass, type: type, state: 'new', items: null, newest: null, at: 0, waiters: [] };
+    }
+    x.pass = pass; x.used = Date.now();
+    xtvDue(x, force);
+    return x;
+}
+function xtvPump() {
+    if (_xtvBusy || !_xtvQueue.length) { return; }
+    var x = _xtvQueue.shift();
+    if (_xtv[x.key] !== x) { xtvPump(); return; }
+    _xtvBusy = true; x.busy = true; x.force = false;
+    if (!x.items) { x.state = 'reading'; }
+    var items = [], url = x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass) + '&action=' + (x.type === 'movie' ? 'get_vod_streams' : 'get_series');
+    var feed = xtvItems(function (o) { if (items.length < XTV_ITEMS) { var r = xtvRecord(o, x.type); if (r) { items.push(r); } } });
+    xtvGet(url, feed, function (err) {
+        _xtvBusy = false; x.busy = false;
+        try {
+            if (err || (!items.length && !x.items)) {
+                x.failedAt = Date.now(); x.error = err ? (err.message || 'failed') : 'no titles in its answer';
+                if (!x.items) { x.state = 'failed'; }
+                log('Xtream ' + x.type + ' list not read: ' + x.error);
+            } else if (_xtv[x.key] === x) {
+                xtvHave(x, items, Date.now());
+                x.failedAt = 0;
+                xtvSave(x);
+            }
+        } catch (e) { x.state = x.items ? 'ready' : 'failed'; }
+        xtvPump();
+    });
+}
+function xtvOut(r) { var o = { id: r.i, name: r.n, year: r.y || 0, cat: r.c }; if (r.t) { o.tmdb = r.t; } if (r.e) { o.ext = r.e; } if (r.p) { o.pic = r.p; } if (r.r) { o.rating = r.r; } return o; }
+function xtvControl(req, res, path, query) {
+    if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
+    var q = {};
+    (query || '').split('&').forEach(function (kv) { var i = kv.indexOf('='); if (i > 0) { try { q[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); } catch (e) {} } });
+    var base = String(q.base || '').replace(/\/+$/, ''), type = q.type === 'series' ? 'series' : 'movie';
+    if (!/^https?:\/\/[^\s]+$/i.test(base) || base.length > 500 || !q.user || !q.pass || q.user.length > 200 || q.pass.length > 200) { send(res, 400, 'text/plain', 'bad account'); return; }
+    var x = xtvList(base, String(q.user), String(q.pass), type, q.force === '1');
+    function answer() {
+        var items = x.items || [], out = [], i;
+        if (path === '/xtvod/find') {
+            var tmdb = parseInt(q.tmdb, 10) || 0, k = xtvKey(q.name), y = parseInt(q.year, 10) || 0;
+            for (i = 0; i < items.length && out.length < 12; i++) {
+                var r = items[i];
+                if (tmdb && r.t) { if (r.t === tmdb) { out.push(r); } continue; }
+                if (k && r.k === k && (!y || !r.y || Math.abs(r.y - y) <= (type === 'series' ? 0 : 1))) { out.push(r); }
+            }
+        } else if (q.q) {
+            var words = xtvKey(q.q).split(' ').filter(Boolean), first = [], rest = [], whole = words.join(' ');
+            for (i = 0; words.length && i < items.length && first.length + rest.length < XTV_FOUND * 3; i++) {
+                var t = items[i], all = true;
+                for (var w = 0; all && w < words.length; w++) { var at = t.k.indexOf(words[w]); all = at === 0 || (at > 0 && t.k.indexOf(' ' + words[w]) !== -1); }
+                if (all) { (t.k.indexOf(whole) === 0 ? first : rest).push(t); }
+            }
+            out = first.concat(rest).slice(0, XTV_FOUND);
+        } else {
+            out = x.newest || [];
+        }
+        var skip = parseInt(q.skip, 10) || 0;
+        if (skip > 0) { out = out.slice(skip); }
+        send(res, 200, 'application/json', JSON.stringify({ state: x.state, at: x.at, error: x.error || '', items: out.map(xtvOut) }));
+    }
+    // (its saved list on its way: a moment; the newest row doesn't need it)
+    if (x.loading && !(path === '/xtvod/list' && !q.q && x.newest)) { x.waiters.push(answer); return; }
+    answer();
+}
+
+// ---- Stalker portals (/stalker/list, /stalker/link) ----
+// A Stalker (Ministra) portal, asked as a MAG box asks: its MAC address in a cookie, a MAG
+// User-Agent, a session token from a handshake (none of which a web page can send). Its API at
+// <address>/portal.php, else /server/load.php (the address's /c/ left out). list: its genres and
+// channels (get_all_channels, else get_ordered_list a page at a time, STALKER_PAGES at most) as an
+// M3U playlist, genres as groups, xmltv_id as tvg-id, each channel's link the one in its cmd (often
+// a stand-in, http://localhost/ch/123_), kept STALKER_LIST_MS (adding a portal just checked reads it
+// once). link: the link to play now (create_link, with the channel's own cmd). A session whose
+// token the portal no longer takes is opened again, once. Redirects only on the same server.
+var STALKER_UA = 'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3';
+var STALKER_MS = 20000, STALKER_MAX = 16 * 1048576, STALKER_PAGES = 100, STALKER_CHANNELS = 30000, STALKER_LIST_MS = 2 * 60000, STALKER_KEEP = 4;
+var _stalker = Object.create(null);   // portal|mac -> { api, base, mac, token, cmds: { link: cmd }, list: { at, m3u, count }, used }
+function stalkerKeep(key) {
+    var s = _stalker[key];
+    if (!s) {
+        var keys = Object.keys(_stalker);
+        if (keys.length >= STALKER_KEEP) { keys.sort(function (a, b) { return _stalker[a].used - _stalker[b].used; }); delete _stalker[keys[0]]; }
+        s = _stalker[key] = { token: '', cmds: {}, list: null };
+    }
+    s.used = Date.now();
+    return s;
+}
+function stalkerApis(portal) {
+    var b = portal.replace(/[?#].*$/, '').replace(/\/+$/, '').replace(/\/(portal|load)\.php$/i, '').replace(/\/(c|server)$/i, '').replace(/\/+$/, '');
+    var apis = [b + '/portal.php', b + '/server/load.php'];
+    if (!/\/stalker_portal$/i.test(b)) { apis.push(b + '/stalker_portal/server/load.php'); }
+    return { base: b, apis: apis };
+}
+// One GET to the portal: cb(err, js) with its answer's "js"; an answer that isn't JSON (a portal
+// that refuses the session says "Authorization failed.") is an error, err.auth when it says so.
+function stalkerAsk(s, params, ctl, cb) {
+    cb = once(cb);
+    var url = s.api + '?' + params + '&JsHttpRequest=1-xml', first = null, done = false;
+    try { first = urllib.parse(url); } catch (e) { first = null; }
+    var h = { 'User-Agent': STALKER_UA, 'X-User-Agent': 'Model: MAG250; Link: WiFi', 'Accept': '*/*', 'Accept-Encoding': 'gzip',
+        'Cookie': 'mac=' + s.mac + '; stb_lang=en; timezone=UTC', 'Referer': s.base + '/c/' };
+    if (s.token) { h.Authorization = 'Bearer ' + s.token; }
+    var timer = setTimeout(function () { finish(upError('the portal didn\'t answer', 504)); }, STALKER_MS), r = null;
+    function finish(err, js) { if (done) { return; } done = true; clearTimeout(timer); if (ctl.abort === abort) { ctl.abort = null; } if (err) { try { if (r) { r.abort(); } } catch (e) {} } cb(err, js); }
+    function abort() { finish(upError('stopped', 499)); }
+    if (ctl.gone) { finish(upError('stopped', 499)); return; }
+    ctl.abort = abort;
+    function go(u, hops) {
+        var pu;
+        try { pu = urllib.parse(u); } catch (e) { finish(upError('bad address', 400)); return; }
+        if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !dlHostOk(pu.hostname)) { finish(upError('an address it can\'t reach', 400)); return; }
+        var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, method: 'GET', headers: h };
+        if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
+        var chunks = [], size = 0;
+        try {
+            r = (pu.protocol === 'https:' ? https : http).request(opts, function (resp) {
+                if (done) { resp.resume(); return; }
+                var sc = resp.statusCode;
+                if (sc >= 300 && sc < 400 && resp.headers.location && hops < 4) {
+                    resp.resume();
+                    var next = urllib.resolve(u, resp.headers.location), np = null;
+                    try { np = urllib.parse(next); } catch (e) { np = null; }
+                    if (!sameServerRedirect(first, np)) { finish(upError('the portal redirected to another server: not followed (your MAC address stays with it)', 502)); return; }
+                    go(next, hops + 1);
+                    return;
+                }
+                resp.on('data', function (c) { if (done) { return; } chunks.push(c); size += c.length; if (size > STALKER_MAX) { finish(upError('too large an answer', 502)); } });
+                resp.on('end', function () {
+                    if (done) { return; }
+                    if (sc !== 200) { finish(upError('HTTP ' + sc, sc === 401 || sc === 403 ? 401 : 502)); return; }
+                    decompress(Buffer.concat(chunks, size), resp.headers['content-encoding'], function (e, buf) {
+                        if (e) { finish(e); return; }
+                        var text = buf.toString('utf8').replace(/^﻿/, ''), j = null;
+                        try { j = JSON.parse(text); } catch (e2) { j = null; }
+                        if (!j || typeof j !== 'object') {
+                            var err = upError('not a Stalker answer' + (text.trim() ? ' (' + text.trim().slice(0, 80) + ')' : ''), 502);
+                            err.auth = /authori[sz]ation|unauthori[sz]ed|access denied/i.test(text);
+                            finish(err);
+                            return;
+                        }
+                        finish(null, j.js);
+                    });
+                });
+                resp.on('error', function (e) { finish(e); });
+            });
+            r.on('error', function (e) { finish(upError('couldn\'t reach it (' + (e.code || e.message) + ')', 502)); });
+            guardSelf(r, function () { finish(upError('an address it can\'t reach', 400)); });
+            r.end();
+        } catch (e) { finish(e); }
+    }
+    go(url, 0);
+}
+// A MAG box's profile request: its serial number and device id made from the MAC, as other
+// players do (some portals check that they're there).
+function stalkerProfile(mac) {
+    var sn = crypto.createHash('md5').update(mac).digest('hex').toUpperCase().slice(0, 13);
+    var id = crypto.createHash('sha256').update(mac).digest('hex').toUpperCase();
+    return 'type=stb&action=get_profile&hd=1&ver=' + encodeURIComponent('ImageDescription: 0.2.18-r23-250; PORTAL version: 5.6.2; API Version: JS API version: 343; STB API version: 146') +
+        '&num_banks=2&sn=' + sn + '&stb_type=MAG250&client_type=STB&image_version=218&video_out=hdmi&device_id=' + id + '&device_id2=' + id +
+        '&signature=&auth_second_step=1&hw_version=1.7-BD-00&not_valid_token=0&api_signature=262&prehash=';
+}
+// The session: its API found (the first that answers a handshake with a token), its profile asked.
+function stalkerOpen(s, portal, mac, ctl, cb) {
+    var p = stalkerApis(portal), i = 0, why = null;
+    s.base = p.base; s.mac = mac; s.token = '';
+    (function next() {
+        if (i >= p.apis.length) { cb(why || upError('not a Stalker portal at that address', 502)); return; }
+        s.api = p.apis[i++];
+        stalkerAsk(s, 'type=stb&action=handshake&token=&prehash=0', ctl, function (err, js) {
+            if (ctl.gone) { cb(upError('stopped', 499)); return; }
+            if (err || !js || !js.token) { if (!why || /couldn.t reach/.test(why.message)) { why = err || upError('not a Stalker portal at that address', 502); } next(); return; }
+            s.token = String(js.token).slice(0, 200);
+            stalkerAsk(s, stalkerProfile(mac), ctl, function (e2, prof) {
+                if (e2) { s.token = ''; cb(e2); return; }
+                s.block = prof && typeof prof === 'object' && prof.block_msg ? String(prof.block_msg).slice(0, 120) : '';
+                cb(null, s);
+            });
+        });
+    })();
+}
+// job(s, done) with the session open; done(err) with err.auth: opened again and job run once more.
+function stalkerWith(s, portal, mac, ctl, job, cb) {
+    function run(again) {
+        job(s, function (err, v) {
+            if (err && err.auth && !again && !ctl.gone) { s.token = ''; open(true); return; }
+            cb(err, v);
+        });
+    }
+    function open(again) { stalkerOpen(s, portal, mac, ctl, function (err) { if (err) { cb(err); return; } run(again); }); }
+    if (s.token && s.api) { run(false); } else { open(false); }
+}
+function stalkerChannels(s, ctl, cb) {
+    stalkerAsk(s, 'type=itv&action=get_genres', ctl, function (e0, genres) {
+        if (e0 && e0.auth) { cb(e0); return; }
+        var g = {};
+        if (Array.isArray(genres)) { genres.forEach(function (x) { if (x && x.id != null && x.title) { g[String(x.id)] = String(x.title); } }); }
+        stalkerAsk(s, 'type=itv&action=get_all_channels', ctl, function (e1, js) {
+            if (e1 && e1.auth) { cb(e1); return; }
+            var all = js && Array.isArray(js.data) ? js.data : Array.isArray(js) ? js : [];
+            if (all.length) { cb(null, all.slice(0, STALKER_CHANNELS), g); return; }
+            var page = 1;
+            (function more() {
+                stalkerAsk(s, 'type=itv&action=get_ordered_list&genre=*&fav=0&sortby=number&hd=0&p=' + page, ctl, function (e2, o) {
+                    if (e2 && !all.length) { cb(e2); return; }
+                    var d = !e2 && o && Array.isArray(o.data) ? o.data : [], total = +(o && o.total_items) || 0;
+                    all = all.concat(d);
+                    if (!d.length || page >= STALKER_PAGES || (total && all.length >= total) || all.length >= STALKER_CHANNELS) { cb(null, all.slice(0, STALKER_CHANNELS), g); return; }
+                    page++;
+                    more();
+                });
+            })();
+        });
+    });
+}
+function stalkerM3u(s, list, genres) {
+    function clean(v) { return String(v == null ? '' : v).replace(/[\r\n"]+/g, ' ').trim().slice(0, 300); }
+    var out = ['#EXTM3U'], cmds = {}, n = 0;
+    list.forEach(function (c) {
+        if (!c || typeof c !== 'object') { return; }
+        var cmd = String(c.cmd || (Array.isArray(c.cmds) && c.cmds[0] && c.cmds[0].url) || ''), m = /(https?:\/\/[^\s"]+)/i.exec(cmd);
+        if (!m || m[1].length > 1000) { return; }
+        cmds[m[1]] = cmd.slice(0, 2000);
+        var logo = clean(c.logo);
+        if (logo && !/^https?:\/\//i.test(logo)) { logo = s.base + '/misc/logos/320/' + logo.replace(/^\/+/, ''); }
+        out.push('#EXTINF:-1' + (c.xmltv_id ? ' tvg-id="' + clean(c.xmltv_id) + '"' : '') + (logo ? ' tvg-logo="' + logo + '"' : '') + (c.number ? ' tvg-chno="' + clean(c.number) + '"' : '') +
+            ' group-title="' + clean(genres[String(c.tv_genre_id)] || 'Live TV') + '",' + (clean(c.name).replace(/,/g, ' ·') || 'Channel'));
+        out.push(m[1]);
+        n++;
+    });
+    s.cmds = cmds;
+    return { m3u: out.join('\n') + '\n', count: n };
+}
+function stalkerControl(req, res, path, query, leaving) {
+    if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
+    var q = {};
+    (query || '').split('&').forEach(function (kv) { var i = kv.indexOf('='); if (i > 0) { try { q[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); } catch (e) {} } });
+    var portal = String(q.portal || '').trim(), mac = String(q.mac || '').toUpperCase();
+    if (!/^https?:\/\/[^\s]+$/i.test(portal) || portal.length > 500) { send(res, 400, 'text/plain', 'bad address'); return; }
+    if (!/^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/.test(mac)) { send(res, 400, 'text/plain', 'bad MAC address'); return; }
+    var key = portal + '|' + mac, s = stalkerKeep(key), ctl = { gone: false, abort: null };
+    leaving.push(function () { ctl.gone = true; if (ctl.abort) { ctl.abort(); } });
+    function json(o) { send(res, 200, 'application/json', JSON.stringify(o)); }
+    if (path === '/stalker/link') {
+        var u = String(q.u || '');
+        if (!/^https?:\/\/[^\s]+$/i.test(u) || u.length > 2000) { send(res, 400, 'text/plain', 'bad link'); return; }
+        stalkerWith(s, portal, mac, ctl, function (ss, done) {
+            var cmd = ss.cmds[u] || 'ffmpeg ' + u;   // (a session opened after a restart: as most portals write it)
+            stalkerAsk(ss, 'type=itv&action=create_link&cmd=' + encodeURIComponent(cmd) + '&series=&forced_storage=0&disable_ad=0&download=0&force_ch_link_check=0', ctl, function (err, js) {
+                if (err) { done(err); return; }
+                var m = /(https?:\/\/[^\s"]+)/i.exec(String((js && js.cmd) || ''));
+                done(m ? null : upError('the portal gave no link for this channel', 502), m ? m[1] : null);
+            });
+        }, function (err, link) { json(err ? { why: err.message || 'failed' } : { url: link }); });
+        return;
+    }
+    if (s.list && Date.now() - s.list.at < STALKER_LIST_MS) { json({ m3u: s.list.m3u, count: s.list.count }); return; }
+    stalkerWith(s, portal, mac, ctl, function (ss, done) {
+        stalkerChannels(ss, ctl, function (err, list, genres) { done(err, err ? null : stalkerM3u(ss, list, genres)); });
+    }, function (err, r) {
+        if (err) {
+            var refused = err.auth || err.status === 401 || /^not a Stalker answer/.test(err.message || '') && !!s.token;
+            json(refused ? { refused: true, why: s.block || 'the portal refused that MAC address' } : { unreachable: true, why: err.message || 'failed' });
+            return;
+        }
+        if (!r.count) { json({ refused: true, why: s.block || 'the portal listed no channels for that MAC address' }); return; }
+        s.list = { at: Date.now(), m3u: r.m3u, count: r.count };
+        json({ m3u: r.m3u, count: r.count });
+    });
+}
+
 // ---- TV guide (/epg/load, /epg/get) ----
 // A playlist's XMLTV guide, read for StremioK's channels only. The app sends their keys (epgKey:
 // "i:" and a tvg-id, "n:" and a name without capitals, accents, spaces or HD / FHD / 4K tags) as
@@ -2905,6 +3414,7 @@ function epgFile(url) { var d = tokenDir(); return d ? d + '/epg-' + epgHash(url
 // EPG_KEEP_MS ago, of any guide, is deleted (looked at once, as the first guide is asked for).
 var EPG_FILE_MAX = 32 * 1048576, EPG_KEEP_MS = 2 * 86400000, _epgSwept = false;
 function epgSweep() {
+    xtvSweep();
     if (_epgSwept) { return; }
     _epgSwept = true;
     var d = tokenDir(), fs = require('fs');
@@ -2997,21 +3507,22 @@ function hasTicket(query) {
 }
 // Settings › Storage: the saved guides (/epg/files: how many, their size), and Clear saved
 // copies (/epg/clear, a POST: every saved guide deleted, and those kept here let go).
-function epgSavedFiles() {
+function epgSavedFiles(re) {
     var d = tokenDir(), fs = require('fs'), out = { count: 0, bytes: 0 };
     if (!d) { return out; }
     try {
-        fs.readdirSync(d).filter(function (n) { return /^epg-[0-9a-z]+\.json(\.part)?$/.test(n); }).forEach(function (n) {
+        fs.readdirSync(d).filter(function (n) { return (re || /^epg-[0-9a-z]+\.json(\.part)?$/).test(n); }).forEach(function (n) {
             try { var st = fs.statSync(d + '/' + n); out.count++; out.bytes += st.size; out.names = (out.names || []).concat(n); } catch (e) {}
         });
     } catch (e) {}
     return out;
 }
 function epgClear() {
-    var d = tokenDir(), files = epgSavedFiles();
-    (files.names || []).forEach(function (n) { try { require('fs').unlinkSync(d + '/' + n); } catch (e) {} });
+    var d = tokenDir(), files = epgSavedFiles(), lists = epgSavedFiles(XTV_FILES);
+    (files.names || []).concat(lists.names || []).forEach(function (n) { try { require('fs').unlinkSync(d + '/' + n); } catch (e) {} });
     _epg = Object.create(null); _epgQueue = [];   // (one being read: not saved, see epgPump)
-    return files.count;
+    _xtv = Object.create(null); _xtvQueue = [];   // (the Xtream lists: read again when asked for)
+    return files.count + lists.count;
 }
 function epgControl(req, res, path, query) {
     if (!entryAllowed(req, query) && !(req.method === 'POST' && hasTicket(query))) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }   // (the guide ticket: its POSTs, see hasTicket)
@@ -3020,7 +3531,7 @@ function epgControl(req, res, path, query) {
         send(res, 200, 'application/json', JSON.stringify({ ticket: _epgTicket }));
         return;
     }
-    if (path === '/epg/files') { var sf = epgSavedFiles(); send(res, 200, 'application/json', JSON.stringify({ count: sf.count, bytes: sf.bytes })); return; }
+    if (path === '/epg/files') { var sf = epgSavedFiles(), xf = epgSavedFiles(XTV_FILES); send(res, 200, 'application/json', JSON.stringify({ count: sf.count, bytes: sf.bytes, xtv: { count: xf.count, bytes: xf.bytes } })); return; }
     if (path === '/epg/clear') {
         if (req.method !== 'POST') { send(res, 405, 'text/plain', 'POST only'); return; }
         send(res, 200, 'application/json', JSON.stringify({ cleared: epgClear() }));
@@ -3081,8 +3592,8 @@ var ENTRY_PORT = PORT + 10, ENTRY_MS = 5 * 60 * 1000, ENTRY_IDLE_MS = 30000, ENT
 var ENTRY_OPEN_MAX = 2, ENTRY_OPENS = 12, ENTRY_CONNECTIONS = 8, ENTRY_VISIT_MS = 20000, ENTRY_QUIET_MS = 10000;
 var ENTRY_TITLES = { link: 'Play a link on StremioK', addon: 'Add an addon to StremioK', playlist: 'Add an IPTV playlist to StremioK', config: 'Import a configuration file into StremioK',
     search: 'Search on StremioK', youtube: 'Add a YouTube catalog to StremioK', aiom: 'Your AIOManager address for StremioK', aiomkey: 'Your AIOManager API key for StremioK',
-    server: 'Your streaming server’s address for StremioK' };
-var ENTRY_TEXT = { search: 'Words to search for', youtube: 'A channel, a playlist link, or words to search YouTube for', aiomkey: 'Your account API key' };   // (plain text, not a link)
+    server: 'Your streaming server’s address for StremioK', mac: 'Your Stalker portal’s MAC address for StremioK' };
+var ENTRY_TEXT = { search: 'Words to search for', youtube: 'A channel, a playlist link, or words to search YouTube for', aiomkey: 'Your account API key', mac: 'Its MAC address (00:1A:79:…)' };   // (plain text, not a link)
 var _entries = Object.create(null), _entryServer = null, _entrySockets = [], _entryOpened = [];
 function lanAddress() {
     try {

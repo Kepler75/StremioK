@@ -38,6 +38,7 @@ locally, use a wrapper package, or use the
 | `js/qrcode.js` | qrcode-generator (Kazuhiko Arase, MIT), unchanged: every QR code the TV draws (Trakt and Stremio sign-in, From your phone, Continue on phone, an addon's Share and Configure) |
 | `js/util.js` | DOM helpers, XHR (text / JSON), bounded caches, `localStorage`, toast / spinner, image queue, appearance themes, QR codes drawn on a canvas |
 | `js/iptv.js` | M3U parsing, TV / radio classification, the synthetic IPTV addon |
+| `js/xtvod.js` | An Xtream account's films and series: the local addon for their catalogs, title pages and sources, and its copies on your addons' titles |
 | `js/epg.js` | The TV guide: which guide a playlist has, its channels' keys for the service, the programs cards, the player, schedules and the Guide tab ask for |
 | `js/youtube.js` | StremioK's own YouTube: your YouTube catalogs (Settings › Content › YouTube), YouTube in Search, the built-in YouTube addon (catalogs, channel / playlist / video pages, streams), SponsorBlock and DeArrow settings and lookups |
 | `js/stremio.js` | Addon client (manifests, catalog / meta / stream / subtitles), source cache and de-duplication, source details (resolution, codec, HDR, audio…), Formats (learning, allowed resolutions), TMDB / OMDb / MDBList / TheIntroDB / SkipDB / IntroDB |
@@ -67,7 +68,7 @@ locally, use a wrapper package, or use the
 | `js/view-discover.js` | Discover: browse a catalog in full by type, catalog and genre / year, page by page; People (TMDB) by name |
 | `js/views.js` | Assembles the public `Views` API from the view parts (which share the `ViewParts` namespace) |
 | `js/app.js` | Bootstrap, navigation history, key routing |
-| `service/index.js` | StremioK's service: YouTube, USB drives, downloads, the phone page, AIOManager, live relays, TV guides (see [the service](TECHNICAL-REFERENCE.md#the-service)) |
+| `service/index.js` | StremioK's service: YouTube, USB drives, downloads, the phone page, AIOManager, live relays, TV guides, Stalker portals, Xtream film and series lists (see [the service](TECHNICAL-REFERENCE.md#the-service)) |
 | `service/preview.js` | The home bar preview service: sets the tiles `js/hubpreview.js` sends, and sets them again when the TV asks (the sideloaded app only) |
 | `service/cacert.pem` | The trusted certificates downloads use (the 2017 TV's own list is too old for many servers) |
 

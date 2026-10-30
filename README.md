@@ -31,7 +31,8 @@ video through Samsung's AVPlay API.
 - **The player:** resume where you stopped, skip intros, recaps and credits, next episode,
   subtitles (addons', the file's own, and your own files on a USB drive) with your choice of look, audio
   tracks remembered, switching source mid-playback, private viewing.
-- **IPTV and radio** from your M3U playlists and Xtream accounts, with CH+ / CH−.
+- **IPTV and radio** from your M3U playlists, Xtream accounts (with their films and series) and
+  Stalker portals, with CH+ / CH−.
 - **YouTube:** live channels, trailers, and your own YouTube channels, playlists and searches,
   with SponsorBlock, DeArrow, chapters and captions.
 - **Local:** the videos on a USB drive, matched to their titles.
@@ -58,8 +59,8 @@ Three ways, all covered step by step in the **[installation guide](docs/INSTALL.
 2. **API keys**, optional: your own TMDB, OMDb and MDBList keys add ratings, *Cast & more*,
    *where to watch* and episode trailers.
 3. **Trakt**, optional: connect your account to share watched marks and Continue Watching.
-4. **IPTV**, optional: your M3U playlist links, or an Xtream account (its server, username and
-   password).
+4. **IPTV**, optional: your M3U playlist links, an Xtream account (its server, username and
+   password) or a Stalker portal (its address and MAC address).
 5. **A USB drive**, optional: plug it in and the Local tab appears.
 
 [Getting started](docs/USER-GUIDE.md#getting-started) in the user guide walks through each.
@@ -77,8 +78,8 @@ or TorrServer): this app embeds no torrent or debrid engine.
 > shows that notice on it); its results are rent/buy/subscription *links to external
 > services*, not video URLs. Add stream addons that return HTTP/HLS URLs for actual playback.
 
-The **IPTV** feature likewise hosts no content: you supply your own M3U playlist URLs or Xtream
-accounts. For YouTube entries, the bundled service finds the video's stream; the video itself
+The **IPTV** feature likewise hosts no content: you supply your own M3U playlist URLs, Xtream
+accounts or Stalker portals. For YouTube entries, the bundled service finds the video's stream; the video itself
 comes straight from YouTube. No video or audio is kept: everything plays straight from its
 source, unless you download it to your own USB drive. What StremioK does keep, on the TV, is
 your progress, settings and copies that let it start faster (see
@@ -88,7 +89,8 @@ your progress, settings and copies that let it start faster (see
 
 - AVPlay behavior varies by TV generation, codec and HLS provider.
 - Torrents play only through a streaming server you run on your network.
-- Home rows show a catalog's first page (up to 30 titles); Discover pages through the rest.
+- Home rows show up to 200 titles of a catalog (30 unless you change it; ★ Favorites shows all
+  yours); Discover pages through the rest.
 - No StremioK account and no profiles: settings, addons and progress stay on the TV. The
   only sync is optional: Trakt (watched marks, Continue Watching, ratings).
 - Subtitles use an HTML overlay; gzipped (`.gz`) subtitle files aren't decoded.
