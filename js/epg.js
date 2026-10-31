@@ -122,7 +122,7 @@ var EPG = (function () {
                 ['state', 'at', 'channels', 'programmes', 'partial', 'error'].forEach(function (f) { g[f] = r && r[f]; });
                 if (g.state === 'loading' && n < POLLS) { g.timer = setTimeout(function () { g.timer = null; ask(n + 1); }, n < POLL_MS.length ? POLL_MS[n] : POLL_MS_LATER); }
                 if (g.state + '|' + g.at !== was) {
-                    if (g.state === 'ready') { forget(url); }   // (read again: what's on, asked again)
+                    if (g.state === 'ready') { _gen++; forget(url); }   // (read again: what's on, and the Guide tab's grid, asked again)
                     changed();
                 }
             }, function () {

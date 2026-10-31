@@ -55,11 +55,11 @@ var App = (function () {
 
     // Live TV: skip the info page — load sources and (if a single one) play immediately.
     // channels: { list: [{ meta, card }], idx } — the row it was picked from, for CH+/CH−
-    function openLive(type, id, preview, channels) {
+    function openLive(type, id, preview, channels, opts) {
         if (!id) { return; }
         pushFrame();
         showScreen('detail');
-        Views.renderLive(type, id, preview, channels);
+        Views.renderLive(type, id, preview, channels, opts);
     }
 
     // A person's page (from a title's cast row).
@@ -210,6 +210,13 @@ var App = (function () {
                 return true;
             }
             case 'BACK': back(); return true;
+            case 'PLAY':
+            case 'PLAYPAUSE': {   // (a movie, an episode or a channel: its top source, as with Skip the source list on)
+                var cp = Focus.current();
+                if (cp && cp.__onplay) { cp.__onplay(cp); }
+                else if (_current === 'detail' && !Views.isModalOpen()) { Views.playKey(); }
+                return true;
+            }
             default:
                 if (/^NUM\d$/.test(action)) { numberKey(+action.slice(3)); }
                 return true;

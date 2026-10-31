@@ -587,6 +587,11 @@ var ViewParts = {};
             guideOnCard(c, meta.id);
             c.__onlongpress = function () { liveSchedule(meta, c); };
         }
+        function isLive() {
+            var t = titleType(meta.type || fallbackType);
+            var isTitle = t === 'movie' || t === 'series' || TITLE_ID.test(meta.id || '');
+            return !!fallbackType && fallbackType !== 'movie' && fallbackType !== 'series' && !isTitle && !/^(youtube|channel)$/i.test(fallbackType) && !/^(ytk|yt_id):/.test(meta.id || '');
+        }
         c.__onselect = function () {
             var t = titleType(meta.type || fallbackType);
             // Live TV catalogs (anything that isn't movies/series) skip the info page and
@@ -595,13 +600,16 @@ var ViewParts = {};
             // (a video plays from it at once, a channel lists its videos). So is anything that
             // is a movie or series itself, or has a title's id, whatever its catalog's type
             // (AIOMetadata's "anime" catalogs list movies and series: "mal:28851", a movie).
-            var isTitle = t === 'movie' || t === 'series' || TITLE_ID.test(meta.id || '');
-            if (fallbackType && fallbackType !== 'movie' && fallbackType !== 'series' && !isTitle && !/^(youtube|channel)$/i.test(fallbackType) && !/^(ytk|yt_id):/.test(meta.id || '')) {
+            if (isLive()) {
                 App.openLive(t, meta.id, meta, rowChannels(c));
             } else {
                 App.openDetail(t, meta.id, meta);
             }
         };
+        // the remote's Play key: a movie's or channel's top source; a series has no one episode, so its page
+        if (titleType(kind) === 'movie') { c.__onplay = function () { App.openDetail('movie', meta.id, meta, null, { playBest: true }); }; }
+        else if (titleType(kind) === 'series') { c.__onplay = function () { c.__onselect(); }; }
+        else if (fallbackType !== 'local' && isLive()) { c.__onplay = function () { App.openLive(titleType(kind), meta.id, meta, rowChannels(c), { playBest: true }); }; }   // (a channel)
         return c;
     }
 

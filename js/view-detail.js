@@ -45,7 +45,7 @@
         return function still() { return _d === page && !(tok && tok.cancelled); };
     }
 
-    function renderLive(type, id, preview, channels) {
+    function renderLive(type, id, preview, channels, opts) {
         newPage();
         _d = { type: type, id: id, meta: preview || { id: id, type: type }, mode: 'streams',
             season: null, preview: preview || null, target: null,
@@ -70,6 +70,9 @@
             }
             if (playable.length === 1) {
                 startPlayback(playable[0], id, _d.streamLabel || _d.meta.name || 'Live');
+            } else if ((opts && opts.playBest) || _d.autoBest) {   // (the remote's Play key)
+                var top = bestRow(rankRowsFor(list));
+                startPlayback(top ? top.st : playable[0], id, _d.streamLabel || _d.meta.name || 'Live');
             } else {
                 drawDetail();   // multiple sources → straight to the source list
             }
@@ -80,7 +83,7 @@
     function renderDetail(type, id, preview, target, opts) {
         newPage();
         _d = { type: type, id: id, meta: null, mode: 'info', season: null, preview: preview || null, target: target || null };
-        var resume = (opts && opts.resume) || null;
+        var resume = (opts && opts.resume) || null, playBest = !!(opts && opts.playBest);   // (playBest: the remote's Play key)
         var s = scr('detail');
         U.clear(s);
         s.appendChild(U.el('div', 'detail-hero'));
@@ -114,8 +117,10 @@
         function afterMeta() {
             asEpisodeList();
             var files = embeddedFiles(_d.meta);
-            if (_d.type === 'movie') { openStreams(_d.id, _d.meta.name || _d.meta.title); }
+            var ep = playBest && target ? (_d.meta.videos || []).filter(function (v) { return v.id === target; })[0] : null;
+            if (_d.type === 'movie') { openStreams(_d.id, _d.meta.name || _d.meta.title, false, playBest ? PLAY_KEY : null); }
             else if (files.length === 1) { openEmbedded(files[0]); }
+            else if (ep) { _d.season = (ep.season === undefined ? 1 : ep.season); openStreams(ep.id, epName(ep), false, PLAY_KEY); }
             else { drawDetail(); }
             if (resume) { startResume(resume); }
             else if (files.length === 1 && (_d.meta.videos || []).length === 1) { playYouTubeNow(files[0]); }
@@ -142,7 +147,7 @@
         _d.yearSeasons = false;
         return true;
     }
-    function openTitle(v) { App.openDetail('movie', v.id, { id: v.id, type: 'movie', name: v.title || v.name || '', poster: v.thumbnail }); }
+    function openTitle(v, opts) { App.openDetail('movie', v.id, { id: v.id, type: 'movie', name: v.title || v.name || '', poster: v.thumbnail }, null, opts); }
 
     function asEpisodeList() {
         if (asCollection()) { return; }
@@ -525,6 +530,7 @@
         var c = posterCard({ id: 'tmdb:' + item.kind + ':' + item.tmdbId, type: item.type,
             name: item.name + (item.year ? '  (' + item.year + ')' : ''), poster: item.poster, background: item.background }, item.type);
         c.__onselect = function () { openTmdbTitle(item); };
+        c.__onplay = function () { openTmdbTitle(item, item.type === 'movie' ? { playBest: true } : null); };
         // hold OK: the menu any poster has (Details, Continue Watching, watched), on the title
         // by its IMDb id (what the addons, Continue Watching and watched marks know it by)
         c.__onlongpress = function () {
@@ -532,8 +538,8 @@
         };
         return c;
     }
-    function openTmdbTitle(item) {
-        withImdb(item, function (imdb) { App.openDetail(item.type, imdb, { name: item.name, poster: item.poster, type: item.type }); });
+    function openTmdbTitle(item, opts) {
+        withImdb(item, function (imdb) { App.openDetail(item.type, imdb, { name: item.name, poster: item.poster, type: item.type }, null, opts); });
     }
     function withImdb(item, then) {
         U.spinner(true);
@@ -848,6 +854,10 @@
             if (up.resume && up.resume.url) { startResume(up.resume); }
             else { openStreams(up.v.id, epName(up.v), false, AUTO); }
         };
+        btn.__onplay = function () {
+            if (up.resume && up.resume.url) { startResume(up.resume); }
+            else { openStreams(up.v.id, epName(up.v), false, PLAY_KEY); }
+        };
         // hold OK: where you were, or the episode from the start (its saved source; with none
         // saved, its page, where everything then plays from the start)
         if (up.resume && up.resume.position > 0) {
@@ -1046,6 +1056,7 @@
         var row = U.el('div', 'btn-row');
         var play = U.el('div', 'pill focusable', '▶  Play');
         play.__onselect = function () { openStreams(_d.id, _d.meta.name, false, AUTO); };
+        play.__onplay = function () { openStreams(_d.id, _d.meta.name, false, PLAY_KEY); };
         row.appendChild(play);
         return row;
     }
@@ -1274,6 +1285,10 @@
             e.__onselect = function () {
                 if (_d.collection) { openTitle(v); return; }
                 openStreams(v.id, epName(v), false, AUTO);
+            };
+            e.__onplay = function () {
+                if (_d.collection) { openTitle(v, { playBest: true }); return; }
+                openStreams(v.id, epName(v), false, PLAY_KEY);
             };
             e.__onlongpress = function () { if (_d.collection) { collectionMenu(meta, v); } else { episodeMenu(meta, v); } };
             if (_d.target && v.id === _d.target) { _d._epFocus = e; }
@@ -1645,11 +1660,13 @@
 
     // how (optional): { fromStart } — everything played from the page plays from the start;
     // { auto } — Skip the source list (Settings › Source ranking): the top source plays once the
-    // addons have answered (with nothing playable, the list shows as usual).
-    var AUTO = { auto: true };
+    // addons have answered (with nothing playable, the list shows as usual); { always }: whatever
+    // that setting says (the remote's Play key).
+    var AUTO = { auto: true }, PLAY_KEY = { auto: true, always: true };
     function openStreams(videoId, label, force, how) {
         if (!force) { _d.fromStart = !!(how && how.fromStart); }   // (a re-scan keeps it)
-        var auto = !force && !!(how && how.auto) && Stremio.getPrefs().skipSourceList && !_d.live;
+        var auto = !force && !!(how && how.auto) && (how.always || Stremio.getPrefs().skipSourceList) && !_d.live;
+        _d.autoBest = null;
         _d.mode = 'streams';
         _d.streamId = videoId;
         _d.streamLabel = label;
@@ -1686,7 +1703,7 @@
         }, force).then(function (list) {
             if (!here() && !Player.isActive()) { U.spinner(false); }
             show(list, 0);
-            if (auto && here() && !Player.isActive()) {   // (Skip the source list: the top one plays)
+            if (here() && (auto || _d.autoBest === videoId) && !Player.isActive()) {   // (Skip the source list, the Play key: the top one plays)
                 var top = (_d.streams && _d.streams.length) ? bestRow(rankRowsFor(_d.streams)) : null;
                 if (top) { startPlayback(top.st, videoId, label, howHere()); return; }
             }
@@ -1786,6 +1803,15 @@
             });
         };
         return p;
+    }
+    // The remote's Play key on a title's or channel's sources, wherever focus is on them: ▶ Play best. With
+    // nothing to pick yet, once the addons have answered.
+    function playKey() {
+        if (!_d || _d.mode !== 'streams' || !_d.streamId) { return; }
+        var best = (_d.streams && _d.streams.length) ? bestRow(filterRows(rankRowsFor(_d.streams))) : null;
+        if (best) { startPlayback(best.st, _d.streamId, _d.streamLabel || _d.meta.name, howHere()); }
+        else if (!_d.streams || _d.streamsPending > 0) { _d.autoBest = _d.streamId; }
+        else { U.toast('Nothing here plays on this TV'); }
     }
     function streamActionsBar() {
         var row = U.el('div', 'btn-row streams-actions');
@@ -2330,6 +2356,7 @@
     V.episodeWatched = episodeWatched;
     V.nextUp = nextUp;
     V.renderDetail = renderDetail;
+    V.playKey = playKey;
     V.leaveDetail = leaveDetail;
     V.renderLive = renderLive;
     V.renderPerson = renderPerson;

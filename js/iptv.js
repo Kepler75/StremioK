@@ -203,12 +203,17 @@ var IPTV = (function () {
         return checkedUrl(s);
     }
     function isStalker(p) { return !!(p && p.mac); }
+    // Settings › Content › IPTV › Stalker channels: a portal read past its first 100 pages, up to
+    // 30,000 channels (adding one is still checked by those pages: stalkerCheck).
+    var STALKER_ALL_KEY = 'stremiok.iptv.stalkerall';
+    function stalkerAll() { return U.store.get(STALKER_ALL_KEY, false) === true; }
+    function setStalkerAll(on) { U.store.set(STALKER_ALL_KEY, !!on); }
     // Checked through the service (its channels read): { ok, count }, { refused, why },
     // { unreachable, why } or { noService } (a desktop browser).
     function stalkerCheck(portal, mac) {
         if (typeof YTPlay === 'undefined' || !YTPlay.stalkerList) { return Promise.resolve({ noService: true }); }
         return YTPlay.stalkerList(portal, mac).then(function (r) {
-            if (r && typeof r.m3u === 'string') { return { ok: true, count: r.count || 0 }; }
+            if (r && typeof r.m3u === 'string') { return { ok: true, count: r.count || 0, cut: r.cut || null }; }
             return r && r.refused ? { refused: true, why: '' + (r.why || '') } : { unreachable: true, why: '' + ((r && r.why) || '') };
         }, function (e) { return /no service/.test((e && e.message) || '') ? { noService: true } : { unreachable: true, why: U.problem(e) }; });
     }
@@ -511,8 +516,14 @@ var IPTV = (function () {
         // A Stalker portal's channels, from the service (see stalkerCheck): its M3U text.
         function stalkerText() {
             if (typeof YTPlay === 'undefined' || !YTPlay.stalkerList) { return Promise.reject(new Error('Stalker portals are read by StremioK’s service (not in a desktop browser)')); }
-            return YTPlay.stalkerList(playlist.url, playlist.mac).then(function (r) {
-                if (r && typeof r.m3u === 'string') { return r.m3u; }
+            return YTPlay.stalkerList(playlist.url, playlist.mac, stalkerAll()).then(function (r) {
+                if (r && typeof r.m3u === 'string') {
+                    if (r.cut) {   // (stopped short: said, with what's there)
+                        st.cut = r.cut.total || true;
+                        U.log('iptv', 'Stalker portal “' + label(playlist) + '”: read ' + (r.count || 0) + ' channels' + (r.cut.total ? ' of ' + r.cut.total : '') + ', and stopped' + (r.cut.why ? ' (' + r.cut.why + ')' : ''));
+                    }
+                    return r.m3u;
+                }
                 throw new Error((r && r.refused ? 'The portal refused it: ' : 'Couldn’t read the portal: ') + ((r && r.why) || 'no answer'));
             }, function (e) {
                 throw new Error(/no service/.test((e && e.message) || '') ? 'Stalker portals are read by StremioK’s service (not in a desktop browser)' : 'Couldn’t reach StremioK’s service: ' + U.problem(e));
@@ -745,7 +756,7 @@ var IPTV = (function () {
         getPlaylists: getPlaylists, addPlaylist: addPlaylist, updatePlaylist: updatePlaylist,
         removePlaylist: removePlaylist, renamePlaylist: renamePlaylist, setPlaylistOff: setPlaylistOff,
         movePlaylist: movePlaylist, setPlaylistGuide: setPlaylistGuide, label: labelOf,
-        macOf: macOf, stalkerPortal: stalkerPortal, stalkerCheck: stalkerCheck, addStalker: addStalker, isStalker: isStalker,
+        macOf: macOf, stalkerPortal: stalkerPortal, stalkerCheck: stalkerCheck, addStalker: addStalker, isStalker: isStalker, stalkerAll: stalkerAll, setStalkerAll: setStalkerAll,
         xtreamParts: xtreamParts, xtreamUrl: xtreamUrl, xtreamCheck: xtreamCheck, addXtream: addXtream, xtreamFormat: xtreamFormat, setXtreamFormat: setXtreamFormat,
         isFavorite: isFavorite, setFavorite: setFavorite, refreshEvery: refreshEvery, setRefreshEvery: setRefreshEvery, readAt: readAt,
         channels: function () { return _cache ? _cache.channels : []; }, channel: function (id) { return _cache ? _cache.byId[id] || null : null; }, isEnabled: isEnabled, reset: reset, status: status,

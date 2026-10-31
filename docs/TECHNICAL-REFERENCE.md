@@ -358,7 +358,10 @@ channels where it gives one; the rest is read from the source's name and file.
   pasted Xtream link fills in the login.
 - **Stalker portals:** read by the service as a MAG box asks (the MAC in a cookie, a MAG
   User-Agent, a `handshake` token) at `portal.php`, else `server/load.php`. Channels
-  (`get_all_channels`, else `get_ordered_list` pages) become an M3U playlist, genres as groups;
+  (`get_all_channels`, else `get_ordered_list` pages, 100 at most within 90 seconds, or with
+  *Stalker channels › Whole portal* one after another up to 30,000 channels within 20 minutes, a
+  failed page tried twice more) become an M3U playlist, genres as groups, and a read that stopped
+  short says so;
   a channel's link comes from `create_link` each time it plays, with the MAG User-Agent.
 - **A channel's own format:** the player's *Format* swaps one channel's `/live/…/123.ts` and
   `.m3u8`, kept by channel (the last 300).

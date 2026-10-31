@@ -22,8 +22,8 @@ What to do when something doesn't work. For how things are meant to work, see th
 ## Where to look
 
 - **Settings › Diagnostics › Logs** lists the last 200 problems since StremioK started (failed
-  downloads, playback and script errors, storage full), with secrets masked. Many entries below
-  say what they note there. *No answer* means none came at all (the connection refused or
+  downloads, playback and script errors, storage full), with secrets masked. Many troubleshooting
+  entries say what they note there. *No answer* means none came at all (the connection refused or
   blocked, or a certificate the TV doesn't trust); *Timed out after 20 s*, a server too slow.
 - **After a crash** (or the TV closing StremioK), the next launch says so: about when, after how
   long, the memory it used, its last steps and what was logged just before.
@@ -142,6 +142,7 @@ sources. Try again later.
 |--------------|---------------------|
 | A channel's sound stutters | Some servers cut a channel's sound into pieces the TV's player stutters on. StremioK detects it and restarts the channel through its service ("Fixing this channel's sound…"); not for encrypted streams, and not in a desktop browser. |
 | A big playlist is missing channels | A playlist keeps its first 30,000 channels (up to 20 MB); the status line says when channels were left out. |
+| A Stalker portal is missing channels or genres | Only its first 100 pages may have been read: see *Stalker channels* in [Settings](SETTINGS.md). |
 | A playlist didn't refresh | The saved copy keeps showing, and the playlist says what went wrong. *Reload* tries again. |
 | No TV guide on the cards | The playlist's line says why. Not every channel is in a guide; set another with *Guide link*. |
 | An Xtream account's films aren't offered on a title | Its list is read once a day, the first time in a minute or two. A copy needs the same TMDB id, or the same name and year. Not in a desktop browser. |

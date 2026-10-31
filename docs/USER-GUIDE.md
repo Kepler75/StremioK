@@ -137,6 +137,7 @@ where it came from.
 |-----|--------------|
 | Arrows | Move. |
 | OK | Select. |
+| ▶ Play | A movie, episode (card, row or sources) or channel: plays the top source at once. |
 | Hold OK | An item's own menu, where it has one: *Hold OK for more* shows in the bottom-right corner then. |
 | BACK | Back. On a main page (Home's tabs, Discover, Search, Settings) it goes to the top menu first (DOWN comes back to where you were); from the menu, to the page before, or *Exit StremioK?* on Home (OK exits, BACK stays). |
 | 0–9 | The top menu's items (see below); in the player, the subtitles' [timing, position and size](#keys-while-it-plays); on a live channel, a [channel number](#iptv-and-radio). |
@@ -147,7 +148,7 @@ where it came from.
 
 **Number keys outside the player** (not while typing) pick the top menu's items, left to right:
 **1** Watching, then the rest in the menu's order (Settings › Appearance › *Menu*); **0**
-Settings. With Watching, Movies, Series and IPTV showing, in the usual order, 5 is Discover and 6
+Settings. With Watching, Movies, Series and IPTV showing, 5 is Discover and 6
 Search.
 
 ### The top menu
@@ -199,7 +200,7 @@ and takes one entry (see [Privacy and data](PRIVACY.md#sending-text-from-your-ph
   it lists, or, when that's unclear, to Discover only. Picking a tab puts focus on its first title. Put the
   menu in your own order, or hide a tab you never use, in Settings › Appearance › *Menu*; order
   and hide the rows in *Home feeds*.
-- A row shows up to 30 of a catalog's titles (up to 200: Settings › Appearance › *Titles in a
+- A row shows up to 30 of a catalog's titles (more: Settings › Appearance › *Titles in a
   Home row*); [Discover](#discover) has the rest.
 - A details strip above the rows describes the focused title: its logo (or name), year,
   runtime, rating, genres and synopsis.
@@ -399,7 +400,7 @@ addons is shown once ("also on …").
   list ([how a start is judged](TECHNICAL-REFERENCE.md#starting-and-recovering)). When a debrid service sends a notice instead of the video, StremioK says what it means
   (see [Troubleshooting](TROUBLESHOOTING.md#a-source-doesnt-start)).
 - **Skip the source list** (Settings › Playback › Source ranking › *When you press Play*) plays
-  the top source as soon as the addons have answered. The list is still a press away: hold OK
+  the top source as soon as the addons have answered. For the list: hold OK
   on an episode › *Details*, or *Select source* while it plays.
 - The list is ranked again when you come back to it: a source that just played moves to
   *Played before*, one that just failed drops, and changed settings apply.

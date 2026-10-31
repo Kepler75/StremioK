@@ -84,6 +84,7 @@ Each says whether its guide was read. See [IPTV and radio](USER-GUIDE.md#iptv-an
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Auto-refresh* | **Off**, Every hour, Every 3 hours, Every 6 hours, Every 12 hours | All playlists and their TV guides downloaded again, as *Reload* does. |
+| *Stalker channels* | **First 100 pages**, Whole portal | How much of a portal listing its channels page by page is read (100 pages: about 1,400 channels). *Whole portal*, up to 30,000: many minutes on every *Reload* and *Auto-refresh*, IPTV rows waiting for a first read, and a portal may slow down, cut off or block a MAC address that asks so much. |
 
 ### YouTube
 
@@ -192,7 +193,7 @@ for what's left out and what *▶ Play* does. Their rows sum up what's set.
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Skip the source list* | **Off**, On | On, *▶ Play* on a movie, OK on an episode and *▶ Play SxEx* play the top source as soon as the addons have answered, without showing the list (with nothing playable, it shows as usual). |
+| *Skip the source list* | **Off**, On | On, *▶ Play* on a movie, OK on an episode and *▶ Play SxEx* play the top source as soon as the addons have answered, without showing the list (with nothing playable, it shows as usual). The remote's ▶ Play key does this whichever you choose. |
 | *The next source if one doesn't start* | **On**, Off | A source the TV refuses, or that hasn't started after 45 seconds, gives way to the next, up to 3 more. Off: back to the list at once. Not for live channels, YouTube videos or USB files. |
 
 #### Size limits
@@ -245,7 +246,7 @@ them.
 | *Background* | Black, **Dark**, Light Gray, White | The light ones have dark text; the player keeps its dark controls. |
 | *Accent color* | **Indigo**, and nine others | |
 | *Zoom* | **100%**, 110%, 120%, 130%, 140% | Everything bigger (text, posters, menus, the player's controls) to read from further away; fewer cards fit a row. Subtitles keep their own size. |
-| *Titles in a Home row* | **30**, 50, 100, 200 | How many titles a Home row holds. A catalog that comes a page at a time is asked for more pages to fill it, so Home takes longer to load. ★ Favorites always shows all yours. |
+| *Titles in a Home row* | **30**, 50, 100, 200, Unlimited | How many titles a Home row holds, for catalogs and IPTV groups. A catalog that pages is asked for more pages, so Home loads slower; *Unlimited* can take much longer, an addon may refuse so many requests, and very long rows can slow an older TV. ★ Favorites shows all yours. |
 | *Poster orientation* | **Portrait**, Landscape | |
 | *Ratings on posters* | **Off**, On | A title's IMDb rating on its card (★ 7.8), when the catalog gives it. Nothing extra is downloaded. |
 | *Home bar preview* | **Most recent first**, As in Watching, Off | Continue Watching on the TV's own home bar (StremioK must be on it: Apps › StremioK › *Add to Home*): up to 8 tiles of movies and series you can play now. The sideloaded app on Tizen 4 and later only. |

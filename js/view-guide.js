@@ -169,6 +169,7 @@
                 wait.__meta = { name: c.name, releaseInfo: 'Reading its TV guide…' };
                 hooks(wait, -1);
                 wait.__onlongpress = function () { hold(g, r, null); };
+                if (!c.guideOnly) { wait.__onplay = function () { playChannel(g, r, true); }; }
                 track.appendChild(wait);
                 nodes.push(wait);
                 if (want && want.id === c.id) { found = wait; }
@@ -182,6 +183,7 @@
                     n.__p = p; n.__i = i;
                     n.__onselect = function () { pick(g, r, p); };
                     n.__onlongpress = function () { hold(g, r, p); };
+                    if (!c.guideOnly) { n.__onplay = function () { playChannel(g, r, true); }; }   // (the remote's Play key: the channel, whichever program)
                     hooks(n, i);
                     track.appendChild(n);
                     nodes.push(n);
@@ -284,24 +286,24 @@
         for (var i = 0; i < nodes.length; i++) { if (nodes[i].__p === p) { return nodes[i]; } }
         return false;
     }
-    // OK: what's on now plays the channel; another program says what it is.
     // Played, CH+ / CH− go through the Guide's channels; each one's card (where BACK lands, on
-    // the channel you end on) is what's on now on it.
+    // the channel you end on) is what's on now on it. best: the remote's Play key.
+    function playChannel(g, r, best) {
+        var c = g.chans[r], now = Date.now() / 1000, list = [], idx = 0;
+        g.chans.forEach(function (ch, i) {   // (every channel: a cell only for the rows drawn, where BACK lands)
+            if (ch.guideOnly) { return; }   // (nothing to play)
+            var nodes = g.nodes[i] || [], card = nodes[0] || null;
+            for (var j = 0; j < nodes.length; j++) { if (nodes[j].__p.start <= now && now < nodes[j].__p.stop) { card = nodes[j]; break; } }
+            if (i === r) { idx = list.length; }
+            list.push({ meta: { id: ch.id, type: ch.type, name: ch.name, poster: ch.logo || '', logo: ch.logo || '', posterShape: 'landscape' }, card: card });
+        });
+        App.openLive(c.type, c.id, list[idx].meta, { list: list, idx: idx }, best ? { playBest: true } : null);
+    }
+    // OK: what's on now plays the channel; another program says what it is.
     function pick(g, r, p) {
         var c = g.chans[r], now = Date.now() / 1000;
         if (c.guideOnly) { findInAddons(p); return; }
-        if (p.start <= now && now < p.stop) {
-            var list = [], idx = 0;
-            g.chans.forEach(function (ch, i) {   // (every channel: a cell only for the rows drawn, where BACK lands)
-                if (ch.guideOnly) { return; }   // (nothing to play)
-                var nodes = g.nodes[i] || [], card = nodes[0] || null;
-                for (var j = 0; j < nodes.length; j++) { if (nodes[j].__p.start <= now && now < nodes[j].__p.stop) { card = nodes[j]; break; } }
-                if (i === r) { idx = list.length; }
-                list.push({ meta: { id: ch.id, type: ch.type, name: ch.name, poster: ch.logo || '', logo: ch.logo || '', posterShape: 'landscape' }, card: card });
-            });
-            App.openLive(c.type, c.id, list[idx].meta, { list: list, idx: idx });
-            return;
-        }
+        if (p.start <= now && now < p.stop) { playChannel(g, r); return; }
         U.toast(EPG.dayTime(p.start) + '–' + EPG.hhmm(p.stop) + '   ' + c.name + '   ·   ' + p.title + (p.desc ? ':  ' + p.desc : '') +
             (p.stop <= now ? '   (already shown)' : ''), 8000);
     }

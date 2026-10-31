@@ -37,7 +37,8 @@ video through Samsung's AVPlay API.
   with SponsorBlock, DeArrow, chapters and captions.
 - **Local:** the videos on a USB drive, matched to their titles.
 - **Torrents**, through Stremio's streaming server or a TorrServer you run on your network.
-- **Made for the remote:** D-pad navigation throughout; hold OK where an item has more to
+- **Made for the remote:** D-pad navigation throughout; ▶ Play on a movie, episode or channel plays
+  its top source at once; hold OK where an item has more to
   offer (*Hold OK for more* says so); zoom up to 140% for reading from further away.
 
 ## Install
@@ -89,8 +90,8 @@ your progress, settings and copies that let it start faster (see
 
 - AVPlay behavior varies by TV generation, codec and HLS provider.
 - Torrents play only through a streaming server you run on your network.
-- Home rows show up to 200 titles of a catalog (30 unless you change it; ★ Favorites shows all
-  yours); Discover pages through the rest.
+- Home rows show 30 titles of a catalog unless you change it, up to *Unlimited* (★ Favorites shows
+  all yours); Discover pages through the rest.
 - No StremioK account and no profiles: settings, addons and progress stay on the TV. The
   only sync is optional: Trakt (watched marks, Continue Watching, ratings).
 - Subtitles use an HTML overlay; gzipped (`.gz`) subtitle files aren't decoded.

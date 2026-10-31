@@ -644,6 +644,9 @@
         c.__onselect = function () {
             App.openDetail(e.type, base, preview, target, e.url ? { resume: e } : null);
         };
+        c.__onplay = function () {   // (a saved stream resumes, as OK; none: the top source)
+            App.openDetail(e.type, base, preview, target, e.url ? { resume: e } : { playBest: true });
+        };
         c.__onlongpress = function () { continueActions(e, base, preview, target, c); };
         c.__cwKey = showKey(e);
         c.__meta = { name: e.name, description: e.position
@@ -784,6 +787,7 @@
                 c.appendChild(U.el('div', 'card-new card-code', code));
                 c.__meta = { name: u.name, description: code + (u.ep.t ? '  “' + u.ep.t + '”' : '') + '   ·   ' + (u.ep.r > now ? 'out ' : 'came out ') + U.dayLabel(u.ep.r) };
                 c.__onselect = function () { App.openDetail('series', u.show, { name: u.name, poster: u.poster, type: 'series' }, u.ep.id); };
+                c.__onplay = function () { App.openDetail('series', u.show, { name: u.name, poster: u.poster, type: 'series' }, u.ep.id, { playBest: true }); };
                 return c;
             })));
         });
@@ -1519,11 +1523,12 @@
     // Everything is capped to the cards a Home row shows (Settings › Appearance › Titles in a Home
     // row), but for IPTV's ★ Favorites (all: every one you picked, up to the 300 kept).
     var ROW_CARDS = 30;
-    function rowCards() { return Stremio.getPrefs().rowCards || ROW_CARDS; }
+    function rowCards() { var n = Stremio.getPrefs().rowCards; return n === 'all' ? Infinity : n || ROW_CARDS; }
     // A row's titles, up to n: a catalog that pages (skip) is asked for its next pages (skip =
     // titles so far, as Discover does) until there are n, a page brings nothing new or fails (what
-    // came is kept), or HOME_PAGES pages. IPTV's and YouTube's own: as they come.
-    var HOME_PAGES = 10;
+    // came is kept), or HOME_PAGES pages (Unlimited: HOME_PAGES_ALL, for an addon that never runs
+    // out). IPTV's and YouTube's own: as they come.
+    var HOME_PAGES = 10, HOME_PAGES_ALL = 200;
     function catalogPages(cat) {
         var def = cat.def || {};
         return (def.extra || []).some(function (e) { return e && e.name === 'skip'; }) || (def.extraSupported || []).indexOf('skip') !== -1;
@@ -1534,7 +1539,7 @@
             var out = first.slice(), seen = {};
             out.forEach(function (m) { seen[m.id] = 1; });
             function next(page) {
-                if (out.length >= n || page > HOME_PAGES) { return out; }
+                if (out.length >= n || page > (n === Infinity ? HOME_PAGES_ALL : HOME_PAGES)) { return out; }
                 return Stremio.getCatalog(cat, { skip: out.length }).then(function (more) {
                     var added = 0;
                     more.forEach(function (m) { if (!seen[m.id]) { seen[m.id] = 1; out.push(m); added++; } });
@@ -1559,7 +1564,7 @@
         return out;
     }
 
-    // A long row (up to 200 titles, ★ Favorites up to 300) builds ROW_FIRST cards, not all of them
+    // A long row (Titles in a Home row, ★ Favorites up to 300) builds ROW_FIRST cards, not all of them
     // in one go with the remote waiting, then ROW_MORE at a time when focus is within ROW_NEAR of
     // the end (Home's Focus.onFocus). row.__rest(): the titles not built yet (CH+ / CH− go through
     // them); row.__cardOf(meta): its card, built if it wasn't.

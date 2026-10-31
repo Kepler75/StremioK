@@ -106,7 +106,7 @@ var YTPlay = (function () {
             return U.getJSON(PROXY + path + '?portal=' + encodeURIComponent(portal) + '&mac=' + encodeURIComponent(mac) + more + a.q, ms, max, cancel || null, a.h);
         });
     }
-    function stalkerList(portal, mac) { return stalkerAsk('/stalker/list', portal, mac, '', 90000, 48 * 1048576); }
+    function stalkerList(portal, mac, whole) { return stalkerAsk('/stalker/list', portal, mac, whole ? '&all=1' : '', whole ? 20 * 60000 : 90000, 48 * 1048576); }   // (whole: the whole portal, see IPTV.stalkerAll)
     function stalkerLink(portal, mac, u, cancel) { return stalkerAsk('/stalker/link', portal, mac, '&u=' + encodeURIComponent(u), 25000, 65536, cancel); }
     // An Xtream account's films or series, kept by the service (see service/index.js, xtvControl;
     // user= and pass=: names Diagnostics masks):

@@ -142,7 +142,7 @@
         function render() { name.textContent = caption + ':  ' + labelFor(list, store.get()[key]); }
         render();
         row.appendChild(name);
-        row.appendChild(U.el('div', 'a-url', 'Press OK to choose'));
+        row.appendChild(U.el('div', 'a-url', 'Press OK to choose' + (store.warning ? '. ' + store.warning : '')));
         row.__onselect = function () {
             pickList(caption, list, store.get()[key], function (v) {
                 var cfg = store.get(); cfg[key] = v; store.set(cfg);
@@ -215,9 +215,10 @@
             get: function () { return { zoom: '' + zoomPct() }; },
             set: function (cfg) { Stremio.setPref('zoom', +cfg.zoom); applyAppearance(); }
         }));
-        wrap.appendChild(subPickRow('Titles in a Home row', [['30', '30'], ['50', '50'], ['100', '100'], ['200', '200']], 'rowCards', {
+        wrap.appendChild(subPickRow('Titles in a Home row', [['30', '30'], ['50', '50'], ['100', '100'], ['200', '200'], ['all', 'Unlimited']], 'rowCards', {
+            warning: 'Unlimited: Home can take much longer to load, an addon may refuse so many requests, and very long rows can slow an older TV',
             get: function () { return { rowCards: '' + Stremio.getPrefs().rowCards }; },
-            set: function (cfg) { Stremio.setPref('rowCards', +cfg.rowCards); clearCatalogCache(); }   // (the rows read again, with more pages or fewer)
+            set: function (cfg) { Stremio.setPref('rowCards', cfg.rowCards === 'all' ? 'all' : +cfg.rowCards); clearCatalogCache(); }   // (the rows read again, with more pages or fewer)
         }));
         wrap.appendChild(subPickRow('Poster orientation', POSTER_SHAPES, 'posterShape', {
             get: function () { return { posterShape: Stremio.getPrefs().posterShape }; },
@@ -926,6 +927,7 @@
         parts.push(thousands(st.count || 0) + ' channel' + (st.count === 1 ? '' : 's') + (st.groups ? ' in ' + st.groups + ' group' + (st.groups === 1 ? '' : 's') : ''));
         if (st.fetchedAt) { var d = new Date(st.fetchedAt); parts.push('downloaded ' + U.dayLabel(st.fetchedAt) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes())); }
         if (st.dropped) { parts.push(thousands(st.dropped) + ' more left out (a playlist keeps its first 30,000)'); }
+        if (st.cut) { parts.push('stopped short' + (st.cut > 0 ? ' of ' + thousands(st.cut) : '') + ': see Stalker channels'); }
         if (st.uncached) { parts.push('too large to save on the TV: downloaded each launch'); }
         var g = guideInfo(p);
         if (g) { parts.push(g); }
@@ -997,7 +999,7 @@
                 if (r.refused) { U.toast('The portal refused that MAC address' + (r.why ? ' (' + r.why + ')' : '') + ': nothing was saved', 6000); return; }
                 Stremio.iptvAddStalker(portal, mac);
                 refreshAddonRows('local:iptv');
-                U.toast('Stalker portal added: ' + r.count + ' channels', 4000);
+                U.toast('Stalker portal added: ' + r.count + ' channels' + (r.cut ? (r.cut.total ? ' of ' + r.cut.total : ' so far') + ': see Stalker channels' : ''), r.cut ? 6000 : 4000);
                 renderSettings();
             });
         }
@@ -1167,6 +1169,19 @@
             wrap.appendChild(subPickRow('Auto-refresh', IPTV_EVERY, 'every',
                 { get: function () { return { every: String(Stremio.iptvRefreshEvery()) }; }, set: function (c) { Stremio.iptvSetRefreshEvery(+c.every); } }));
         }
+        wrap.appendChild(subPickRow('Stalker channels', [['pages', 'First 100 pages (about 1,400 channels)'], ['all', 'Whole portal (up to 30,000 channels)']], 'stalker', {
+            warning: 'Whole portal can take many minutes on every Reload and Auto-refresh, the IPTV rows wait for a first read, and a portal may slow down, cut off or block a MAC address that asks so much',
+            get: function () { return { stalker: IPTV.stalkerAll() ? 'all' : 'pages' }; },
+            set: function (c) {
+                var on = c.stalker === 'all', was = IPTV.stalkerAll();
+                IPTV.setStalkerAll(on);
+                if (!on || was) { return; }
+                var mine = playlists.filter(IPTV.isStalker);   // (read again now: leave StremioK open meanwhile)
+                if (!mine.length) { return; }
+                U.toast('Reading the whole portal: this can take many minutes, leave StremioK open', 6000);
+                mine.forEach(function (p) { Stremio.iptvReload(p.id).then(function () { refreshAddonRows('local:iptv'); }); });
+            }
+        }));
 
         wrap.appendChild(U.el('div', 'hint',
             'Channels are grouped into IPTV and Radio rows on Home. ▲ / ▼ set the playlists\' order: a channel in two playlists comes from the first.'));
@@ -2160,7 +2175,7 @@
         sl.setAttribute('data-fk', 'skiplist'); sl.setAttribute('data-ctl', 'extra');
         sl.appendChild(U.el('div', 'a-name', 'Skip the source list:  ' + (skipList ? 'On' : 'Off')));
         sl.appendChild(U.el('div', 'a-url', (skipList ? '▶ Play, OK on an episode and ▶ Play SxEx play the top source at once (hold OK on an episode › Details for the list)'
-            : '▶ Play and OK on an episode show the sources to pick from') + '   ·   OK to turn ' + (skipList ? 'off' : 'on')));
+            : '▶ Play and OK on an episode show the sources to pick from (the remote’s Play key plays the top one)') + '   ·   OK to turn ' + (skipList ? 'off' : 'on')));
         sl.__onselect = function () { Stremio.setPref('skipSourceList', !skipList); refeed('ranking', 'skiplist', 'extra'); };
         return sl;
     }

@@ -3,6 +3,15 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.2.4 — 2026-10-31
+- **The remote's ▶ Play key:** on a movie, an episode or a channel (its card, its row, its sources,
+  its row in the Guide), plays the top source at once, whatever *Skip the source list* says.
+- **Titles in a Home row** has *Unlimited*, for catalogs and IPTV groups.
+- **Stalker channels** (Settings › Content › IPTV): *Whole portal* reads past the first 100 pages
+  (about 1,400 channels), with a warning; a portal read that stopped short says so.
+- **TV guide:** a guide read again (*Reload*, *Auto-refresh*) reaches the Guide tab at once; its grid
+  could keep the old titles for up to 2 hours.
+
 ## 2.2.3 — 2026-10-30
 - **Xtream films and series:** an account's films and series in the Movies and Series tabs (a show
   is one tile, its episodes on its page), Discover by its categories, and Search. The IPTV tab

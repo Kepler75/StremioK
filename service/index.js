@@ -2975,13 +2975,14 @@ function xtvControl(req, res, path, query) {
 // A Stalker (Ministra) portal, asked as a MAG box asks: its MAC address in a cookie, a MAG
 // User-Agent, a session token from a handshake (none of which a web page can send). Its API at
 // <address>/portal.php, else /server/load.php (the address's /c/ left out). list: its genres and
-// channels (get_all_channels, else get_ordered_list a page at a time, STALKER_PAGES at most) as an
+// channels (get_all_channels, else get_ordered_list a page at a time, STALKER_PAGES at most; all=1:
+// the whole portal, up to STALKER_CHANNELS, a failed page tried again; cut: it stopped short) as an
 // M3U playlist, genres as groups, xmltv_id as tvg-id, each channel's link the one in its cmd (often
 // a stand-in, http://localhost/ch/123_), kept STALKER_LIST_MS (adding a portal just checked reads it
 // once). link: the link to play now (create_link, with the channel's own cmd). A session whose
 // token the portal no longer takes is opened again, once. Redirects only on the same server.
 var STALKER_UA = 'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3';
-var STALKER_MS = 20000, STALKER_MAX = 16 * 1048576, STALKER_PAGES = 100, STALKER_CHANNELS = 30000, STALKER_LIST_MS = 2 * 60000, STALKER_KEEP = 4;
+var STALKER_MS = 20000, STALKER_MAX = 16 * 1048576, STALKER_PAGES = 100, STALKER_CHANNELS = 30000, STALKER_LIST_MS = 2 * 60000, STALKER_KEEP = 4, STALKER_RETRIES = 2, STALKER_RETRY_MS = 3000;
 var _stalker = Object.create(null);   // portal|mac -> { api, base, mac, token, cmds: { link: cmd }, list: { at, m3u, count }, used }
 function stalkerKeep(key) {
     var s = _stalker[key];
@@ -3097,7 +3098,11 @@ function stalkerWith(s, portal, mac, ctl, job, cb) {
     function open(again) { stalkerOpen(s, portal, mac, ctl, function (err) { if (err) { cb(err); return; } run(again); }); }
     if (s.token && s.api) { run(false); } else { open(false); }
 }
-function stalkerChannels(s, ctl, cb) {
+function stalkerSlim(c) {   // (a page's channel: what the playlist takes; thousands of them are held meanwhile)
+    if (!c || typeof c !== 'object') { return null; }
+    return { name: c.name, cmd: c.cmd, cmds: Array.isArray(c.cmds) ? c.cmds.slice(0, 1) : null, logo: c.logo, xmltv_id: c.xmltv_id, number: c.number, tv_genre_id: c.tv_genre_id };
+}
+function stalkerChannels(s, ctl, whole, cb) {
     stalkerAsk(s, 'type=itv&action=get_genres', ctl, function (e0, genres) {
         if (e0 && e0.auth) { cb(e0); return; }
         var g = {};
@@ -3105,14 +3110,21 @@ function stalkerChannels(s, ctl, cb) {
         stalkerAsk(s, 'type=itv&action=get_all_channels', ctl, function (e1, js) {
             if (e1 && e1.auth) { cb(e1); return; }
             var all = js && Array.isArray(js.data) ? js.data : Array.isArray(js) ? js : [];
-            if (all.length) { cb(null, all.slice(0, STALKER_CHANNELS), g); return; }
-            var page = 1;
+            if (all.length) { cb(null, all.slice(0, STALKER_CHANNELS), g, all.length > STALKER_CHANNELS ? { total: all.length } : null); return; }
+            var page = 1, tries = 0;
             (function more() {
                 stalkerAsk(s, 'type=itv&action=get_ordered_list&genre=*&fav=0&sortby=number&hd=0&p=' + page, ctl, function (e2, o) {
-                    if (e2 && !all.length) { cb(e2); return; }
-                    var d = !e2 && o && Array.isArray(o.data) ? o.data : [], total = +(o && o.total_items) || 0;
-                    all = all.concat(d);
-                    if (!d.length || page >= STALKER_PAGES || (total && all.length >= total) || all.length >= STALKER_CHANNELS) { cb(null, all.slice(0, STALKER_CHANNELS), g); return; }
+                    if (e2 && (!all.length || (whole && e2.auth))) { cb(e2); return; }   // (whole: a session gone midway read again, once: stalkerWith)
+                    if (e2 && whole && !ctl.gone && tries < STALKER_RETRIES) { tries++; setTimeout(more, STALKER_RETRY_MS); return; }
+                    tries = 0;
+                    var d = !e2 && o && Array.isArray(o.data) ? o.data : [], total = +(o && o.total_items) || 0, room = STALKER_CHANNELS - all.length;
+                    d.slice(0, room).forEach(function (c) { var x = stalkerSlim(c); if (x) { all.push(x); } });
+                    var got = total && all.length >= total, full = all.length >= STALKER_CHANNELS, last = !whole && page >= STALKER_PAGES;
+                    if (!d.length || got || full || last) {
+                        var cut = e2 || (!got && d.length && (full || last)) ? { total: total, why: e2 ? (e2.message || 'failed') : '' } : null;
+                        cb(null, all, g, cut);
+                        return;
+                    }
                     page++;
                     more();
                 });
@@ -3161,9 +3173,19 @@ function stalkerControl(req, res, path, query, leaving) {
         }, function (err, link) { json(err ? { why: err.message || 'failed' } : { url: link }); });
         return;
     }
-    if (s.list && Date.now() - s.list.at < STALKER_LIST_MS) { json({ m3u: s.list.m3u, count: s.list.count }); return; }
+    var whole = q.all === '1', sock = req.socket;
+    if (whole && sock && sock.setTimeout) {   // (a read of many minutes: Node's two idle minutes would end it)
+        sock.setTimeout(0);
+        if (res.on) { res.on('finish', function () { sock.setTimeout(120000); }); }
+    }
+    function listed(l) { var o = { m3u: l.m3u, count: l.count }; if (l.cut) { o.cut = l.cut; } return o; }
+    if (s.list && Date.now() - s.list.at < STALKER_LIST_MS && (s.list.whole || !whole)) { json(listed(s.list)); return; }
     stalkerWith(s, portal, mac, ctl, function (ss, done) {
-        stalkerChannels(ss, ctl, function (err, list, genres) { done(err, err ? null : stalkerM3u(ss, list, genres)); });
+        stalkerChannels(ss, ctl, whole, function (err, list, genres, cut) {
+            var m = err ? null : stalkerM3u(ss, list, genres);
+            if (m && cut) { m.cut = cut; }
+            done(err, m);
+        });
     }, function (err, r) {
         if (err) {
             var refused = err.auth || err.status === 401 || /^not a Stalker answer/.test(err.message || '') && !!s.token;
@@ -3171,8 +3193,8 @@ function stalkerControl(req, res, path, query, leaving) {
             return;
         }
         if (!r.count) { json({ refused: true, why: s.block || 'the portal listed no channels for that MAC address' }); return; }
-        s.list = { at: Date.now(), m3u: r.m3u, count: r.count };
-        json({ m3u: r.m3u, count: r.count });
+        s.list = { at: Date.now(), m3u: r.m3u, count: r.count, cut: r.cut || null, whole: whole };
+        json(listed(s.list));
     });
 }
 
