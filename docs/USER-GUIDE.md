@@ -585,17 +585,18 @@ moves up above it.
 
 Settings › Content › **IPTV** › *Add playlist*, or a configuration file. A playlist is named
 after its file (`…/sports.m3u8`: *sports*) or its own name. **An Xtream account** (*Add Xtream
-account*): its server, username and password, a page each; once the server accepts them, its
+account*): its server, username and password; its
 channels are a playlist (*Xtream · server*), with its TV guide. **A Stalker portal** (*Add Stalker
 portal*): its address (`http://portal.example.com/c/`) and the MAC address your provider
-registered; once the portal accepts them, its channels are a playlist (*Stalker · portal*), a row
-per genre. Its own TV guide isn't read: set one with *Guide link*. Each shows its channel and group
+registered; its channels are a playlist (*Stalker · portal*), a row
+per genre. Its own TV guide isn't read: set one with *Guide link*. Each shows its
 counts, when it was last downloaded, and what went wrong (a failed refresh keeps the saved copy).
 
 - **▲ / ▼** set the order: a channel in two playlists comes from the first, and rows follow
   the order.
 - OK on one: *Rename*, *Turn off* / *Turn on* (off: its channels hidden, its copy kept), *Edit
   link*, *Guide link*, *Reload*, *Remove*.
+- **A big Stalker portal:** *Channel groups* (OK on it) reads only the genres you tick.
 - **Auto-refresh** (*Off* by default): every hour, 3, 6 or 12 hours, all playlists and their
   TV guides are downloaded again, as *Reload* does, so a channel whose guide came late is back
   on the Guide tab. Never while something plays.

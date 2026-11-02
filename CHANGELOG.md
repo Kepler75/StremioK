@@ -3,6 +3,12 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.2.5 — 2026-11-01
+- **A Stalker portal's Channel groups** (OK on it, in Settings › Content › IPTV): tick the genres you
+  want and only those are read, however big the portal is.
+- **Whole portal** waits longer when a portal stops answering, slows down after that, and keeps what
+  it read instead of losing it all at the time limit.
+
 ## 2.2.4 — 2026-10-31
 - **The remote's ▶ Play key:** on a movie, an episode or a channel (its card, its row, its sources,
   its row in the Guide), plays the top source at once, whatever *Skip the source list* says.

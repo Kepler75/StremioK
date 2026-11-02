@@ -927,7 +927,8 @@
         parts.push(thousands(st.count || 0) + ' channel' + (st.count === 1 ? '' : 's') + (st.groups ? ' in ' + st.groups + ' group' + (st.groups === 1 ? '' : 's') : ''));
         if (st.fetchedAt) { var d = new Date(st.fetchedAt); parts.push('downloaded ' + U.dayLabel(st.fetchedAt) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes())); }
         if (st.dropped) { parts.push(thousands(st.dropped) + ' more left out (a playlist keeps its first 30,000)'); }
-        if (st.cut) { parts.push('stopped short' + (st.cut > 0 ? ' of ' + thousands(st.cut) : '') + ': see Stalker channels'); }
+        if (p.genres) { parts.push(p.genres.length + ' group' + (p.genres.length === 1 ? '' : 's') + ' chosen'); }
+        if (st.cut) { parts.push('stopped short' + (st.cut > 0 ? ' of ' + thousands(st.cut) : '') + ': OK on it, then Channel groups, reads only what you want'); }
         if (st.uncached) { parts.push('too large to save on the TV: downloaded each launch'); }
         var g = guideInfo(p);
         if (g) { parts.push(g); }

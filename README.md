@@ -2,7 +2,7 @@
 
 StremioK is a from-scratch Stremio-addon streaming client for Samsung Tizen TVs.
 It was originally built for a 2017 UN50MU6100 running Tizen 3.0
-(~Chromium 47) and is also tested on a 2021 QN55Q80AAG running Tizen 6.0.
+(~Chromium 47) and is also tested on a 2021 QN55Q80AAG running Tizen 6.0. A user reports it working on Tizen 4 too.
 
 Old Samsung Tizen TVs run web applications rather than Android APKs. StremioK is
 therefore written in old-Chromium-compatible HTML, JavaScript (ES5) and CSS, and plays

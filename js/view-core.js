@@ -283,6 +283,29 @@ var ViewParts = {};
             U.toast('Its channels now play as ' + (fmt === 'hls' ? 'MPEG-TS' : 'HLS') + ' (reading the account again…)', 4000);
             renderSettings();
         };
+        var groups = U.el('div', 'pill focusable modal-btn', 'Channel groups');   // (a Stalker portal: the genres to read)
+        groups.__onselect = function () {
+            closeModal();
+            U.toast('Asking the portal for its groups…', 4000);
+            IPTV.stalkerGroups(playlist.id).then(function (list) {
+                if (!list.length) { U.toast('The portal lists no groups', 4000); return; }
+                pickMany('Groups to read from “' + label + '”', list.map(function (g) { return { key: g.id, label: g.title }; }), {
+                    on: playlist.genres, none: true,
+                    button: function (n) { return n ? 'Read ' + n + ' group' + (n === 1 ? '' : 's') : 'Read as Stalker channels says'; }
+                }, function (keys) {
+                    IPTV.setStalkerGroups(playlist.id, keys);
+                    refreshAddonRows('local:iptv');
+                    U.toast('Reading the portal…', 4000);
+                    renderSettings();
+                    Stremio.iptvReload(playlist.id).then(function () {
+                        refreshAddonRows('local:iptv');
+                        var st = Stremio.iptvStatus(playlist.id);
+                        U.toast(st.error ? ('Reload failed: ' + st.error) : ('Loaded ' + st.count + ' channels'), 4000);
+                        renderSettings();
+                    });
+                });
+            }, function (e) { U.toast(U.problem(e), 5000); });
+        };
         var reload = U.el('div', 'pill focusable modal-btn', 'Reload');
         var remove = U.el('div', 'pill focusable modal-btn danger', 'Remove');
 
@@ -363,6 +386,7 @@ var ViewParts = {};
         row.appendChild(edit);
         if (!playlist.off && typeof EPG !== 'undefined' && EPG.available && EPG.available()) { row.appendChild(guide); }
         if (!playlist.off && fmt) { row.appendChild(format); }
+        if (!playlist.off && IPTV.isStalker(playlist)) { row.appendChild(groups); }
         if (!playlist.off) { row.appendChild(reload); }
         row.appendChild(remove);
         box.appendChild(row);
@@ -405,8 +429,8 @@ var ViewParts = {};
     // Ticks in a popup (what to import): nothing ticked at first; OK on one ticks or unticks it,
     // Select all ticks every one that can be (again: none); the button counts what's ticked.
     // items: [{ key, label, have (already yours: shown as such, can't be ticked), note }];
-    // opts: { button(n) -> its label, haveText }; onDone(keys) on the button with something
-    // ticked (Cancel / BACK: nothing).
+    // opts: { button(n) -> its label, haveText, on (keys ticked at first), none (the button works
+    // with nothing ticked) }; onDone(keys) on the button with something ticked (Cancel / BACK: nothing).
     function pickMany(title, items, opts, onDone) {
         var existing = document.querySelector('.modal-overlay');
         if (existing) { existing.parentNode.removeChild(existing); }
@@ -414,6 +438,7 @@ var ViewParts = {};
         var box = U.el('div', 'modal-box pick-box');
         box.appendChild(U.el('div', 'modal-msg', title));
         var listEl = U.el('div', 'pick-list'), on = {}, nodes = [];
+        (opts.on || []).forEach(function (k) { on[k] = true; });
         var can = items.filter(function (it) { return !it.have; });
         var go = U.el('div', 'pill focusable modal-btn');
         function ticked() { return items.filter(function (it) { return on[it.key]; }).map(function (it) { return it.key; }); }
@@ -446,7 +471,7 @@ var ViewParts = {};
         var row = U.el('div', 'modal-row');
         go.__onselect = function () {
             var keys = ticked();
-            if (!keys.length) { U.toast('Nothing ticked: OK on one ticks it', 2500); return; }
+            if (!keys.length && !opts.none) { U.toast('Nothing ticked: OK on one ticks it', 2500); return; }
             closeModal();
             onDone(keys);
         };

@@ -84,7 +84,7 @@ Each says whether its guide was read. See [IPTV and radio](USER-GUIDE.md#iptv-an
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Auto-refresh* | **Off**, Every hour, Every 3 hours, Every 6 hours, Every 12 hours | All playlists and their TV guides downloaded again, as *Reload* does. |
-| *Stalker channels* | **First 100 pages**, Whole portal | How much of a portal listing its channels page by page is read (100 pages: about 1,400 channels). *Whole portal*, up to 30,000: many minutes on every *Reload* and *Auto-refresh*, IPTV rows waiting for a first read, and a portal may slow down, cut off or block a MAC address that asks so much. |
+| *Stalker channels* | **First 100 pages**, Whole portal | How much of a portal listing its channels page by page is read (100 pages: about 1,400). *Whole portal*, up to 30,000: many minutes on every *Reload* and *Auto-refresh*, and a portal may slow down, cut off or block a MAC that asks so much. A portal's *Channel groups* read only those instead. |
 
 ### YouTube
 

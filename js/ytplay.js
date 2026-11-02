@@ -106,7 +106,11 @@ var YTPlay = (function () {
             return U.getJSON(PROXY + path + '?portal=' + encodeURIComponent(portal) + '&mac=' + encodeURIComponent(mac) + more + a.q, ms, max, cancel || null, a.h);
         });
     }
-    function stalkerList(portal, mac, whole) { return stalkerAsk('/stalker/list', portal, mac, whole ? '&all=1' : '', whole ? 20 * 60000 : 90000, 48 * 1048576); }   // (whole: the whole portal, see IPTV.stalkerAll)
+    function stalkerList(portal, mac, whole, genres) {   // (whole: the whole portal, see IPTV.stalkerAll; genres: only those, see IPTV.setStalkerGroups)
+        var some = genres && genres.length;
+        return stalkerAsk('/stalker/list', portal, mac, (whole || some ? '&all=1' : '') + (some ? '&genres=' + encodeURIComponent(genres.join(',')) : ''), whole || some ? 20 * 60000 : 90000, 48 * 1048576);
+    }
+    function stalkerGenres(portal, mac) { return stalkerAsk('/stalker/genres', portal, mac, '', 40000, 1048576); }
     function stalkerLink(portal, mac, u, cancel) { return stalkerAsk('/stalker/link', portal, mac, '&u=' + encodeURIComponent(u), 25000, 65536, cancel); }
     // An Xtream account's films or series, kept by the service (see service/index.js, xtvControl;
     // user= and pass=: names Diagnostics masks):
@@ -253,6 +257,6 @@ var YTPlay = (function () {
         return MODE === 'tizenbrew' ? 'TizenBrew module' : MODE === 'wgt' ? 'Sideloaded app (.wgt)' : 'Browser (development)';
     }
 
-    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, hlsMaster: hlsMaster, aiomAddons: aiomAddons, stalkerList: stalkerList, stalkerLink: stalkerLink, xtvodAsk: xtvodAsk, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
+    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, hlsMaster: hlsMaster, aiomAddons: aiomAddons, stalkerList: stalkerList, stalkerGenres: stalkerGenres, stalkerLink: stalkerLink, xtvodAsk: xtvodAsk, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
         installLabel: installLabel, unavailableMessage: unavailableMessage, isRunning: isRunning, port: PORT };
 })();
