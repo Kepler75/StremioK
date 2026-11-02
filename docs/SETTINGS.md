@@ -245,13 +245,14 @@ them.
 |---------|---------|--------------|
 | *Background* | Black, **Dark**, Light Gray, White | The light ones have dark text; the player keeps its dark controls. |
 | *Accent color* | **Indigo**, and nine others | |
-| *Zoom* | **100%**, 110%, 120%, 130%, 140% | Everything bigger (text, posters, menus, the player's controls) to read from further away; fewer cards fit a row. Subtitles keep their own size. |
-| *Titles in a Home row* | **30**, 50, 100, 200, Unlimited | How many titles a Home row holds, for catalogs and IPTV groups. A catalog that pages is asked for more pages, so Home loads slower; *Unlimited* can take much longer, an addon may refuse so many requests, and very long rows can slow an older TV. ★ Favorites shows all yours. |
+| *Zoom* | **100%**, 110%, 120%, 130%, 140% | Everything bigger, to read from further away; fewer cards fit a row. Subtitles keep theirs. |
+| *Titles in a Home row* | **30**, 50, 100, 200, Unlimited | How many titles a Home row holds, for catalogs and IPTV groups. More titles load slower; *Unlimited* can take much longer, an addon may refuse so many requests, and very long rows can slow an older TV. ★ Favorites shows all yours. |
 | *Poster orientation* | **Portrait**, Landscape | |
 | *Ratings on posters* | **Off**, On | A title's IMDb rating on its card (★ 7.8), when the catalog gives it. Nothing extra is downloaded. |
 | *Home bar preview* | **Most recent first**, As in Watching, Off | Continue Watching on the TV's own home bar (StremioK must be on it: Apps › StremioK › *Add to Home*): up to 8 tiles of movies and series you can play now. The sideloaded app on Tizen 4 and later only. |
-| *Menu ›* | ⇈ ▲ ▼ ⇊, OK to show or hide | The order of the top menu between Watching (always first) and Settings (always last), and which Home tabs show. Discover and Search always show. |
-| *Hide spoilers* | **Off**, Pictures, Pictures and synopses | Blurs the stills of episodes you haven't watched (and leaves out their synopses: *Synopsis hidden: not watched yet*). |
+| *Start on* | **Watching** (Continue Watching), any Home tab | The tab StremioK opens on (the Guide once its guide is read; Watching for a hidden tab). |
+| *Menu ›* | ⇈ ▲ ▼ ⇊, OK to show or hide | The top menu's order between Watching (first) and Settings (last), and which Home tabs show. Discover and Search always show. |
+| *Hide spoilers* | **Off**, Pictures, Pictures and synopses | Blurs the stills of episodes you haven't watched (and hides their synopses). |
 | *Home feeds ›* | ▲ / ▼, OK to show or hide | The order of the Home rows, and which show. |
 | *Search results ›* | ▲ / ▼, OK to show or hide | The same for Search's rows. A hidden one isn't asked at all. |
 

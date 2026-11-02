@@ -179,6 +179,7 @@ var Stremio = (function () {
             homePreviewOrder: p.homePreviewOrder === 'watching' ? 'watching' : 'recent',   // ...its tiles: the latest first, or as in Watching
             hiddenTabs: wordList(p.hiddenTabs, 20, 20),   // Settings > Appearance > Menu: tabs hidden
             menuOrder: wordList(p.menuOrder, 20, 20),     // ...and the menu's order (see ViewParts.menuOrder)
+            startTab: /^[a-z]{1,20}$/.test(p.startTab || '') ? p.startTab : 'continue',   // Settings > Appearance > Start on: the Home tab a launch opens on
             hideWords: wordList(p.hideWords, 30, 40),     // Settings > Source ranking: sources with these words at the bottom
             watchRegion: /^[A-Z]{2}$/.test(p.watchRegion || '') ? p.watchRegion : '' };   // Settings > Integrations ('' = automatic)
     }

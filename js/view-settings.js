@@ -243,6 +243,10 @@
             get: function () { return { spoilers: Stremio.getPrefs().spoilers }; },
             set: function (cfg) { Stremio.setPref('spoilers', cfg.spoilers); }
         }));
+        wrap.appendChild(subPickRow('Start on', V.HOME_TABS.map(function (t) { return [t.key, t.label]; }), 'startTab', {
+            get: function () { return { startTab: Stremio.getPrefs().startTab }; },
+            set: function (cfg) { Stremio.setPref('startTab', cfg.startTab); }   // (the next launch: Home stays where it is now)
+        }));
         var menu = sectionRow('Menu  ›', 'Order the top menu, and show or hide its tabs', 'menuorder');
         menu.className += ' cfg-row';
         wrap.appendChild(menu);

@@ -196,10 +196,10 @@ and takes one entry (see [Privacy and data](PRIVACY.md#sending-text-from-your-ph
 - **Tabs:** **Watching**, **Calendar**, **Movies**, **Series**, **IPTV**, **Guide**, **Radio**,
   **Sports**, **YouTube** and **Local**, each shown when there's something for it (from your
   addons, playlists and their TV guides, YouTube catalogs or a USB drive). IPTV has live TV
-  only: an addon's catalog of another kind (a debrid library) goes to Movies or Series by what
-  it lists, or, when that's unclear, to Discover only. Picking a tab puts focus on its first title. Put the
-  menu in your own order, or hide a tab you never use, in Settings › Appearance › *Menu*; order
-  and hide the rows in *Home feeds*.
+  only: an addon's other catalogs (a debrid library) go to Movies or Series by what
+  they list, else to Discover. Picking a tab puts focus on its first title. Put the
+  menu in your own order, or hide tabs, in Settings › Appearance › *Menu*; order
+  and hide the rows in *Home feeds*; pick the tab StremioK opens on in *Start on*.
 - A row shows up to 30 of a catalog's titles (more: Settings › Appearance › *Titles in a
   Home row*); [Discover](#discover) has the rest.
 - A details strip above the rows describes the focused title: its logo (or name), year,
@@ -658,10 +658,10 @@ An Xtream account's films and series come with its channels:
 - A guide's **program pictures** show in the details strip (a channel's card, the Guide tab).
 - **The Guide tab** (once a guide is read): your channels with a guide, a row each, across 2½
   hours from the current half hour, with a line at the time now. ← / → go from program to
-  program (the hours move along past the edge), ↑ / ↓ to the channel above or below at the same
-  time. The details strip describes the focused program; OK on what's on now plays the channel
+  program (the hours move past the edge), ↑ / ↓ to the channel above or below at the same
+  time. The details strip describes the focused program; OK on what's on now (or a row still *Loading…*) plays the channel
   (CH+ / CH− then go through the Guide's channels), on a later one shows its description. BACK,
-  or a channel that stops, lands on the channel you ended on, at the time now.
+  or a channel that stops, lands on the channel you ended on.
 - **Hold OK on a program** in the Guide tab: *▶ Watch now* (what's on now), *★ Add to / Remove
   from favorites* (its channel), and *Find in your addons*: a film opens its page with your
   sources, anything else Search.

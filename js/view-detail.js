@@ -96,6 +96,8 @@
         Stremio.getMeta(type, id, pageCancel()).then(function (meta) {
             if (!still()) { return; }
             _d.meta = meta;
+            if (_d.preview && !meta.poster && _d.preview.poster) { meta.poster = _d.preview.poster; }   // (details without artwork: the card's, so Continue Watching has one)
+            if (_d.preview && !meta.background && _d.preview.background) { meta.background = _d.preview.background; }
             U.spinner(false);
             afterMeta();
         }, function (err) {

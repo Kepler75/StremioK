@@ -636,7 +636,8 @@
         // next episodes queued at the credits don't record one.
         var base = e.parent || e.id.split(':')[0];
         var a = (art && art[base]) || {};
-        var c = posterCard({ id: base, type: e.type, name: e.name, poster: a.poster || e.poster, background: a.background || e.background }, e.type);
+        var stock = calPoster(base);   // (a title's usual poster: for an entry saved without one, or whose link no longer loads)
+        var c = posterCard({ id: base, type: e.type, name: e.name, poster: a.poster || e.poster || stock, background: a.background || e.background, _posterAlt: stock }, e.type);
         // Keep the full episode/file id so detail opens on it. With a saved stream the
         // card resumes it directly; long-press offers the Details page instead.
         var preview = { name: e.name, poster: e.poster, type: e.type };
@@ -1197,10 +1198,14 @@
     }
 
     // Switch the active home tab (from the shared top menu) and show it.
-    function setHomeTab(key) { _homeTab = key || _homeTab; _focusFirstCard = 'new'; _wantTab = null; }
+    function setHomeTab(key) { _homeTab = key || _homeTab; _focusFirstCard = 'new'; _wantTab = null; _wantGuide = null; }
     // A tab asked for whose rows are still coming (a first playlist's IPTV tab): shown when they
     // come, if Home is still on the tab it showed instead. { key, instead }
     var _wantTab = null;
+    // Start on the Guide (Settings › Appearance › Start on): at a launch its guides aren't read yet,
+    // so Home opens on Watching and switches once they are, if it's still there (a tab you picked:
+    // not). The tab shown instead, or null.
+    var _wantGuide = null;
 
     // prevFocus: a Home card to put focus back on after the rebuild (the card a title
     // was opened from). Otherwise the card currently focused on Home is kept, so rows
@@ -1224,12 +1229,15 @@
         U.clear(s);
 
         if (_homeCatalogs === null) { useHomeCache(); }
+        var launch = _homeTab === null;
+        if (launch) { _homeTab = Stremio.getPrefs().startTab; }   // (a launch: Settings › Appearance › Start on)
         // Keep the active tab valid for what's actually available.
         var avail = availableTabs();
         if (!_homeTab || !avail.some(function (t) { return t.key === _homeTab; })) {
             var asked = _homeTab;
             _homeTab = avail.length ? avail[0].key : 'movie';
             if (asked && (_homeLoading || _reloadOnly)) { _wantTab = { key: asked, instead: _homeTab }; }
+            if (launch && asked === 'guide' && (Stremio.getPrefs().hiddenTabs || []).indexOf('guide') === -1) { _wantGuide = _homeTab; }   // (see EPG.onChange below)
         }
 
         s.appendChild(buildTopMenu(_homeTab));
@@ -1355,7 +1363,12 @@
             var has = hasGuide();
             if (has !== _hadGuide) {
                 _hadGuide = has;
-                if (_current() === scr('home') && !isModalOpen() && !Player.isActive()) { renderHome(); }
+                var want = has && _wantGuide;   // (started on the Guide: it's here now)
+                if (has) { _wantGuide = null; }
+                if (_current() === scr('home') && !isModalOpen() && !Player.isActive()) {
+                    if (want && _homeTab === want) { setHomeTab('guide'); }
+                    renderHome();
+                }
             }
         });
     }

@@ -22,14 +22,15 @@
 
     // Drawn again soon after (Home redrawn, the tab picked again): from what the grid before had
     // read (REUSE_MS), the same channels in the same window and hours, focus where it was;
-    // no "Reading…" between, nothing asked again.
+    // no "Reading…" between, nothing asked again. Not while it's still reading (Home redrawn as
+    // StremioK starts on the Guide): what comes would draw only the grid gone, so asked again.
     var REUSE_MS = 5 * 60 * 1000;
     function guideGrid(rows) {
         stopFinding();   // (a lookup from the grid drawn before: stopped)
         var now = Date.now() / 1000, chans = EPG.guided(), was = _g;
         var g = _g = { el: rows, start: floorStep(now), live: true, chans: chans, lists: {}, asked: {}, failed: {}, got: {}, top: 0, nodes: [], at: Date.now(), gen: EPG.generation ? EPG.generation() : 0 };   // (live: the hours show the present, and follow the clock: tick)
         if (!chans.length) { rows.appendChild(U.el('div', 'row-empty', 'No TV guide yet (Settings › Content › IPTV › Guide link).')); return; }
-        if (was && was.at && Date.now() - was.at < REUSE_MS && was.gen === g.gen && sameChans(was, chans)) {
+        if (was && was.at && !was.reading && Date.now() - was.at < REUSE_MS && was.gen === g.gen && sameChans(was, chans)) {
             var f = Focus.current(), want = (f && was.box && was.box.contains(f) && f.__chan) ? (f.__loading ? { id: f.__chan, t: f.__t } : { id: f.__chan, start: f.__p.start }) : null;
             g.lists = was.lists; g.asked = was.asked; g.failed = was.failed || {}; g.got = was.got || {}; g.at = was.at; g.top = was.top;
             g.chans = chans.filter(function (c) { return !(c.id in g.lists) || g.lists[c.id].length; });
@@ -75,7 +76,9 @@
         var ids = g.chans.slice(g.top, g.top + ROWS + AHEAD).filter(function (c) { return !g.asked[c.id]; }).map(function (c) { g.asked[c.id] = 1; return c.id; });
         if (!ids.length) { return Promise.resolve(false); }
         var now = Date.now() / 1000;
+        g.reading = (g.reading || 0) + 1;   // (reads not in yet: see guideGrid)
         return EPG.range(ids, now - 2 * 3600, now + 30 * 3600).then(function (lists) {
+            g.reading--;
             var unknown = {};
             ((lists && lists._unknown) || []).forEach(function (id) { unknown[id] = 1; });
             ids.forEach(function (id) {
@@ -88,7 +91,7 @@
             g.top = Math.max(0, Math.min(g.top, g.chans.length - ROWS));
             if (Object.keys(unknown).length) { retryLater(g); }
             return true;
-        }, function () { ids.forEach(function (id) { delete g.asked[id]; g.failed[id] = 1; }); retryLater(g); return true; });
+        }, function () { g.reading--; ids.forEach(function (id) { delete g.asked[id]; g.failed[id] = 1; }); retryLater(g); return true; });
     }
     // Channels whose programs didn't come (the service didn't answer, or not all of it): asked
     // again RETRY_MS later, while the grid is still on screen; their rows say so meanwhile.
@@ -169,7 +172,7 @@
                 wait.__meta = { name: c.name, releaseInfo: 'Reading its TV guide…' };
                 hooks(wait, -1);
                 wait.__onlongpress = function () { hold(g, r, null); };
-                if (!c.guideOnly) { wait.__onplay = function () { playChannel(g, r, true); }; }
+                if (!c.guideOnly) { wait.__onselect = function () { playChannel(g, r); }; wait.__onplay = function () { playChannel(g, r, true); }; }   // (OK: the channel, as for what's on now)
                 track.appendChild(wait);
                 nodes.push(wait);
                 if (want && want.id === c.id) { found = wait; }
@@ -310,14 +313,14 @@
 
     // Hold OK on a program: ▶ Watch now (what's on now, a channel that plays), ★ Add to / Remove
     // from favorites (its channel), Find in your addons (that program, as a guide-only channel's
-    // OK). p: null for a channel whose guide hasn't come (its favorites only).
+    // OK). p: null for a channel whose guide hasn't come (Watch now, its favorites).
     function hold(g, r, p) {
         var c = g.chans[r], now = Date.now() / 1000, fav = IPTV.isFavorite(c.id), items = [];
-        if (p && !c.guideOnly && p.start <= now && now < p.stop) { items.push(['play', '▶  Watch now']); }
+        if (!c.guideOnly && (!p || (p.start <= now && now < p.stop))) { items.push(['play', '▶  Watch now']); }
         items.push(['fav', fav ? '★  Remove from favorites' : '★  Add to favorites']);
         if (p && p.title) { items.push(['find', '🔍  Find in your addons']); }
         pickList(c.name + (p && p.title ? '  ·  ' + p.title : ''), items, items[0][0], function (v) {
-            if (v === 'play') { pick(g, r, p); return; }
+            if (v === 'play') { if (p) { pick(g, r, p); } else { playChannel(g, r); } return; }
             if (v === 'find') { findInAddons(p); return; }
             IPTV.setFavorite(c.id, !fav);
             U.toast(fav ? 'Removed from favorites' : 'Added to favorites: ★ Favorites, first on the IPTV and Guide tabs', 3000);

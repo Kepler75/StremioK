@@ -12,6 +12,7 @@ What to do when something doesn't work. For how things are meant to work, see th
 - [Audio and subtitles](#audio-and-subtitles)
 - [Skip prompts](#skip-prompts)
 - [YouTube and trailers](#youtube-and-trailers)
+- [Home](#home)
 - [IPTV](#iptv)
 - [Trakt](#trakt)
 - [USB drive](#usb-drive)
@@ -36,7 +37,7 @@ What to do when something doesn't work. For how things are meant to work, see th
 
 | What you see | Why, and what to do |
 |--------------|---------------------|
-| Tizen Studio: the install fails with a certificate error | A retail TV only takes apps signed with a *Samsung* certificate profile that includes its DUID. Create one in Certificate Manager (Samsung account, the TV's DUID added) and build again; a Tizen-only profile won't install. |
+| Tizen Studio: the install fails with a certificate error | A retail TV only takes apps signed with a *Samsung* certificate profile that includes its DUID. Create one in Certificate Manager (Samsung account, the TV's DUID added) and build again. |
 | An update won't install over StremioK (a certificate mismatch) | It's signed with another certificate than the installed one. Sign with the same profile, or uninstall StremioK first (its settings and progress go with it). |
 | The TV isn't found (Tizen Studio, Apps2Samsung) | Developer Mode on, with *Host PC IP* set to that computer; restart the TV; both on one network. |
 | *Hold BACK to close StremioK* after Exit | The TV didn't let StremioK close itself (it can happen under TizenBrew). Hold BACK for a second: the TV closes it. |
@@ -46,7 +47,7 @@ What to do when something doesn't work. For how things are meant to work, see th
 
 | What you see | Why, and what to do |
 |--------------|---------------------|
-| An addon doesn't load | Settings › Content › Addons says why ("too large (over 2 MB)", "not an addon manifest", "timed out"…), with what the addon itself said when it refused (AIOStreams' "Invalid stream expression…" for a configuration it can't read). *Refresh* says it too. |
+| An addon doesn't load | Settings › Content › Addons says why ("too large (over 2 MB)", "not an addon manifest", "timed out"…), with what the addon itself said (AIOStreams' "Invalid stream expression…"). *Refresh* says it too. |
 | An addon fails the first time, then works | It's hosted where it sleeps when unused and takes a while to wake. Set *Wait for addons* longer (Settings › Content › Addons). |
 | An old addon link won't add | Only v3 addons work. Old `/stremio/v1` addons (e.g. `opensubtitles.strem.io/stremio/v1`) aren't supported; use their v3 versions. |
 | Title pages fail ("Couldn't load") while one addon is down | The addon describing your titles isn't answering (Diagnostics › Logs shows its errors, like HTTP 521). Keep a second details addon such as Cinemeta below it, or a backup turned off to turn on while it's down. |
@@ -133,8 +134,14 @@ sources. Try again later.
 |--------------|---------------------|
 | "… through StremioK's YouTube service, which TizenBrew hasn't started" | TizenBrew didn't start it. Close StremioK and open it again from TizenBrew; if that doesn't help, update TizenBrew. |
 | A trailer is skipped for another, with a note | YouTube refuses some studio uploads to the kind of player StremioK uses (they play on YouTube's site). The next trailer plays instead. |
-| A YouTube video won't play | Some videos aren't offered in a form the TV's player takes. YouTube also changes how it works now and then, which can need a StremioK update. |
+| A YouTube video won't play | Some videos aren't offered in a form the TV's player takes. YouTube's own changes can also need a StremioK update. |
 | An addon's YouTube direct links don't play | YouTubio's direct links are made for its server's address, not the TV's. Its *Stremio Player* sources (a video id) play through StremioK's service. |
+
+## Home
+
+| What you see | Why, and what to do |
+|--------------|---------------------|
+| Watching shows a title's name, no poster | No poster was saved, or its link stopped loading, and no other is known (no IMDb id). Open the title from a row showing its poster and play 10 seconds: Watching keeps it. |
 
 ## IPTV
 
@@ -156,7 +163,7 @@ sources. Try again later.
 | Changes waiting, or not sent | *Trakt sync* (Settings › Content › Integrations) lists each one Trakt refused or that ran out of tries, with what Trakt said. *Sync now* sends everything; *Let them go* drops them. |
 | Continue Watching offers an episode you watched on another TV | That TV's watch hasn't reached Trakt yet: check *Trakt sync* (Settings › Content › Integrations) there. Once Trakt has it, the show's next episode shows instead. |
 | **Trakt needs reconnecting** | Trakt no longer accepts the sign-in. Nothing is sent (changes wait) until you connect again. |
-| A long-running show's episodes don't sync (Trakt says "not found") | Trakt files some shows in two (later seasons as a separate show). StremioK sends the episode again by its TheTVDB number when the addon gives it, so a waiting change goes through once you've opened the show's page. Those episodes' Trakt history isn't shown here as watched. |
+| A long-running show's episodes don't sync (Trakt says "not found") | Trakt files some shows in two. Once you've opened the show's page, StremioK sends the episode again by its TheTVDB number (when the addon gives it). Their Trakt history isn't shown as watched. |
 | A note that Trakt changes were dropped | At most 200 changes wait; past that the oldest are dropped. Also noted when a change couldn't be saved on the TV (its storage full). |
 
 ## USB drive
@@ -169,7 +176,7 @@ sources. Try again later.
 | A download stops: link refused | The debrid link expired. *Retry* asks the addon again. |
 | A download stopped when StremioK closed | Some TVs stop it. It picks up where it stopped when you start StremioK again. |
 | A big file from the drive stalls on every jump (2017 TV) | That TV's player can't read past 2 GB of a file on the drive, so StremioK plays files over 2 GB through its service, where jumping works. |
-| Indexing, downloads or USB subtitles for streams are missing (TizenBrew) | They need StremioK's service with its private token, which TizenBrew has no place for. Local still browses. Use the sideloaded app for them. |
+| Indexing, downloads or USB subtitles for streams are missing (TizenBrew) | They need the sideloaded app's service (its private token). Local still browses. |
 
 ## Other apps
 
@@ -184,7 +191,7 @@ sources. Try again later.
 | What you see | Why, and what to do |
 |--------------|---------------------|
 | A note that something couldn't be saved (storage full) | StremioK clears what can be made again (saved Home rows, playlist copies, show info) to save what matters. If it still can't, it says so and notes it in Diagnostics. *Clear saved copies* (Settings › Diagnostics › Storage) frees more. |
-| The TV's database refuses saves | The 2017 TV's database doesn't always clear old versions out itself. StremioK tidies it on its own when they take more than half its room; *Tidy up the TV's database* does it now. Freeing space on the TV (unused apps) also raises what it allows. |
+| The TV's database refuses saves | The 2017 TV's database doesn't always clear out old versions. StremioK tidies it when they take over half its room; *Tidy up the TV's database* does it now. Freeing space on the TV also helps. |
 | The TV's database keeps failing | Turn *Use the TV's database* off: everything goes in the settings storage instead (about 5 MB). |
 
 ## Home bar preview
@@ -192,4 +199,4 @@ sources. Try again later.
 | What you see | Why, and what to do |
 |--------------|---------------------|
 | No StremioK tiles on the TV's home bar | They need the sideloaded app on Tizen 4 or later (not TizenBrew, not the 2017 TV), StremioK on the home bar (Apps › StremioK › *Add to Home*), *Home bar preview* not *Off* (Settings › Appearance) and something playable in Continue Watching. |
-| The tiles are out of date | They're sent when you open or leave StremioK, at most every 10 minutes. "Home bar preview not sent" in Diagnostics › Logs: the TV didn't take them; they're tried again later. |
+| The tiles are out of date | They're sent when you open or leave StremioK, at most every 10 minutes. If the TV didn't take them ("Home bar preview not sent" in Diagnostics › Logs), they're tried again later. |

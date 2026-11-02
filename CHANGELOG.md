@@ -3,6 +3,15 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.2.6 — 2026-11-02
+- **Watching:** a title saved without a poster, or whose poster no longer loads, shows its usual
+  poster instead of only its name, for titles already there too (#6). One still without a
+  poster: see [Troubleshooting](docs/TROUBLESHOOTING.md#home).
+- **Start on** (Settings › Appearance): the tab StremioK opens on, any Home tab. Until you choose
+  one, Watching. The Guide opens once its TV guide is read.
+- **Guide tab:** opened as StremioK starts, its channels no longer stay on *Loading…* until you
+  change tabs. OK on a channel still loading plays it.
+
 ## 2.2.5 — 2026-11-01
 - **A Stalker portal's Channel groups** (OK on it, in Settings › Content › IPTV): tick the genres you
   want and only those are read, however big the portal is.
