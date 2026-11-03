@@ -364,6 +364,13 @@ channels where it gives one; the rest is read from the source's name and file.
   *Channel groups*, `get_genres` listed and only those genres read the same way) become an M3U playlist, genres as groups, and a read that stopped
   short says so;
   a channel's link comes from `create_link` each time it plays, with the MAG User-Agent.
+- **A Stalker portal's films and series:** asked as they're shown, never read whole: categories
+  (`type=vod` and `type=series`, `get_categories`), a category's titles newest first or a search
+  (`get_ordered_list`, up to 42 from a position, 4 of the portal's pages at most), a series'
+  seasons and episodes (by `movie_id`; a season that doesn't list its episodes, by `season_id`).
+  A copy of one of your titles is found by searching the portal for its name (year within one).
+  A source is the service's `/stalker/play`, which asks `create_link` when the player opens it
+  and redirects there, so a link saved to resume stays good.
 - **A channel's own format:** the player's *Format* swaps one channel's `/live/…/123.ts` and
   `.m3u8`, kept by channel (the last 300).
 - **YouTube behind a link:** an Xtream channel's link (`…/live/user/pass/id.ext`) is looked at
@@ -735,7 +742,7 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 | Phone page | `/entry/open`, `poll`, `close` | Opens, polls and closes the one-time page | + token or header |
 | AIOManager | `/aiom/addons` | Reads an account's addons | + token or header |
 | Xtream films and series | `/xtvod/list`, `/xtvod/find` | An account's newest titles and Search; a title's copies | + token or header |
-| Stalker | `/stalker/list`, `/stalker/link` | A portal's channels as an M3U playlist; a channel's link to play | + token or header |
+| Stalker | `/stalker/list`, `/stalker/link`, `/stalker/genres`, `/stalker/vod`, `/stalker/play` | A portal's channels as an M3U playlist; a channel's link to play; its genres; its films and series; a film's or episode's link, redirected to | + token or header (`play`: or the guide ticket) |
 | TV guide | `/epg/load`, `/epg/get` | Reads a playlist's guide for your channels; their programs | + token or header |
 | Live relay | `/live/open`, then `/live/<id>/…` | Checks a channel's sound and captions; relays it repacked, captions as subtitles | open: + token or header |
 

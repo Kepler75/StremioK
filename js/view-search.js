@@ -156,7 +156,7 @@
 
     // Results come as one row per search source (Stremio.searchSources): each searchable
     // catalog ("Series · Popular · Cinemeta"), IPTV's groups as one per type, in the order
-    // and with the ones shown in Settings > Appearance > Search results; each row in its
+    // and with the ones shown in Settings > Home > Search results; each row in its
     // addon's own order (its best match first). A row appears as its catalog answers, in its
     // place; one whose catalog pages loads more as focus nears its end.
     var LOAD_AHEAD = 6;
@@ -259,7 +259,7 @@
                 }
                 if (!found) {
                     results.appendChild(U.el('div', 'search-empty', (failed && failed === defs.length) ? 'Search failed. Check your network.'
-                        : (!defs.length && !people) ? 'Nothing to search: no addon can, or all are hidden (Settings › Appearance › Search results).'
+                        : (!defs.length && !people) ? 'Nothing to search: no addon can, or all are hidden (Settings › Home › Search results).'
                         : 'No results for “' + query + '”.' + (silent.length ? '  No answer from: ' + silent.join(',  ') + ' (try again).' : '')));
                 }
             });

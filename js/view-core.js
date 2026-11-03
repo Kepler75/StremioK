@@ -365,6 +365,7 @@ var ViewParts = {};
             closeModal();
             U.toast('Reloading playlist…', 4000);
             if (typeof XtVod !== 'undefined' && XtVod.reload) { XtVod.reload(playlist.id); }   // (an Xtream account: its films and series too)
+            if (typeof StVod !== 'undefined' && StVod.reload) { StVod.reload(playlist.id); }   // (a Stalker portal: the same)
             Stremio.iptvReload(playlist.id).then(function () {
                 refreshAddonRows('local:iptv');
                 var st = Stremio.iptvStatus(playlist.id);

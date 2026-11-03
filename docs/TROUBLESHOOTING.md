@@ -198,5 +198,5 @@ sources. Try again later.
 
 | What you see | Why, and what to do |
 |--------------|---------------------|
-| No StremioK tiles on the TV's home bar | They need the sideloaded app on Tizen 4 or later (not TizenBrew, not the 2017 TV), StremioK on the home bar (Apps › StremioK › *Add to Home*), *Home bar preview* not *Off* (Settings › Appearance) and something playable in Continue Watching. |
+| No StremioK tiles on the TV's home bar | They need the sideloaded app on Tizen 4 or later (not TizenBrew, not the 2017 TV), StremioK on the home bar (Apps › StremioK › *Add to Home*), *Home bar preview* not *Off* (Settings › Home) and something playable in Continue Watching. |
 | The tiles are out of date | They're sent when you open or leave StremioK, at most every 10 minutes. If the TV didn't take them ("Home bar preview not sent" in Diagnostics › Logs), they're tried again later. |

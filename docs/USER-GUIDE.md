@@ -147,7 +147,7 @@ where it came from.
 | Guide | The Guide tab (instead of the TV's own guide). |
 
 **Number keys outside the player** (not while typing) pick the top menu's items, left to right:
-**1** Watching, then the rest in the menu's order (Settings › Appearance › *Menu*); **0**
+**1** Watching, then the rest in the menu's order (Settings › Home › *Menu*); **0**
 Settings. With Watching, Movies, Series and IPTV showing, 5 is Discover and 6
 Search.
 
@@ -198,9 +198,9 @@ and takes one entry (see [Privacy and data](PRIVACY.md#sending-text-from-your-ph
   addons, playlists and their TV guides, YouTube catalogs or a USB drive). IPTV has live TV
   only: an addon's other catalogs (a debrid library) go to Movies or Series by what
   they list, else to Discover. Picking a tab puts focus on its first title. Put the
-  menu in your own order, or hide tabs, in Settings › Appearance › *Menu*; order
+  menu in your own order, or hide tabs, in Settings › Home › *Menu*; order
   and hide the rows in *Home feeds*; pick the tab StremioK opens on in *Start on*.
-- A row shows up to 30 of a catalog's titles (more: Settings › Appearance › *Titles in a
+- A row shows up to 30 of a catalog's titles (more: Settings › Home › *Titles in a
   Home row*); [Discover](#discover) has the rest.
 - A details strip above the rows describes the focused title: its logo (or name), year,
   runtime, rating, genres and synopsis.
@@ -285,7 +285,7 @@ Search (top menu) asks every addon catalog that can search.
 
 - **One row per catalog**, named like its Home feed ("Series · Popular · Cinemeta"), each in
   its addon's order (best match first); IPTV groups share one row per type. Order and hide
-  the rows in Settings › Appearance › *Search results*.
+  the rows in Settings › Home › *Search results*.
 - Rows appear as their catalogs answer, and can be browsed meanwhile; a line above them says
   how many have answered ("Searching “fast”… 2 of 5 sources answered"), then names any that
   didn't. A row loads more as you move right.
@@ -590,7 +590,7 @@ channels are a playlist (*Xtream · server*), with its TV guide. **A Stalker por
 portal*): its address (`http://portal.example.com/c/`) and the MAC address your provider
 registered; its channels are a playlist (*Stalker · portal*), a row
 per genre. Its own TV guide isn't read: set one with *Guide link*. Each shows its
-counts, when it was last downloaded, and what went wrong (a failed refresh keeps the saved copy).
+counts, last download and any error (a failed refresh keeps the saved copy).
 
 - **▲ / ▼** set the order: a channel in two playlists comes from the first, and rows follow
   the order.
@@ -601,21 +601,23 @@ counts, when it was last downloaded, and what went wrong (a failed refresh keeps
   TV guides are downloaded again, as *Reload* does, so a channel whose guide came late is back
   on the Guide tab. Never while something plays.
 
-### Films and series from an Xtream account
+### Films and series from Xtream and Stalker
 
-An Xtream account's films and series come with its channels:
+An Xtream account's films and series come with its channels, as do a Stalker portal's
+(experimental):
 
-- **Browse:** the Movies and Series tabs get a row per account, newest first (a show is one
-  tile, its episodes on its page); Discover lists them by the provider's categories (as genres),
-  and Search looks through them. The IPTV tab keeps the account's live channels only.
+- **Browse:** a row per account or portal in Movies and Series, newest first (a show is one
+  tile, its episodes on its page); Discover lists them by the provider's categories, and Search
+  looks through them. The IPTV tab keeps the live channels only.
 - **On your own titles:** a film or episode you open from your addons lists the provider's copy
-  among its sources (*Xtream*). Order it, or turn it off, in Source ranking's addons list.
-- **The first time,** the account's list is read (a minute or two for a big one, then once a
-  day): until then the row, Search and the copies on your titles stay empty. *Reload* on the
-  account (Settings › Content › IPTV) reads its films and series again at once.
+  among its sources (*Xtream*, *Stalker*). Order it, or turn it off, in Source ranking's addons list.
+- **Xtream, the first time:** the account's list is read (a minute or two for a big one, then
+  once a day): until then its row, Search and copies stay empty. *Reload* on
+  the account (Settings › Content › IPTV) reads its films and series again at once.
+- **Stalker:** titles are read as you browse; a copy is found by searching the portal by name. A portal without a series section may list its shows among the films.
 - A copy plays only if the TV plays its file: MKV with DTS sound often doesn't.
-- An account whose server lists no films or series (some offer only live channels) adds
-  nothing; its entries play as the server marks them (live: no seeking).
+- A provider listing no films or series adds nothing; its entries play as it marks them (live:
+  no seeking).
 
 ### Watching
 
@@ -625,19 +627,18 @@ An Xtream account's films and series come with its channels:
 - **IPTV** and **Radio** rows, a row per group; a channel's details name its playlist.
 - **Films in a playlist:** a link to a file (`.mkv`, `.mp4`…, an Xtream `/movie/` or
   `/series/` one) plays as a film you can scrub through; Continue Watching doesn't keep it.
-- **Sports:** channels marked `tvg-type="sport"` (or `"sports"`) go to the **Sports** tab instead.
-  StremioK's own mark: other players ignore it.
+- **Sports:** channels marked `tvg-type="sport"` (or `"sports"`, StremioK's own mark) go to the
+  **Sports** tab instead.
 - **Guide only:** channels marked `tvg-type="guide"` (no link needed) show on the Guide tab
   alone; OK on a program finds that film in your addons (else Search).
 - **CH+ / CH−** switch through the row a channel came from; the channel you stop on starts after
   a short pause, and BACK lands on its card.
-- **A channel's number:** type its position in that row (7, or 1 then 2 for 12); it says
-  "Channel 1_" while it waits for a second digit.
+- **A channel's number:** type its position in that row (7, or 1 then 2 for 12).
 - Live streams show **● LIVE**, with no seeking or resume.
 - **YouTube live** channels (`youtube.com`, `youtu.be` links) play too, and so does an Xtream
   channel whose link leads to YouTube.
 - **Choppy sound** on some channels is fixed on its own: the channel restarts ("Fixing this
-  channel's sound…"), remembered for two weeks.
+  channel's sound…").
 - **Closed captions** in a channel's picture (CC1–CC4, as VLC shows them): Green lists *Closed
   captions (CC1)*; picking one restarts the channel with them (next time too). Ones in your
   default subtitle language turn on by themselves. HLS only: on Xtream, switch *Format* to HLS.
@@ -813,7 +814,7 @@ do; there's nothing else to set up.
   85% it stays in progress. Leaving StremioK with the TV's Home button past 80% sends nothing:
   you may come back to it.
 - YouTube videos are never sent: they aren't Trakt's.
-- **Rows on Home**, read from your Trakt account (also in Discover; ordered and hidden in Settings › Appearance › *Home feeds*):
+- **Rows on Home**, read from your Trakt account (also in Discover; ordered and hidden in Settings › Home › *Home feeds*):
   **Series · Up next** (the next episode of the 15 shows you watched most recently) and
   **Movies / Series · Watchlist**. They refresh when StremioK starts, a few seconds after you
   watch or mark something, and every 15 minutes.

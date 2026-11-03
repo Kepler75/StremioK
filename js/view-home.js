@@ -35,7 +35,7 @@
     function hasLocal() { return typeof LocalMedia !== 'undefined' && LocalMedia.present(); }
     function hasGuide() { return typeof EPG !== 'undefined' && !!EPG.hasAny && EPG.hasAny(); }
 
-    // The top menu's order (Settings › Appearance › Menu): Watching first and Settings last, the
+    // The top menu's order (Settings › Home › Menu): Watching first and Settings last, the
     // rest (the tabs, Discover, Search) in yours. A saved order is kept as far as it goes: an
     // item it doesn't have (one added since) goes after the one it usually follows, and one
     // that no longer exists is dropped.
@@ -72,7 +72,7 @@
 
     // Which tabs to show in the top menu (needs the home catalogs; falls back to the
     // standard set before they've loaded so the menu is consistent everywhere).
-    // Tabs you hid (Settings › Appearance › Menu) aren't shown; Watching always is.
+    // Tabs you hid (Settings › Home › Menu) aren't shown; Watching always is.
     function availableTabs() {
         var hidden = Stremio.getPrefs().hiddenTabs || [];
         function shown(t) { return t.key === 'continue' || (hidden.indexOf(t.key) === -1 && (t.key !== 'guide' || hasGuide())); }
@@ -928,7 +928,7 @@
     }
     function previewTiles() {
         var out = [];
-        var recent = Stremio.getPrefs().homePreviewOrder !== 'watching';   // (Settings › Appearance › Home bar order)
+        var recent = Stremio.getPrefs().homePreviewOrder !== 'watching';   // (Settings › Home › Home bar preview)
         continueEntries(recent).forEach(function (e) {   // (the latest first: what you're bingeing leads; or Watching's order)
             if (out.length >= PREVIEW_MAX || !playableNow(e)) { return; }
             var base = e.parent || e.id.split(':')[0], code = e.type === 'series' ? codeOfId(e.id) : '';
@@ -1202,7 +1202,7 @@
     // A tab asked for whose rows are still coming (a first playlist's IPTV tab): shown when they
     // come, if Home is still on the tab it showed instead. { key, instead }
     var _wantTab = null;
-    // Start on the Guide (Settings › Appearance › Start on): at a launch its guides aren't read yet,
+    // Start on the Guide (Settings › Home › Start on): at a launch its guides aren't read yet,
     // so Home opens on Watching and switches once they are, if it's still there (a tab you picked:
     // not). The tab shown instead, or null.
     var _wantGuide = null;
@@ -1230,7 +1230,7 @@
 
         if (_homeCatalogs === null) { useHomeCache(); }
         var launch = _homeTab === null;
-        if (launch) { _homeTab = Stremio.getPrefs().startTab; }   // (a launch: Settings › Appearance › Start on)
+        if (launch) { _homeTab = Stremio.getPrefs().startTab; }   // (a launch: Settings › Home › Start on)
         // Keep the active tab valid for what's actually available.
         var avail = availableTabs();
         if (!_homeTab || !avail.some(function (t) { return t.key === _homeTab; })) {
@@ -1440,6 +1440,7 @@
     // The IPTV playlists read after your addons loaded (they aren't waited for): their rows join.
     if (typeof Stremio !== 'undefined' && Stremio.onIptvReady) { Stremio.onIptvReady(function () { refreshAddonRows('local:iptv'); }); }
     if (typeof XtVod !== 'undefined' && XtVod.onChange) { XtVod.onChange(function () { refreshAddonRows('local:xtvod'); }); }   // (an Xtream account's films and series, once its categories came)
+    if (typeof StVod !== 'undefined' && StVod.onChange) { StVod.onChange(function () { refreshAddonRows('local:stvod'); }); }   // (a Stalker portal's, the same)
     var PARTIAL_DELAY = 150;   // coalesces catalogs that arrive together into one redraw
     function loadHomeCatalogs() {
         if (_homeLoading) { return; }
@@ -1533,7 +1534,7 @@
 
     // Catalogs of type "other" (e.g. Torrentio's RealDebrid downloads) aren't live TV:
     // their items go to a Movies row and a Series row, split by the release name.
-    // Everything is capped to the cards a Home row shows (Settings › Appearance › Titles in a Home
+    // Everything is capped to the cards a Home row shows (Settings › Home › Titles in a Home
     // row), but for IPTV's ★ Favorites (all: every one you picked, up to the 300 kept).
     var ROW_CARDS = 30;
     function rowCards() { var n = Stremio.getPrefs().rowCards; return n === 'all' ? Infinity : n || ROW_CARDS; }

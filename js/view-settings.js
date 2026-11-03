@@ -215,11 +215,6 @@
             get: function () { return { zoom: '' + zoomPct() }; },
             set: function (cfg) { Stremio.setPref('zoom', +cfg.zoom); applyAppearance(); }
         }));
-        wrap.appendChild(subPickRow('Titles in a Home row', [['30', '30'], ['50', '50'], ['100', '100'], ['200', '200'], ['all', 'Unlimited']], 'rowCards', {
-            warning: 'Unlimited: Home can take much longer to load, an addon may refuse so many requests, and very long rows can slow an older TV',
-            get: function () { return { rowCards: '' + Stremio.getPrefs().rowCards }; },
-            set: function (cfg) { Stremio.setPref('rowCards', cfg.rowCards === 'all' ? 'all' : +cfg.rowCards); clearCatalogCache(); }   // (the rows read again, with more pages or fewer)
-        }));
         wrap.appendChild(subPickRow('Poster orientation', POSTER_SHAPES, 'posterShape', {
             get: function () { return { posterShape: Stremio.getPrefs().posterShape }; },
             set: function (cfg) { Stremio.setPref('posterShape', cfg.posterShape); markHomeDirty(); }   // Home redraws on return
@@ -227,6 +222,25 @@
         wrap.appendChild(subPickRow('Ratings on posters', [['off', 'Off'], ['on', 'On']], 'posterRatings', {
             get: function () { return { posterRatings: Stremio.getPrefs().posterRatings ? 'on' : 'off' }; },
             set: function (cfg) { Stremio.setPref('posterRatings', cfg.posterRatings === 'on'); markHomeDirty(); }
+        }));
+        wrap.appendChild(subPickRow('Hide spoilers', [['off', 'Off'], ['pictures', 'Pictures'], ['all', 'Pictures and synopses']], 'spoilers', {
+            get: function () { return { spoilers: Stremio.getPrefs().spoilers }; },
+            set: function (cfg) { Stremio.setPref('spoilers', cfg.spoilers); }
+        }));
+        focusSettings();
+    }
+    // Home: the tab a launch opens on, how many titles a row holds, the TV's home bar, and the
+    // pages ordering the top menu, the Home rows and the Search rows.
+    function settingsHome(wrap) {
+        wrap.appendChild(U.el('h2', null, 'Home'));
+        wrap.appendChild(subPickRow('Start on', V.HOME_TABS.map(function (t) { return [t.key, t.label]; }), 'startTab', {
+            get: function () { return { startTab: Stremio.getPrefs().startTab }; },
+            set: function (cfg) { Stremio.setPref('startTab', cfg.startTab); }   // (the next launch: Home stays where it is now)
+        }));
+        wrap.appendChild(subPickRow('Titles in a Home row', [['30', '30'], ['50', '50'], ['100', '100'], ['200', '200'], ['all', 'Unlimited']], 'rowCards', {
+            warning: 'Unlimited: Home can take much longer to load, an addon may refuse so many requests, and very long rows can slow an older TV',
+            get: function () { return { rowCards: '' + Stremio.getPrefs().rowCards }; },
+            set: function (cfg) { Stremio.setPref('rowCards', cfg.rowCards === 'all' ? 'all' : +cfg.rowCards); clearCatalogCache(); }   // (the rows read again, with more pages or fewer)
         }));
         if (typeof HubPreview !== 'undefined' && HubPreview.available()) {   // (the sideloaded app: see js/hubpreview.js)
             // one choice: the tiles' order, or none (sent at once, whatever the wait)
@@ -239,14 +253,6 @@
                 }
             }));
         }
-        wrap.appendChild(subPickRow('Hide spoilers', [['off', 'Off'], ['pictures', 'Pictures'], ['all', 'Pictures and synopses']], 'spoilers', {
-            get: function () { return { spoilers: Stremio.getPrefs().spoilers }; },
-            set: function (cfg) { Stremio.setPref('spoilers', cfg.spoilers); }
-        }));
-        wrap.appendChild(subPickRow('Start on', V.HOME_TABS.map(function (t) { return [t.key, t.label]; }), 'startTab', {
-            get: function () { return { startTab: Stremio.getPrefs().startTab }; },
-            set: function (cfg) { Stremio.setPref('startTab', cfg.startTab); }   // (the next launch: Home stays where it is now)
-        }));
         var menu = sectionRow('Menu  ›', 'Order the top menu, and show or hide its tabs', 'menuorder');
         menu.className += ' cfg-row';
         wrap.appendChild(menu);
@@ -349,9 +355,9 @@
         Focus.setScope(s, s.querySelector('.settings-wrap .focusable') || undefined);
     }
 
-    // Settings is four groups (Content, Playback, Appearance, Diagnostics); each opens a page of
-    // its sections. [title, description, section] rows; Appearance is its own page (its
-    // look settings are right on it, above Home feeds and Search results).
+    // Settings is five groups (Content, Playback, Appearance, Home, Diagnostics); each opens a page
+    // of its sections. [title, description, section] rows; Appearance and Home are pages of their
+    // own (their settings right on them; Home's Menu, Home feeds and Search results open pages).
     var SETTINGS_GROUPS = {
         content: { title: 'Content', rows: [
             ['Addons', 'Catalog, stream & subtitle addons', 'addons'],
@@ -378,9 +384,9 @@
 
     // Return true if BACK stepped a settings section back to the menu.
     // BACK goes up one level, onto the row it came from: from a section to its group (on
-    // that section, not the first one), from Home feeds / Search results to Appearance,
+    // that section, not the first one), from Menu / Home feeds / Search results to Home,
     // from a group to the Settings list (on that group).
-    var SECTION_PARENT = { menuorder: 'appearance', feeds: 'appearance', searchfeeds: 'appearance', aiomanager: 'addons', subtitlelook: 'subtitles', rankfilters: 'ranking', rankplay: 'ranking' };
+    var SECTION_PARENT = { menuorder: 'home', feeds: 'home', searchfeeds: 'home', aiomanager: 'addons', subtitlelook: 'subtitles', rankfilters: 'ranking', rankplay: 'ranking' };
     Object.keys(SETTINGS_GROUPS).forEach(function (g) {
         SETTINGS_GROUPS[g].rows.forEach(function (row) { SECTION_PARENT[row[2]] = g; });
     });
@@ -427,6 +433,7 @@
         else if (_settingsSection === 'aiomanager') { settingsAiom(wrap); }
         else if (_settingsSection === 'server') { settingsServer(wrap); }
         else if (_settingsSection === 'appearance') { settingsAppearance(wrap); }
+        else if (_settingsSection === 'home') { settingsHome(wrap); }
         else if (_settingsSection === 'formats') { settingsFormats(wrap); }
         else { settingsMenu(wrap); }
         var ver = appVersion();
@@ -468,7 +475,8 @@
         wrap.appendChild(U.el('h2', null, 'Settings'));
         wrap.appendChild(sectionRow('Content', 'Addons, API keys, IPTV playlists, streaming apps, importing a configuration file', 'content'));
         wrap.appendChild(sectionRow('Playback', 'Audio and subtitles, source ranking, feed sources, formats', 'playback'));
-        wrap.appendChild(sectionRow('Appearance', 'Background, accent color, zoom, poster orientation, Home feeds, Search results', 'appearance'));
+        wrap.appendChild(sectionRow('Appearance', 'Background, accent color, zoom, posters, spoilers', 'appearance'));
+        wrap.appendChild(sectionRow('Home', 'The tab it opens on, the top menu, Home feeds, Search results', 'home'));
         wrap.appendChild(sectionRow('Diagnostics', 'Logs, storage, installed apps; how StremioK was installed', 'diagnostics'));
         if (typeof YTPlay !== 'undefined' && YTPlay.installMode && YTPlay.installMode() === 'tizenbrew') { wrap.appendChild(U.el('div', 'hint', TIZENBREW_NOTE)); }
         focusBack(wrap);
@@ -2055,7 +2063,7 @@
         return first;
     }
 
-    // ----- Home feeds and Search results (Settings > Appearance): order, show / hide -----
+    // ----- Home feeds and Search results (Settings > Home): order, show / hide -----
     // kind 'home': the Home rows (every catalog); 'search': the Search rows (every catalog
     // that can search, IPTV as one per type). ▲/▼ moves one; OK on its name shows / hides it.
     // 'menu': the top menu between Watching and Settings (the tabs, Discover, Search: ViewParts'
@@ -2063,7 +2071,7 @@
     var MENU_FIXED = { discover: 'Discover', search: 'Search' };
     function menuHidden(k) { return !MENU_FIXED[k] && (Stremio.getPrefs().hiddenTabs || []).indexOf(k) !== -1; }
     var FEED_KINDS = {
-        menu: { section: 'menuorder', title: 'Appearance  ›  Menu', hint: 'Watching comes first and Settings last: ⇈ ▲ ▼ ⇊ put the rest in your order · OK on a tab shows/hides it.',
+        menu: { section: 'menuorder', title: 'Home  ›  Menu', hint: 'Watching comes first and Settings last: ⇈ ▲ ▼ ⇊ put the rest in your order · OK on a tab shows/hides it.',
             list: function () {
                 return Promise.resolve(V.menuOrder().map(function (k) {
                     var t = (V.HOME_TABS || []).filter(function (x) { return x.key === k; })[0];
@@ -2080,11 +2088,11 @@
                 markHomeDirty();
             },
             hidden: menuHidden },
-        home: { section: 'feeds', title: 'Appearance  ›  Home feeds', hint: '▲/▼ reorder a feed · OK on the name shows/hides it on Home.',
+        home: { section: 'feeds', title: 'Home  ›  Home feeds', hint: '▲/▼ reorder a feed · OK on the name shows/hides it on Home.',
             list: function () { return Stremio.listCatalogsOrdered(); }, keyOf: function (c) { return Stremio.catalogKey(c); },
             move: function (k, d) { return Stremio.moveFeed(k, d); }, toggle: function (k) { Stremio.toggleFeed(k); },
             hidden: function (k) { return Stremio.isFeedHidden(k); } },
-        search: { section: 'searchfeeds', title: 'Appearance  ›  Search results', hint: '▲/▼ reorder the Search rows · OK on the name shows/hides one in Search.',
+        search: { section: 'searchfeeds', title: 'Home  ›  Search results', hint: '▲/▼ reorder the Search rows · OK on the name shows/hides one in Search.',
             list: function () { return Stremio.searchSourcesOrdered(); }, keyOf: function (src) { return src.key; },
             move: function (k, d) { return Stremio.moveSearchFeed(k, d); }, toggle: function (k) { Stremio.toggleSearchFeed(k); },
             hidden: function (k) { return Stremio.isSearchFeedHidden(k); } },

@@ -48,7 +48,7 @@ is shown or appears in an error message, and in the logs.
 | YouTube | What any YouTube page asks for (no account, no key), through StremioK's service | YouTube videos, trailers, YouTube catalogs |
 | SponsorBlock (`sponsor.ajay.app`) | The first 4 characters of a hash of the video's id: the answer covers every video sharing them, so it isn't told which one. For DeArrow titles in a list, the listed videos' ids (what a channel lists, not what you watch) | YouTube videos and lists |
 | Media servers (debrid services, the hosts in a source's link) | Requests for the video itself, with whatever the link carries (debrid tokens) and the headers an addon asks for | As something plays or downloads |
-| IPTV providers | Requests for your playlists, their TV guides and channels, with the username and password in their links and a channel's own headers; a Stalker portal also gets your MAC address, through StremioK's service; an Xtream provider is asked for its films and series, and the details of those you open | As you load playlists and watch |
+| IPTV providers | Requests for your playlists, their TV guides and channels, with the username and password in their links and a channel's own headers; a Stalker portal gets your MAC address, through StremioK's service. Xtream and Stalker ones are asked for films and series (a portal, searched for a title you open) | As you load playlists and watch |
 | Subtitle-file hosts | Requests for the subtitle files your addons list | As something plays |
 | Image hosts | Requests for posters, pictures and addon logos | As you browse |
 

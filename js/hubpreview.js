@@ -3,7 +3,7 @@
    (service/preview.js), which hands them to the TV: when StremioK opens (once the shows'
    episodes are current) and when it's left (the TV's Home), only when they changed, and at
    most once every 10 minutes, as Samsung asks. A tile picked on the home bar opens StremioK
-   on that title, on its episode. Off (Settings › Appearance › Home bar preview): the row
+   on that title, on its episode. Off (Settings › Home › Home bar preview): the row
    emptied. The sideloaded app only: TizenBrew runs no such service. Global namespace: HubPreview */
 var HubPreview = (function () {
     'use strict';

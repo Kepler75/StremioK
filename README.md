@@ -31,8 +31,8 @@ video through Samsung's AVPlay API.
 - **The player:** resume where you stopped, skip intros, recaps and credits, next episode,
   subtitles (addons', the file's own, and your own files on a USB drive) with your choice of look, audio
   tracks remembered, switching source mid-playback, private viewing.
-- **IPTV and radio** from your M3U playlists, Xtream accounts (with their films and series) and
-  Stalker portals, with CH+ / CH−.
+- **IPTV and radio** from your M3U playlists, Xtream accounts and Stalker portals (with their
+  films and series), with CH+ / CH−.
 - **YouTube:** live channels, trailers, and your own YouTube channels, playlists and searches,
   with SponsorBlock, DeArrow, chapters and captions.
 - **Local:** the videos on a USB drive, matched to their titles.

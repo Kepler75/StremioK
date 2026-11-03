@@ -163,7 +163,7 @@ var Stremio = (function () {
         var p = U.store.get(PREFS_KEY, {}) || {};
         return { posterShape: p.posterShape || 'portrait', accent: p.accent || 'indigo', bg: p.bg || 'dark',
             zoom: [110, 120, 130, 140].indexOf(p.zoom) !== -1 ? p.zoom : 100,   // Settings > Appearance: everything bigger (percent)
-            rowCards: p.rowCards === 'all' || [50, 100, 200].indexOf(p.rowCards) !== -1 ? p.rowCards : 30,   // Settings > Appearance: titles in a Home row ('all': Unlimited)
+            rowCards: p.rowCards === 'all' || [50, 100, 200].indexOf(p.rowCards) !== -1 ? p.rowCards : 30,   // Settings > Home: titles in a Home row ('all': Unlimited)
             formatsAuto: p.formatsAuto !== false,   // Settings > Formats: mark "Not working" on its own
             allowLocal: p.allowLocal === true,      // Settings > Addons: home-network links from internet addons
             addonWait: ADDON_WAITS.indexOf(p.addonWait) !== -1 ? p.addonWait : 0,   // Settings > Addons: seconds to wait for an addon (0: Normal)
@@ -175,11 +175,11 @@ var Stremio = (function () {
             nextOnFail: p.nextOnFail !== false,          // Settings > Source ranking: a source that doesn't start gives way to the next
             sizeLimits: { movie: sizeLimits(p.sizeLimits, 'movie'), series: sizeLimits(p.sizeLimits, 'series') },   // Settings > Source ranking (GB; 0: none)
             posterRatings: p.posterRatings === true,   // Settings > Appearance: IMDb rating on cards
-            homePreview: p.homePreview !== false,      // Settings > Appearance: Continue Watching on the TV's home bar (js/hubpreview.js)
+            homePreview: p.homePreview !== false,      // Settings > Home: Continue Watching on the TV's home bar (js/hubpreview.js)
             homePreviewOrder: p.homePreviewOrder === 'watching' ? 'watching' : 'recent',   // ...its tiles: the latest first, or as in Watching
-            hiddenTabs: wordList(p.hiddenTabs, 20, 20),   // Settings > Appearance > Menu: tabs hidden
+            hiddenTabs: wordList(p.hiddenTabs, 20, 20),   // Settings > Home > Menu: tabs hidden
             menuOrder: wordList(p.menuOrder, 20, 20),     // ...and the menu's order (see ViewParts.menuOrder)
-            startTab: /^[a-z]{1,20}$/.test(p.startTab || '') ? p.startTab : 'continue',   // Settings > Appearance > Start on: the Home tab a launch opens on
+            startTab: /^[a-z]{1,20}$/.test(p.startTab || '') ? p.startTab : 'continue',   // Settings > Home > Start on: the Home tab a launch opens on
             hideWords: wordList(p.hideWords, 30, 40),     // Settings > Source ranking: sources with these words at the bottom
             watchRegion: /^[A-Z]{2}$/.test(p.watchRegion || '') ? p.watchRegion : '' };   // Settings > Integrations ('' = automatic)
     }
@@ -433,10 +433,11 @@ var Stremio = (function () {
                 if (m) { addons.push({ url: url, base: baseOf(url), manifest: m }); }
             });
             // Prepend so the IPTV rows sort first on Home (reorder them in Settings >
-            // Appearance > Home feeds; there's no cap on how many rows or feeds).
+            // Home > Home feeds; there's no cap on how many rows or feeds).
             if (iptvNow) { addons.unshift(IPTV.synthAddon()); }
             else if (iptvOn) { iptvJoin(addons, rev); }
             if (typeof XtVod !== 'undefined' && XtVod.isEnabled()) { addons.push(XtVod.synthAddon()); }   // (your Xtream accounts' films and series: after your addons)
+            if (typeof StVod !== 'undefined' && StVod.isEnabled()) { addons.push(StVod.synthAddon()); }   // (your Stalker portals' films and series)
             if (hasYouTube()) { addons.push(YouTube.synthAddon()); }   // (after your addons: its rows last on Home)
             if (typeof Trakt !== 'undefined' && Trakt.isConnected()) { addons.push(Trakt.synthAddon()); }   // (your Watchlist and Up next)
             _loaded = addons;
@@ -522,6 +523,7 @@ var Stremio = (function () {
     }
     if (typeof XtVod !== 'undefined' && XtVod.onVodChange) { XtVod.onVodChange(iptvRebuild); }
     if (typeof XtVod !== 'undefined' && XtVod.onChange) { XtVod.onChange(function () { sourcesChanged(); }); }   // (its list read: its copies, on titles asked before)
+    if (typeof StVod !== 'undefined' && StVod.onChange) { StVod.onChange(function () { sourcesChanged(); }); }   // (a portal's films and series: its copies too)
     function iptvReload(id) {
         configChanged();
         return _hasIptv ? IPTV.reload(id) : Promise.resolve(null);
@@ -840,7 +842,7 @@ var Stremio = (function () {
     function setPlayedFirst(on) { var g = getRanking(); g.played = !!on; saveRanking(g); }
     function resetRanking() { U.store.remove(RANKING_KEY); }
 
-    function listCatalogsOrdered() { return homeFeeds.ordered(); }   // (Settings > Appearance > Home feeds)
+    function listCatalogsOrdered() { return homeFeeds.ordered(); }   // (Settings > Home > Home feeds)
     function catalogsForHome() { return homeFeeds.visible(); }      // ordered + shown (the Home rows)
     function moveFeed(key, dir) { return homeFeeds.move(key, dir); }
     function toggleFeed(key) { homeFeeds.toggle(key); }
@@ -892,6 +894,9 @@ var Stremio = (function () {
         }
         if (/^xv[ms]\./.test(id) && typeof XtVod !== 'undefined') {
             return XtVod.meta(type, id).then(function (m) { if (!m) { throw new Error('Not found on the Xtream server'); } return m; });
+        }
+        if (/^sv[ms]\./.test(id) && typeof StVod !== 'undefined') {
+            return StVod.meta(type, id).then(function (m) { if (!m) { throw new Error('Not found on the Stalker portal'); } return m; });
         }
         if (/^iptv:/.test(id)) {
             return IPTV.meta(id).then(function (m) {
@@ -962,6 +967,9 @@ var Stremio = (function () {
         }
         if (/^xv[ms]\./.test(id) && typeof XtVod !== 'undefined') {   // (an Xtream account's own film or episode)
             return XtVod.streams(type, id).then(function (l) { l.forEach(function (s) { s._addon = 'Xtream'; }); if (onUpdate) { onUpdate(l, 0); } return l; });
+        }
+        if (/^sv[ms]\./.test(id) && typeof StVod !== 'undefined') {   // (a Stalker portal's own film or episode)
+            return StVod.streams(type, id).then(function (l) { l.forEach(function (s) { s._addon = 'Stalker'; }); if (onUpdate) { onUpdate(l, 0); } return l; });
         }
         var key = type + ':' + id, e = _streamCache[key];
         if (e && !force && (e.pending > 0 || Date.now() - e.at < STREAM_TTL)) {
@@ -1855,7 +1863,7 @@ var Stremio = (function () {
     // What Search asks, as the Search rows: one source per catalog that can search, named
     // like its Home feed ("Series · Popular · Cinemeta"; a catalog just called "Search"
     // goes by its type and addon), and IPTV's groups as one source per type. Sources are
-    // ordered and shown / hidden in Settings > Appearance > Search results.
+    // ordered and shown / hidden in Settings > Home > Search results.
     function searchSources() {
         return getSearchCatalogs().then(function (cats) {
             var out = [], local = {};

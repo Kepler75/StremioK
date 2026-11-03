@@ -3,8 +3,8 @@
 Every setting, where it is, its choices and what it does. Defaults are in **bold**. For how to
 use the features, see the [user guide](USER-GUIDE.md).
 
-Settings (**Settings ⚙**, at the end of the top menu, or **0** on the remote) has four groups:
-[Content](#content), [Playback](#playback), [Appearance](#appearance) and
+Settings (**Settings ⚙**, at the end of the top menu, or **0** on the remote) has five groups:
+[Content](#content), [Playback](#playback), [Appearance](#appearance), [Home](#home) and
 [Diagnostics](#diagnostics). Each opens a page of its sections. BACK goes up a level, onto the
 row you came from. Wherever a setting asks for a link or text, **▣ From your phone** sends it
 from your phone instead (see the [user guide](USER-GUIDE.md#typing-or-sending-from-your-phone)).
@@ -18,6 +18,7 @@ In a list you order, ▲ / ▼ move an item one place and ⇈ / ⇊ move it to t
   [Seeking & buffering](#seeking--buffering), [Source ranking](#source-ranking),
   [Formats](#formats), [Private viewing](#private-viewing)
 - [Appearance](#appearance)
+- [Home](#home)
 - [Diagnostics](#diagnostics): [Logs](#logs), [Storage](#storage),
   [Installed apps](#installed-apps)
 
@@ -246,15 +247,20 @@ them.
 | *Background* | Black, **Dark**, Light Gray, White | The light ones have dark text; the player keeps its dark controls. |
 | *Accent color* | **Indigo**, and nine others | |
 | *Zoom* | **100%**, 110%, 120%, 130%, 140% | Everything bigger, to read from further away; fewer cards fit a row. Subtitles keep theirs. |
-| *Titles in a Home row* | **30**, 50, 100, 200, Unlimited | How many titles a Home row holds, for catalogs and IPTV groups. More titles load slower; *Unlimited* can take much longer, an addon may refuse so many requests, and very long rows can slow an older TV. ★ Favorites shows all yours. |
 | *Poster orientation* | **Portrait**, Landscape | |
 | *Ratings on posters* | **Off**, On | A title's IMDb rating on its card (★ 7.8), when the catalog gives it. Nothing extra is downloaded. |
-| *Home bar preview* | **Most recent first**, As in Watching, Off | Continue Watching on the TV's own home bar (StremioK must be on it: Apps › StremioK › *Add to Home*): up to 8 tiles of movies and series you can play now. The sideloaded app on Tizen 4 and later only. |
-| *Start on* | **Watching** (Continue Watching), any Home tab | The tab StremioK opens on (the Guide once its guide is read; Watching for a hidden tab). |
-| *Menu ›* | ⇈ ▲ ▼ ⇊, OK to show or hide | The top menu's order between Watching (first) and Settings (last), and which Home tabs show. Discover and Search always show. |
 | *Hide spoilers* | **Off**, Pictures, Pictures and synopses | Blurs the stills of episodes you haven't watched (and hides their synopses). |
+
+## Home
+
+| Setting | Choices | What it does |
+|---------|---------|--------------|
+| *Start on* | **Watching** (Continue Watching), any Home tab | The tab StremioK opens on (the Guide once its guide is read; Watching for a hidden tab). |
+| *Titles in a Home row* | **30**, 50, 100, 200, Unlimited | How many titles a Home row holds, for catalogs and IPTV groups. More load slower; *Unlimited* much slower, an addon may refuse so many requests, and very long rows can slow an older TV. ★ Favorites shows all yours. |
+| *Home bar preview* | **Most recent first**, As in Watching, Off | Continue Watching on the TV's own home bar (StremioK must be on it: Apps › StremioK › *Add to Home*): up to 8 tiles you can play. Sideloaded app, Tizen 4 and later. |
+| *Menu ›* | ⇈ ▲ ▼ ⇊, OK to show or hide | The top menu's order between Watching (first) and Settings (last), and which Home tabs show. Discover and Search always show. |
 | *Home feeds ›* | ▲ / ▼, OK to show or hide | The order of the Home rows, and which show. |
-| *Search results ›* | ▲ / ▼, OK to show or hide | The same for Search's rows. A hidden one isn't asked at all. |
+| *Search results ›* | ▲ / ▼, OK to show or hide | The same for Search's rows; a hidden one isn't asked. |
 
 ## Diagnostics
 

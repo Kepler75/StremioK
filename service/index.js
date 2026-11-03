@@ -30,6 +30,10 @@
  *                       why }: a Stalker portal's channels as an M3U playlist; /stalker/link?portal&mac
  *                       &u=<a channel's link in it> -> JSON { url } or { why }: its link to play now
  *                       (see stalkerControl); StremioK only (entryAllowed)
+ *   /stalker/vod?portal&mac&type=movie|series&do=cats|list|seasons[&cat=][&q=][&skip=][&id=][&via=vod]
+ *                       -> JSON { cats } | { items, more } | { seasons } or { why }: its films and
+ *                       series; /stalker/play?portal&mac&cmd=[&ep=] -> 302 to a film's or episode's
+ *                       link, asked now (the player's: the token, or the guide ticket)
  *   /epg/load?u=<guide>&k=<bitset>[&force=1] (or POSTed: the same in its body, as StremioK
  *                       asks) -> JSON { state, at, channels, programmes, partial,
  *                       error }: a playlist's TV guide (XMLTV) read for StremioK's channels
@@ -1819,7 +1823,7 @@ function handle(req, res) {
         if (/^\/epg\//.test(path)) { epgControl(req, res, path, parts[1]); return; }   // (a playlist's TV guide: see epgControl)
         if (path === '/aiom/addons') { aiomControl(req, res, parts[1], leaving); return; }
         if (path === '/xtvod/list' || path === '/xtvod/find') { xtvControl(req, res, path, parts[1]); return; }   // (an Xtream account's films and series: see xtvControl)
-        if (path === '/stalker/list' || path === '/stalker/link' || path === '/stalker/genres') { stalkerControl(req, res, path, parts[1], leaving); return; }   // (a Stalker portal: see stalkerControl)   // (AIOManager's addons: see aiomControl)   // (a live channel's sound repacked: see liveControl)   // (the phone's one-time page: see below)
+        if (path === '/stalker/list' || path === '/stalker/link' || path === '/stalker/genres' || path === '/stalker/vod' || path === '/stalker/play') { stalkerControl(req, res, path, parts[1], leaving); return; }   // (a Stalker portal: see stalkerControl)   // (AIOManager's addons: see aiomControl)   // (a live channel's sound repacked: see liveControl)   // (the phone's one-time page: see below)
         if (path === '/fsfile') {   // a USB file over HTTP, with Range: the player reads a big one from here (see fsfile in the header)
             var whyF = fsAllowed(req, parts[1]);
             if (whyF) { send(res, 403, 'text/plain', 'not allowed (' + whyF + ')'); return; }
@@ -2971,7 +2975,7 @@ function xtvControl(req, res, path, query) {
     answer();
 }
 
-// ---- Stalker portals (/stalker/list, /stalker/link) ----
+// ---- Stalker portals (/stalker/list, /stalker/link, /stalker/genres; films and series below) ----
 // A Stalker (Ministra) portal, asked as a MAG box asks: its MAC address in a cookie, a MAG
 // User-Agent, a session token from a handshake (none of which a web page can send). Its API at
 // <address>/portal.php, else /server/load.php (the address's /c/ left out). list: its genres and
@@ -3158,8 +3162,138 @@ function stalkerM3u(s, list, genres) {
     s.cmds = cmds;
     return { m3u: out.join('\n') + '\n', count: n };
 }
+
+// ---- A Stalker portal's films and series (/stalker/vod, /stalker/play) ----
+// Asked as they're shown, never read whole: cats (a type's categories: films type=vod, series
+// type=series, a portal without that module none), list (a category's titles, newest first, or
+// those a search finds: STALKER_VOD_TAKE from skip, STALKER_VOD_PAGES of the portal's pages at
+// most; a film that's a series, is_series, marked so), seasons (a series' seasons and their
+// episodes: a season's cmd and its episodes' numbers, or each episode's own cmd) and play (a film's
+// or an episode's link asked now, create_link, and sent there: what's saved to resume stays good).
+var STALKER_VOD_TAKE = 42, STALKER_VOD_PAGES = 4, STALKER_VOD_CATS_MS = 10 * 60000, STALKER_SEASONS = 60, STALKER_EPISODES = 500;
+function stalkerText(v, n) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n); }
+function stalkerCmdOk(cmd) { return !!cmd && cmd.length <= 2000 && !/[\r\n]/.test(cmd); }
+function stalkerVodItem(s, o) {
+    if (!o || typeof o !== 'object' || o.id == null) { return null; }
+    var id = String(o.id), name = stalkerText(o.name || o.o_name, 200);
+    if (!/^[\w-]{1,40}$/.test(id) || !name) { return null; }
+    var it = { id: id, name: name }, y = parseInt(o.year, 10), pic = String(o.screenshot_uri || o.cover || ''), r = parseFloat(o.rating_imdb) || parseFloat(o.rating_kinopoisk), t = parseInt(o.time, 10), cmd = String(o.cmd || '');
+    if (y > 1880 && y < 2100) { it.year = y; }
+    if (/^\//.test(pic)) { var b = urllib.parse(s.base); pic = b.protocol + '//' + b.host + pic; }   // (a picture on the portal's own server)
+    if (/^https?:\/\//i.test(pic) && pic.length < 600) { it.pic = pic; }
+    if (r > 0 && r <= 10) { it.rating = Math.round(r * 10) / 10; }
+    if (stalkerText(o.description, 1)) { it.desc = stalkerText(o.description, 2000); }
+    if (stalkerText(o.director, 1)) { it.director = stalkerText(o.director, 200); }
+    if (stalkerText(o.actors, 1)) { it.cast = stalkerText(o.actors, 400); }
+    if (stalkerText(o.genres_str, 1)) { it.genres = stalkerText(o.genres_str, 200); }
+    if (t > 0 && t < 1000) { it.mins = t; }
+    if (stalkerCmdOk(cmd)) { it.cmd = cmd; }
+    if (+o.is_series === 1 || o.is_series === true) { it.series = true; }
+    return it;
+}
+function stalkerVodCats(s, type, ctl, cb) {
+    var kept = s.vodCats && s.vodCats[type];
+    if (kept && Date.now() - kept.at < STALKER_VOD_CATS_MS) { cb(null, kept.list); return; }
+    stalkerAsk(s, 'type=' + (type === 'movie' ? 'vod' : 'series') + '&action=get_categories', ctl, function (err, js) {
+        if (err && (err.auth || type === 'movie')) { cb(err); return; }   // (no series module: no series)
+        var list = (Array.isArray(js) ? js : []).filter(function (x) { return x && x.id != null && String(x.id) !== '*' && x.title; }).slice(0, STALKER_GENRES)
+            .map(function (x) { return { id: String(x.id).slice(0, 40), title: stalkerText(x.title, 100) }; });
+        s.vodCats = s.vodCats || {};
+        s.vodCats[type] = { at: Date.now(), list: list };
+        cb(null, list);
+    });
+}
+// cb(err, { items, more }): from skip on, in the portal's pages (s.vodSize titles each, learned
+// from its first answer: a page asked for that first, once, when skip is past it).
+function stalkerVodList(s, type, cat, words, skip, ctl, cb) {
+    var params = 'type=' + (type === 'movie' ? 'vod' : 'series') + '&action=get_ordered_list&category=' + encodeURIComponent(cat || '*') + '&genre=*&sortby=added&hd=0&not_ended=0&fav=0' +
+        (words ? '&search=' + encodeURIComponent(words) : '');
+    function page(p, done) {
+        stalkerAsk(s, params + '&p=' + p, ctl, function (err, o) {
+            if (err) { done(err); return; }
+            var d = o && Array.isArray(o.data) ? o.data : [], total = +(o && o.total_items) || 0;
+            if (!s.vodSize && d.length && total > d.length) { s.vodSize = d.length; }
+            done(null, d, total);
+        });
+    }
+    function from() {
+        var size = s.vodSize || STALKER_VOD_TAKE, p = Math.floor(skip / size) + 1, drop = skip % size, out = [], asked = 0;
+        (function more() {
+            page(p, function (err, d, total) {
+                if (err) { if (out.length) { cb(null, { items: out, more: true }); } else { cb(err); } return; }
+                asked++;
+                d.slice(drop).forEach(function (o) { var it = stalkerVodItem(s, o); if (it) { out.push(it); } });
+                drop = 0;
+                var left = d.length && (!total || p * (s.vodSize || d.length) < total);
+                if (!left || out.length >= STALKER_VOD_TAKE || asked >= STALKER_VOD_PAGES) { cb(null, { items: out.slice(0, STALKER_VOD_TAKE * 2), more: !!left }); return; }
+                p++;
+                more();
+            });
+        })();
+    }
+    if (skip > 0 && !s.vodSize) {
+        page(1, function (err, d) {
+            if (err) { cb(err); return; }
+            if (s.vodSize) { from(); return; }
+            var out = [];   // (one page held all there is)
+            d.slice(skip).forEach(function (o) { var it = stalkerVodItem(s, o); if (it) { out.push(it); } });
+            cb(null, { items: out, more: false });
+        });
+        return;
+    }
+    from();
+}
+// A series' seasons: { season, name, cmd, eps: [{ n, cmd?, name? }] }. viaVod: a film that's a
+// series (is_series), its seasons asked of the films (type=vod).
+function stalkerSeasonNo(o, at) {
+    var n = parseInt(o.season_number, 10), m = /(\d+)/.exec(String(o.name || ''));
+    return n >= 0 ? n : m ? +m[1] : at;
+}
+function stalkerSeasons(s, id, viaVod, ctl, cb) {
+    var base = viaVod ? 'type=vod&action=get_ordered_list&movie_id=' + encodeURIComponent(id) : 'type=series&action=get_ordered_list&movie_id=' + encodeURIComponent(id) + '&season_id=0&episode_id=0';
+    var out = [], p = 1;
+    function all(params, each, done) {   // (every page of an answer, 10 at most)
+        var page = 1, got = 0;
+        (function more() {
+            stalkerAsk(s, params + '&p=' + page, ctl, function (err, o) {
+                if (err) { done(err); return; }
+                var d = o && Array.isArray(o.data) ? o.data : [], total = +(o && o.total_items) || 0;
+                d.forEach(function (x, i) { each(x, got + i + 1); });
+                got += d.length;
+                if (d.length && page < 10 && total > got) { page++; more(); } else { done(null); }
+            });
+        })();
+    }
+    all(base, function (x, at) {
+        if (!x || typeof x !== 'object' || out.length >= STALKER_SEASONS) { return; }
+        var cmd = String(x.cmd || ''), eps = Array.isArray(x.series) ? x.series.map(function (n) { return parseInt(n, 10); }).filter(function (n) { return n >= 0; }).slice(0, STALKER_EPISODES) : null;
+        out.push({ season: stalkerSeasonNo(x, at), name: stalkerText(x.name, 100), cmd: stalkerCmdOk(cmd) ? cmd : '', id: String(x.id == null ? '' : x.id).slice(0, 60), eps: eps ? eps.map(function (n) { return { n: n }; }) : null });
+    }, function (err) {
+        if (err && !out.length) { cb(err); return; }
+        (function next(i) {   // (seasons that don't list their episodes: asked for them, each with its own cmd)
+            while (i < out.length && out[i].eps) { i++; }
+            if (i >= out.length || viaVod) { cb(null, out.filter(function (x) { return x.eps && x.eps.length; }).map(function (x) { delete x.id; return x; })); return; }
+            var se = out[i];
+            se.eps = [];
+            all('type=series&action=get_ordered_list&movie_id=' + encodeURIComponent(id) + '&season_id=' + encodeURIComponent(se.id) + '&episode_id=0', function (e, at) {
+                var cmd = String((e && e.cmd) || '');
+                if (!e || !stalkerCmdOk(cmd) || se.eps.length >= STALKER_EPISODES) { return; }
+                var n = parseInt(e.series_number, 10), m = /(\d+)/.exec(String(e.name || ''));
+                se.eps.push({ n: n >= 0 ? n : m ? +m[1] : at, cmd: cmd, name: stalkerText(e.name, 120) });
+            }, function () { next(i + 1); });
+        })(0);
+    });
+}
+// A film's or an episode's link to play now: cmd (an episode of a season's cmd: ep, its number).
+function stalkerVodLink(s, cmd, ep, ctl, cb) {
+    stalkerAsk(s, 'type=vod&action=create_link&cmd=' + encodeURIComponent(cmd) + '&series=' + (ep >= 0 ? ep : '') + '&forced_storage=undefined&disable_ad=0&download=0&force_ch_link_check=0', ctl, function (err, js) {
+        if (err) { cb(err); return; }
+        var m = /(https?:\/\/[^\s"]+)/i.exec(String((js && js.cmd) || ''));
+        cb(m ? null : upError('the portal gave no link for this title', 502), m ? m[1] : null);
+    });
+}
 function stalkerControl(req, res, path, query, leaving) {
-    if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
+    if (!entryAllowed(req, query) && !(path === '/stalker/play' && hasTicket(query))) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }   // (play: the player asks, without the header)
     var q = {};
     (query || '').split('&').forEach(function (kv) { var i = kv.indexOf('='); if (i > 0) { try { q[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); } catch (e) {} } });
     var portal = String(q.portal || '').trim(), mac = String(q.mac || '').toUpperCase();
@@ -3179,6 +3313,30 @@ function stalkerControl(req, res, path, query, leaving) {
                 done(m ? null : upError('the portal gave no link for this channel', 502), m ? m[1] : null);
             });
         }, function (err, link) { json(err ? { why: err.message || 'failed' } : { url: link }); });
+        return;
+    }
+    if (path === '/stalker/play') {   // (a film's or episode's link: asked now, and sent there)
+        var cmd = String(q.cmd || ''), ep = /^\d{1,4}$/.test(q.ep || '') ? +q.ep : -1;
+        if (!stalkerCmdOk(cmd)) { send(res, 400, 'text/plain', 'bad title'); return; }
+        stalkerWith(s, portal, mac, ctl, function (ss, done) { stalkerVodLink(ss, cmd, ep, ctl, done); }, function (err, link) {
+            if (err) { log('Stalker: no link for a title (' + (err.message || 'failed') + ')'); send(res, 502, 'text/plain', err.message || 'failed'); return; }
+            res.writeHead(302, { 'Location': link, 'Cache-Control': 'no-store' });
+            res.end();
+        });
+        return;
+    }
+    if (path === '/stalker/vod') {
+        var type = q.type === 'series' ? 'series' : 'movie', what = String(q.do || '');
+        stalkerWith(s, portal, mac, ctl, function (ss, done) {
+            if (what === 'cats') { stalkerVodCats(ss, type, ctl, function (err, list) { done(err, { cats: list }); }); return; }
+            if (what === 'list') {
+                var cat = /^[\w.-]{1,40}$/.test(q.cat || '') ? q.cat : '*', words = String(q.q || '').trim().slice(0, 120), skip = Math.min(parseInt(q.skip, 10) || 0, 100000);
+                stalkerVodList(ss, type, cat, words, skip, ctl, done);
+                return;
+            }
+            if (what === 'seasons' && /^[\w-]{1,40}$/.test(q.id || '')) { stalkerSeasons(ss, q.id, q.via === 'vod', ctl, function (err, l) { done(err, { seasons: l }); }); return; }
+            done(upError('bad request', 400));
+        }, function (err, r) { json(err ? { why: err.message || 'failed' } : r); });
         return;
     }
     if (path === '/stalker/genres') {

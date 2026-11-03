@@ -3,6 +3,13 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.2.7 — 2026-11-03
+- **A Stalker portal's films and series:** in the Movies and Series tabs, Discover by the
+  portal's categories, and Search; on titles from your addons, the portal's copy is a source
+  (*Stalker*). Experimental, like its channels.
+- **Settings › Home**, a new group: *Start on*, *Titles in a Home row*, *Home bar preview*, *Menu*,
+  *Home feeds* and *Search results* moved there from Appearance, which keeps how StremioK looks.
+
 ## 2.2.6 — 2026-11-02
 - **Watching:** a title saved without a poster, or whose poster no longer loads, shows its usual
   poster instead of only its name, for titles already there too (#6). One still without a
