@@ -92,7 +92,8 @@ sources and subtitles, and YouTube, SponsorBlock and the skip-time services, as 
   a network you trust: addon and playlist links often carry your tokens or passwords.
 - It exists only while the QR code is on screen: at most 5 minutes, and it closes 30 seconds after
   the TV stops asking for it (StremioK closed or in the background).
-- Its address has a random one-time code, and it takes one entry.
+- Its address has a random one-time code; one entry. *Export configuration* uses one
+  the other way: a file for your phone, with your passwords and API keys.
 - Its port listens on the TV's home-network address only, and only while a page is open.
 
 ## A streaming server

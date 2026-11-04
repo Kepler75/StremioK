@@ -382,12 +382,12 @@ var U = (function () {
         return cut ? out.replace(/[ \t]{2,}/g, ' ').replace(/^[ \t]+|[ \t]+$/gm, '') : out;
     }
 
-    /* Request headers a stream needs (IPTV's http-user-agent / http-referrer): only these
-       two (the only ones the TV's player takes), as { ua, ref }. Each is kept to printable
-       ASCII on one line (a line break would add a header of its own) and a sane length; a
-       Referer must be an http(s) link. The names Stremio uses ("User-Agent", "Referer") are
-       read too. Returns null when nothing usable is left. */
-    var HEADER_MAX = { ua: 512, ref: 2048 };
+    /* Request headers a stream needs (IPTV's http-user-agent / http-referrer, a cookie): only
+       these three (the ones the TV's player takes), as { ua, ref, cookie }. Each is kept to
+       printable ASCII on one line (a line break would add a header of its own) and a sane length;
+       a Referer must be an http(s) link. The names Stremio uses ("User-Agent", "Referer",
+       "Cookie") are read too. Returns null when nothing usable is left. */
+    var HEADER_MAX = { ua: 512, ref: 2048, cookie: 3000 };   // (a cookie: within what a newer TV's service reads of a request, 8 KB)
     function headerValue(v, max) {
         if (typeof v !== 'string') { return ''; }
         v = v.trim();
@@ -397,11 +397,13 @@ var U = (function () {
         if (!h || typeof h !== 'object') { return null; }
         var ua = headerValue(h.ua != null ? h.ua : (h['User-Agent'] || h['user-agent']), HEADER_MAX.ua);
         var ref = headerValue(h.ref != null ? h.ref : (h.Referer || h.referer), HEADER_MAX.ref);
+        var cookie = headerValue(h.cookie != null ? h.cookie : (h.Cookie || h.COOKIE), HEADER_MAX.cookie);
         if (ref && !/^https?:\/\/[^\s]+$/i.test(ref)) { ref = ''; }
-        if (!ua && !ref) { return null; }
+        if (!ua && !ref && !cookie) { return null; }
         var out = {};
         if (ua) { out.ua = ua; }
         if (ref) { out.ref = ref; }
+        if (cookie) { out.cookie = cookie; }
         return out;
     }
 

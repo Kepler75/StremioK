@@ -4,7 +4,6 @@
 (function (P) {
     'use strict';
     var S = P.S;
-    var useAV = P.useAV;
 
     // ----- from the other parts -----
     function startAV() { return P.startAV.apply(null, arguments); }   // core
@@ -119,7 +118,7 @@
             var v = variantByBw(bw);
             S.ctx.url = YTPlay.resolverUrl(S.ctx.yt, v ? v.h : 0, true, S.ctx.ytLang);
         }
-        if (useAV) { startAV(S.ctx.url, true); } else { startHTML5(S.ctx.url); }
+        if (P.useAV) { startAV(S.ctx.url, true); } else { startHTML5(S.ctx.url); }
     }
 
     // YouTube re-opens fail on the FIRST attempt but succeed on the next (an AVPlay
@@ -137,7 +136,7 @@
         // Right after a switch this retry is routine: keep saying "Switching to …"
         U.spinner(true, _switchNote || ((retryHeight ? retryHeight + 'p' : 'The stream') + ' didn\'t start — retrying…'));
         _switchNote = null;
-        if (useAV) { startAV(S.ctx.url, true); } else { startHTML5(S.ctx.url); }
+        if (P.useAV) { startAV(S.ctx.url, true); } else { startHTML5(S.ctx.url); }
         return true;
     }
 
@@ -165,7 +164,7 @@
         if (S.ctx.yt && typeof YTPlay !== 'undefined') { S.ctx.url = YTPlay.resolverUrl(S.ctx.yt, 0, true, S.ctx.ytLang); }
         _startNote = wasAuto ? '' : 'Playing with Auto quality';
         U.spinner(true, wasAuto ? 'Stream didn\'t start — retrying…' : 'Retrying with Auto quality…');
-        if (useAV) { startAV(S.ctx.url); } else { startHTML5(S.ctx.url); }
+        if (P.useAV) { startAV(S.ctx.url); } else { startHTML5(S.ctx.url); }
         return true;
     }
 
@@ -191,13 +190,20 @@
     }
     // h: the stream's own User-Agent / Referer ({ ua, ref }): the list is then read through
     // StremioK's service, which can send them (as the TV's player does); a web page can't.
+    // (kept MASTER_MS: the player's look at whether a playlist's entry is a film reads it too, see vodCheck)
+    var _masters = U.lru(6), MASTER_MS = 15000;
     function getHlsMaster(url, h) {
-        var viaService = !!(h && (h.ua || h.ref) && typeof YTPlay !== 'undefined' && YTPlay.hlsMaster && YTPlay.installMode && YTPlay.installMode() !== 'browser');
-        return (viaService ? YTPlay.hlsMaster(url, h) : U.getText(url, 8000, HLS_MASTER_MAX)).then(function (text) {
+        var k = url + '|' + JSON.stringify(h || {}), kept = _masters.get(k);
+        if (kept && Date.now() - kept.at < MASTER_MS) { return kept.p; }
+        var viaService = !!(h && (h.ua || h.ref || h.cookie) && typeof YTPlay !== 'undefined' && YTPlay.hlsMaster && YTPlay.installMode && YTPlay.installMode() !== 'browser');
+        var p = (viaService ? YTPlay.hlsMaster(url, h) : U.getText(url, 8000, HLS_MASTER_MAX)).then(function (text) {
             var t = ('' + (text || '')).replace(/^\uFEFF/, '').replace(/^\s+/, '');
             if (t.indexOf('#EXTM3U') !== 0) { throw new Error('not an HLS playlist'); }
             return t;
         });
+        _masters.set(k, { at: Date.now(), p: p });
+        p.then(null, function () { var x = _masters.get(k); if (x && x.p === p) { _masters.set(k, null); } });
+        return p;
     }
     var _variantsToken = 0;
     // url: the master to read (a ctx's variantUrl), or a stream to read it from only when
@@ -286,7 +292,7 @@
         _switchNote = 'Switching to ' + ytLangLabel(a) + '…';
         _startNote = 'Audio: ' + ytLangLabel(a);
         U.spinner(true, _switchNote);
-        if (useAV) { startAV(S.ctx.url, true); } else { startHTML5(S.ctx.url); }
+        if (P.useAV) { startAV(S.ctx.url, true); } else { startHTML5(S.ctx.url); }
     }
     function ytLanguageMenu() {
         var cur = currentYtLanguage(), list = ytLanguages().slice();
@@ -321,7 +327,7 @@
     // ----- for the other parts (and js/player.js) -----
     P.resetQuality = resetQuality; P.qualityOnStart = qualityOnStart; P.clearStartNote = clearStartNote;
     P.qualityHeight = qualityHeight; P.qualityCount = qualityCount; P.hasQualities = hasQualities; P.qualityUnread = qualityUnread;
-    P.adaptiveInfo = adaptiveInfo; P.tryFallback = tryFallback; P.switchSource = switchSource;
+    P.adaptiveInfo = adaptiveInfo; P.tryFallback = tryFallback; P.switchSource = switchSource; P.hlsMasterText = getHlsMaster;
     P.qualityLabel = qualityLabel; P.qualityMenu = qualityMenu;
     P.hasYtLanguages = hasYtLanguages; P.ytLanguageLabel = ytLanguageLabel; P.ytLanguageMenu = ytLanguageMenu;
 })(PlayerParts);

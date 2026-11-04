@@ -50,7 +50,7 @@ What to do when something doesn't work. For how things are meant to work, see th
 | An addon doesn't load | Settings › Content › Addons says why ("too large (over 2 MB)", "not an addon manifest", "timed out"…), with what the addon itself said (AIOStreams' "Invalid stream expression…"). *Refresh* says it too. |
 | An addon fails the first time, then works | It's hosted where it sleeps when unused and takes a while to wake. Set *Wait for addons* longer (Settings › Content › Addons). |
 | An old addon link won't add | Only v3 addons work. Old `/stremio/v1` addons (e.g. `opensubtitles.strem.io/stremio/v1`) aren't supported; use their v3 versions. |
-| Title pages fail ("Couldn't load") while one addon is down | The addon describing your titles isn't answering (Diagnostics › Logs shows its errors, like HTTP 521). Keep a second details addon such as Cinemeta below it, or a backup turned off to turn on while it's down. |
+| Title pages fail ("Couldn't load") while one addon is down | The addon describing your titles isn't answering (Diagnostics › Logs shows its errors, like HTTP 521). Keep a second details addon, such as Cinemeta, below it. |
 | Shows are described by the wrong addon (file names as episode titles) | A library addon (one describing shows from your files) answered before Cinemeta. The title page says which addon described it ("Details: Cinemeta"); move Cinemeta above the other with ▲ / ▼. |
 | An addon's links to a device on your home network don't open | *Local-network links from internet addons* is *Blocked* (the default). Allow it only for addons you trust (see [Privacy](PRIVACY.md#your-home-network)). |
 | AIOManager asks for the key again | AIOManager refused it, so it was forgotten. Enter a current one from AIOManager › the account's settings. |
@@ -148,13 +148,14 @@ sources. Try again later.
 | What you see | Why, and what to do |
 |--------------|---------------------|
 | A channel's sound stutters | Some servers cut a channel's sound into pieces the TV's player stutters on. StremioK detects it and restarts the channel through its service ("Fixing this channel's sound…"); not for encrypted streams, and not in a desktop browser. |
-| A big playlist is missing channels | A playlist keeps its first 30,000 channels (up to 20 MB); the status line says when channels were left out. |
+| A big playlist is missing channels | A playlist keeps its first 30,000 channels (up to 20 MB); its status line says when some were left out. |
 | A Stalker portal is missing channels or genres | Only its first 100 pages may have been read: see *Stalker channels* in [Settings](SETTINGS.md). |
-| A playlist didn't refresh | The saved copy keeps showing, and the playlist says what went wrong. *Reload* tries again. |
-| No TV guide on the cards | The playlist's line says why. Not every channel is in a guide; set another with *Guide link*. |
-| An Xtream account's films aren't offered on a title | Its list is read once a day, the first time in a minute or two. A copy needs the same TMDB id, or the same name and year. Not in a desktop browser. |
+| A playlist didn't refresh | The saved copy stays, and the playlist says why. *Reload* tries again. |
+| No TV guide on the cards | The playlist's line says why. Not every channel is in a guide; *Guide link* sets another. |
+| An Xtream account's films aren't offered on a title | Its list is read once a day (the first time, a minute or two). A copy needs the same TMDB id, or name and year. |
 | A Stalker portal refuses its MAC address | Use the one your provider registered. Portals that also want a login aren't supported. |
-| A Stalker channel doesn't start | A portal may play one channel at a time per MAC: stop it on your other box. |
+| A DRM channel doesn't play | Its license server refused the TV (many only answer their own apps; see Logs). ClearKey: wrong keys, or the stream needs a User-Agent, Referer or Cookie, which a browser can't send. |
+| A Stalker channel doesn't start | A portal may play one channel at a time per MAC: stop your other box's. |
 
 ## Trakt
 
@@ -175,7 +176,7 @@ sources. Try again later.
 | A download won't start | Not enough free space, or a file over 4 GB on a FAT32 drive (exFAT and NTFS are fine). It says which. |
 | A download stops: link refused | The debrid link expired. *Retry* asks the addon again. |
 | A download stopped when StremioK closed | Some TVs stop it. It picks up where it stopped when you start StremioK again. |
-| A big file from the drive stalls on every jump (2017 TV) | That TV's player can't read past 2 GB of a file on the drive, so StremioK plays files over 2 GB through its service, where jumping works. |
+| A big file from the drive stalls on every jump (2017 TV) | That TV's player can't read past 2 GB of a drive's file, so StremioK plays bigger ones via its service, where jumping works. |
 | Indexing, downloads or USB subtitles for streams are missing (TizenBrew) | They need the sideloaded app's service (its private token). Local still browses. |
 
 ## Other apps
@@ -190,8 +191,8 @@ sources. Try again later.
 
 | What you see | Why, and what to do |
 |--------------|---------------------|
-| A note that something couldn't be saved (storage full) | StremioK clears what can be made again (saved Home rows, playlist copies, show info) to save what matters. If it still can't, it says so and notes it in Diagnostics. *Clear saved copies* (Settings › Diagnostics › Storage) frees more. |
-| The TV's database refuses saves | The 2017 TV's database doesn't always clear out old versions. StremioK tidies it when they take over half its room; *Tidy up the TV's database* does it now. Freeing space on the TV also helps. |
+| A note that something couldn't be saved (storage full) | StremioK clears what can be made again (saved Home rows, playlist copies, show info); if that's not enough, it says so. *Clear saved copies* (Settings › Diagnostics › Storage) frees more. |
+| The TV's database refuses saves | The 2017 TV's database doesn't always clear out old versions. StremioK tidies it when they take over half its room; *Tidy up the TV's database* does it now. Freeing space on the TV helps. |
 | The TV's database keeps failing | Turn *Use the TV's database* off: everything goes in the settings storage instead (about 5 MB). |
 
 ## Home bar preview

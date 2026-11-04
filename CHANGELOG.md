@@ -3,6 +3,23 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.2.8 — 2026-11-04
+- **DRM channels** (a playlist's `#KODIPROP` lines): Widevine and PlayReady play in the TV's player
+  with the license server the playlist names; ClearKey with its keys or key server, through Shaka
+  Player (included, and used only for those). Only with streams you're entitled to: see the
+  README's legal note (#11).
+- **Films in a playlist** behind a DASH or HLS link can be scrubbed through, as their manifest says
+  they're films, not live channels (#11).
+- **Export configuration** (Settings › Content): your addons, playlists, Stalker portals, API keys and
+  settings as a file for your phone, to bring everything back after a reinstall. *Import
+  configuration file* takes it from your phone: its link, the file itself, or pasted (#12).
+- **A stream's Cookie** (from a playlist or an addon) is sent with it, for providers whose servers
+  need one.
+- **Stalker films and series:** a row, category or search shown again within 10 minutes isn't read
+  from the portal again.
+- **Anime series from other addons:** a show whose card or row calls it a film, *anime* or *other*
+  opens on its seasons and episodes when its details say it's a series, not on sources.
+
 ## 2.2.7 — 2026-11-03
 - **A Stalker portal's films and series:** in the Movies and Series tabs, Discover by the
   portal's categories, and Search; on titles from your addons, the portal's copy is a source

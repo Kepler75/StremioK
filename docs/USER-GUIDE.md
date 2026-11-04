@@ -80,11 +80,11 @@ way can be combined with the others.
   file at a link (up to 256 KB). Each line can be an addon link, an IPTV playlist link
   (`….m3u` / `….m3u8`, with a query after it too, or an Xtream-style
   `get.php?username=…&password=…&type=m3u_plus`), an 8-character OMDb key, a 32-character
-  TMDB key or a 25-character MDBList key. Blank lines and lines starting with `#` are
-  ignored. Nothing is imported at once: what the file has is listed (each addon, playlist
-  and key), none ticked; tick what you want (*Select all* for everything you haven't got) and
-  *Import N*. What you already have is shown as such and can't be ticked; a key replaces the
+  TMDB key or a 25-character MDBList key. Blank and `#` lines are ignored. Nothing is imported at once: what the file has is listed, none ticked; tick what you want (*Select all* for everything you haven't got) and
+  *Import N*. What you have already can't be ticked; a key replaces the
   one you have, so the list says so.
+- **A backup:** [*Export configuration*](SETTINGS.md#export-configuration) gives your phone
+  such a file, settings included.
 
 **Where an addon came from** shows as a small letter badge after its name: **S** (purple)
 from your Stremio account, **A** (teal) added or kept by an AIOManager sync, **C** (gray) from
@@ -621,39 +621,40 @@ An Xtream account's films and series come with its channels, as do a Stalker por
 
 ### Watching
 
-- **★ Favorites:** hold OK on a channel card, then *Add to favorites*. Your favorites are a
-  row of their own, first on the IPTV tab with all of them (up to 300), and come first on the
-  Guide tab.
+- **★ Favorites:** hold OK on a channel card, then *Add to favorites*. They're a row of their
+  own, first on the IPTV tab (all of them, up to 300) and on the Guide tab.
 - **IPTV** and **Radio** rows, a row per group; a channel's details name its playlist.
-- **Films in a playlist:** a link to a file (`.mkv`, `.mp4`…, an Xtream `/movie/` or
-  `/series/` one) plays as a film you can scrub through; Continue Watching doesn't keep it.
+- **Films in a playlist:** a file's link (`.mkv`, `.mp4`…, an Xtream `/movie/` or `/series/`
+  one), or a DASH or HLS film, can be scrubbed through; Continue Watching doesn't keep it.
 - **Sports:** channels marked `tvg-type="sport"` (or `"sports"`, StremioK's own mark) go to the
-  **Sports** tab instead.
-- **Guide only:** channels marked `tvg-type="guide"` (no link needed) show on the Guide tab
+  **Sports** tab.
+- **Guide only:** channels marked `tvg-type="guide"` show on the Guide tab
   alone; OK on a program finds that film in your addons (else Search).
-- **CH+ / CH−** switch through the row a channel came from; the channel you stop on starts after
-  a short pause, and BACK lands on its card.
+- **CH+ / CH−** switch through the row a channel came from; the one you stop on starts after a
+  short pause; BACK lands on its card.
 - **A channel's number:** type its position in that row (7, or 1 then 2 for 12).
-- Live streams show **● LIVE**, with no seeking or resume.
-- **YouTube live** channels (`youtube.com`, `youtu.be` links) play too, and so does an Xtream
-  channel whose link leads to YouTube.
+- Live streams show **● LIVE**: no seeking or resume.
+- **DRM channels:** Widevine and PlayReady play if the playlist's license server licenses the TV;
+  ClearKey with its keys or key server, through Shaka Player ([only what you're entitled
+  to](../README.md#content--legal-note)).
+- **YouTube live** channels (`youtube.com`, `youtu.be` links) play too, as does an Xtream channel
+  leading there.
 - **Choppy sound** on some channels is fixed on its own: the channel restarts ("Fixing this
   channel's sound…").
-- **Closed captions** in a channel's picture (CC1–CC4, as VLC shows them): Green lists *Closed
-  captions (CC1)*; picking one restarts the channel with them (next time too). Ones in your
+- **Closed captions** in a channel's picture (CC1–CC4): Green lists *Closed captions (CC1)*;
+  picking one restarts the channel with them. Ones in your
   default subtitle language turn on by themselves. HLS only: on Xtream, switch *Format* to HLS.
 
 ### TV guide
 
 - **Where it comes from:** the guide link a playlist names (`url-tvg`), or an Xtream
   playlist's (`get.php`) own guide. *Guide link* (OK on a playlist) sets another, or puts back
-  the automatic one. The sideloaded app or TizenBrew reads it, again every 6 hours, or at once
-  with the playlist's *Reload* (its limits: [TV guide](TECHNICAL-REFERENCE.md#tv-guide)).
+  the automatic one. It's read again every 6 hours, or at once with the playlist's *Reload* (its limits: [TV guide](TECHNICAL-REFERENCE.md#tv-guide)).
 - A channel is matched by its `tvg-id`, else by its name. One without a logo in its playlist
   gets the guide's.
 - **Channel cards** show what's on now and how far along it is; Home's details strip adds its
   description and what's next.
-- **While a channel plays,** the bar at the bottom shows Now and Next, with their times.
+- **While a channel plays,** the bar at the bottom shows Now and Next.
 - **Hold OK on a channel card** for its schedule, from 2 hours ago to tomorrow: *▶ Watch now*
   plays it, *★ Add to / Remove from favorites*, and OK on a program shows its description.
 - A guide's **program pictures** show in the details strip (a channel's card, the Guide tab).

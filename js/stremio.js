@@ -543,12 +543,97 @@ var Stremio = (function () {
         var t = p.host + path;
         return t.length > 64 ? t.slice(0, 61) + '…' : t;
     }
+    // ---- Export configuration (Settings › Content › Export configuration) ----
+    // The file import reads (parseSetupList): a line an addon link, playlist link or API key, what
+    // any StremioK imports, and #!stremiok <kind> <JSON> lines, comments to an older one: playlist
+    // (a playlist's name, guide link, off), stalker (a portal) and store (one of EXPORT_STORE, what
+    // you chose in Settings: not caches, history, progress or your Trakt sign-in; integrations
+    // without the three keys, which have their own lines, or Trakt's). Imported settings replace
+    // yours, only those in EXPORT_STORE.
+    var EXPORT_LINE = '#!stremiok ';
+    var EXPORT_STORE = ['stremiok.prefs', 'stremiok.feeds', 'stremiok.searchfeeds', 'stremiok.sourcefeeds', 'stremiok.ranking', 'stremiok.server', 'stremiok.formats',
+        'stremiok.resblock', 'stremiok.subcfg', 'stremiok.audiocfg', 'stremiok.playercfg', 'stremiok.private', 'stremiok.youtube', 'stremiok.appshortcuts',
+        'stremiok.appsallowed', 'stremiok.aiomanager', 'stremiok.iptv.stalkerall', 'stremiok.iptv.every', 'stremiok.local.matching', 'stremiok.local.hidden',
+        'stremiok.addonsoff', 'stremiok.integrations'];
+    function plural(n, one) { return n + ' ' + one + (n === 1 ? '' : 's'); }
+    function iptvLists() { return (_hasIptv && IPTV.getPlaylists) ? IPTV.getPlaylists() : []; }
+    // What there is to export: [{ key, label }] (settings always).
+    function exportGroups() {
+        var lists = iptvLists(), integ = getIntegrations(), out = [], n = getAddonUrls().length;
+        var pl = lists.filter(function (p) { return !p.mac; }).length, st = lists.length - pl;
+        var keys = Object.keys(KEY_NAMES).filter(function (k) { return integ[k]; }).map(function (k) { return KEY_NAMES[k].replace(/ key$/, ''); });
+        if (n) { out.push({ key: 'addons', label: plural(n, 'addon') + ', in your order' }); }
+        if (pl) { out.push({ key: 'playlists', label: plural(pl, 'IPTV playlist') + ' (their logins too)' }); }
+        if (st) { out.push({ key: 'stalker', label: plural(st, 'Stalker portal') + ' (their MAC addresses)' }); }
+        if (keys.length) { out.push({ key: 'keys', label: 'API keys: ' + keys.join(', ') }); }
+        out.push({ key: 'settings', label: 'Your settings: look, Home, playback, subtitles, sources, streaming server, YouTube…' });
+        return out;
+    }
+    function settingsValue(key) {
+        var v = U.store.get(key, null);
+        if (key !== INTEG_KEY || !v || typeof v !== 'object') { return v; }
+        var o = {}, n = 0;   // (integrations: the three keys have lines of their own; Trakt's aren't for another TV)
+        Object.keys(v).forEach(function (k) { if (!KEY_NAMES[k] && !/^trakt/.test(k) && v[k]) { o[k] = v[k]; n++; } });
+        return n ? o : null;
+    }
+    // The file, with what's in keys (exportGroups' keys).
+    function exportSetup(keys, version) {
+        var want = {}, out = [], integ = getIntegrations(), lists = iptvLists();
+        (keys || []).forEach(function (k) { want[k] = true; });
+        out.push('# StremioK configuration, exported ' + new Date(Date.now()).toISOString().slice(0, 10) + (version ? ' from StremioK ' + version : '') + '.');
+        out.push('# It holds your addon links, playlist logins, API keys and MAC addresses: keep it private.');
+        out.push('# To import it: Settings › Content › Import configuration file (▣ From your phone: choose this file, or paste it).');
+        if (want.addons) { out.push(''); getAddonUrls().forEach(function (u) { out.push(u); }); }
+        if (want.playlists) {
+            out.push('');
+            lists.filter(function (p) { return !p.mac; }).forEach(function (p) {
+                out.push(p.url);
+                var d = { url: p.url };
+                if (p.name) { d.name = p.name; }
+                if (p.guide) { d.guide = p.guide; }
+                if (p.off) { d.off = true; }
+                if (d.name || d.guide || d.off) { out.push(EXPORT_LINE + 'playlist ' + JSON.stringify(d)); }
+            });
+        }
+        if (want.stalker) {
+            out.push('');
+            lists.filter(function (p) { return p.mac; }).forEach(function (p) {
+                var d = { url: p.url, mac: p.mac };
+                ['name', 'guide', 'genres', 'off'].forEach(function (k) { if (p[k]) { d[k] = p[k]; } });
+                out.push(EXPORT_LINE + 'stalker ' + JSON.stringify(d));
+            });
+        }
+        if (want.keys) { out.push(''); Object.keys(KEY_NAMES).forEach(function (k) { if (integ[k]) { out.push(integ[k]); } }); }
+        if (want.settings) {
+            out.push('');
+            EXPORT_STORE.forEach(function (key) {
+                var v = settingsValue(key);
+                if (v !== null && v !== undefined) { out.push(EXPORT_LINE + 'store ' + JSON.stringify({ k: key.replace(/^stremiok\./, ''), v: v })); }
+            });
+        }
+        return out.join('\n') + '\n';
+    }
     function parseSetupList(text) {
         var out = { items: [], ignored: 0 }, seen = {}, mine = getAddonUrls(), integ = getIntegrations();
-        var lists = (_hasIptv && IPTV.getPlaylists) ? IPTV.getPlaylists().map(function (x) { return x.url; }) : [];
+        var have = iptvLists(), lists = have.map(function (x) { return x.url; }), details = {}, store = [];
         function push(it) { var k = it.kind + ' ' + it.value; if (seen[k]) { return; } seen[k] = 1; out.items.push(it); }
+        function stremiokLine(rest) {   // (an export's own lines: see exportSetup)
+            var m = /^([a-z]+)\s+(\{[\s\S]*\})$/.exec(rest), o = null;
+            try { o = m ? JSON.parse(m[2]) : null; } catch (e) { o = null; }
+            if (!o || typeof o !== 'object') { out.ignored++; return; }
+            if (m[1] === 'playlist' && typeof o.url === 'string') { details[o.url] = o; return; }
+            if (m[1] === 'stalker' && typeof o.url === 'string' && _hasIptv && IPTV.macOf && IPTV.macOf(o.mac)) {
+                var mac = IPTV.macOf(o.mac);
+                push({ kind: 'stalker', value: o.url + '|' + mac, info: o, label: 'Stalker portal  ·  ' + (typeof o.name === 'string' && o.name ? o.name.slice(0, 60) : shortLink(o.url)),
+                    have: have.some(function (p) { return p.url === o.url && p.mac === mac; }), note: '' });
+                return;
+            }
+            if (m[1] === 'store' && typeof o.k === 'string' && EXPORT_STORE.indexOf('stremiok.' + o.k) !== -1 && o.v !== undefined && o.v !== null) { store.push(o); return; }
+            out.ignored++;
+        }
         ('' + (text || '')).split(/\r?\n/).forEach(function (line) {
             var value = line.trim(), key = null;
+            if (value.indexOf(EXPORT_LINE) === 0) { stremiokLine(value.slice(EXPORT_LINE.length).trim()); return; }
             if (!value || value.charAt(0) === '#') { return; }
             if (/^[A-Za-z0-9]{8}$/.test(value)) { key = 'omdb'; }
             else if (/^[A-Za-z0-9]{32}$/.test(value)) { key = 'tmdb'; }
@@ -565,14 +650,44 @@ var Stremio = (function () {
                 out.ignored++;
             }
         });
+        out.items.forEach(function (it) {   // (a playlist's name, guide link, off: with it)
+            var d = it.kind === 'playlist' && details[it.value];
+            if (d) { it.info = d; if (typeof d.name === 'string' && d.name) { it.label = 'IPTV playlist  ·  ' + d.name.slice(0, 60); } }
+        });
+        if (store.length) { push({ kind: 'settings', value: 'settings', entries: store, label: 'Your settings (' + plural(store.length, 'part') + ')', have: false, note: 'replaces yours' }); }
         return out;
+    }
+    function playlistDetails(id, d) {
+        if (typeof d.name === 'string' && d.name.trim()) { iptvRenamePlaylist(id, d.name.trim()); }
+        if (typeof d.guide === 'string' && d.guide) { iptvSetPlaylistGuide(id, d.guide); }
+        if (d.off === true) { iptvSetPlaylistOff(id, true); }
     }
     // Import the chosen lines (parseSetupList's items): what was added, as importSetupList says.
     function applySetupEntries(items) {
-        var result = { addons: 0, playlists: 0, omdb: false, tmdb: false, mdblist: false, ignored: 0 };
+        var result = { addons: 0, playlists: 0, omdb: false, tmdb: false, mdblist: false, settings: false, ignored: 0 };
         (items || []).forEach(function (it) {
             if (KEY_NAMES[it.kind]) { setIntegration(it.kind, it.value); result[it.kind] = true; }
-            else if (it.kind === 'playlist') { if (iptvAddPlaylist(it.value)) { result.playlists++; } else { result.ignored++; } }
+            else if (it.kind === 'playlist') {
+                var pid = iptvAddPlaylist(it.value);
+                if (pid) { result.playlists++; if (it.info) { playlistDetails(pid, it.info); } } else { result.ignored++; }
+            } else if (it.kind === 'stalker') {
+                var sid = iptvAddStalker(it.info.url, it.info.mac);
+                if (!sid) { result.ignored++; return; }
+                result.playlists++;
+                playlistDetails(sid, it.info);
+                if (Array.isArray(it.info.genres) && it.info.genres.length && IPTV.setStalkerGroups) { IPTV.setStalkerGroups(sid, it.info.genres.filter(function (g) { return /^[\w.-]{1,40}$/.test('' + g); }).map(String)); }
+            } else if (it.kind === 'settings') {
+                it.entries.forEach(function (o) {
+                    var key = 'stremiok.' + o.k;
+                    if (EXPORT_STORE.indexOf(key) === -1) { return; }
+                    if (key === INTEG_KEY && typeof o.v === 'object') {   // (merged: your keys stay, unless the file has its own lines for them)
+                        var cur = U.store.get(INTEG_KEY, {}) || {};
+                        Object.keys(o.v).forEach(function (k) { if (!KEY_NAMES[k] && !/^trakt/.test(k)) { cur[k] = o.v[k]; } });
+                        U.store.set(INTEG_KEY, cur);
+                    } else { U.store.set(key, o.v); }
+                });
+                result.settings = true;
+            }
             else if (it.kind === 'addon') {
                 var added = addAddon(it.value);
                 if (added) { result.addons++; if (!addonOrigin(added)) { setAddonOrigin(added, 'config'); } } else { result.ignored++; }
@@ -2252,7 +2367,7 @@ var Stremio = (function () {
         getIntroSegments: getIntroSegments,
         tmdbValidate: tmdbValidate, mdblistValidate: mdblistValidate, omdbValidate: omdbValidate,
         tmdbFindTvId: tmdbFindTvId, tmdbSeasonEpisodes: tmdbSeasonEpisodes, tmdbImg: tmdbImg,
-        tmdbTitleExtras: tmdbTitleExtras, tmdbExtrasById: tmdbExtrasById, tmdbEpisodeCast: tmdbEpisodeCast, tmdbEpisodeTrailer: tmdbEpisodeTrailer, setHideWords: setHideWords, hideWordHit: hideWordHit, normalizeAddonUrl: normalizeManifestUrl, debridOf: debridOf, addonOrigin: addonOrigin, setAddonOrigin: setAddonOrigin, parseSetupList: parseSetupList, applySetupEntries: applySetupEntries, sizeLimitHit: sizeLimitHit, setSizeLimit: setSizeLimit, gbText: gbText, runtimeMinutes: runtimeMinutes, tmdbPeople: tmdbPeople, tmdbPerson: tmdbPerson, tmdbBrowse: tmdbBrowse, tmdbTitleTrailers: tmdbTitleTrailers, tmdbProviders: tmdbProviders, tmdbProvidersKept: tmdbProvidersKept, tmdbGenres: tmdbGenres, tmdbWhereToWatch: tmdbWhereToWatch, watchRegion: watchRegion, autoWatchRegion: autoWatchRegion, tmdbImdbId: tmdbImdbId, findFilm: findFilm, hasTmdb: function () { return !!tmdbKey(); },
+        tmdbTitleExtras: tmdbTitleExtras, tmdbExtrasById: tmdbExtrasById, tmdbEpisodeCast: tmdbEpisodeCast, tmdbEpisodeTrailer: tmdbEpisodeTrailer, setHideWords: setHideWords, hideWordHit: hideWordHit, normalizeAddonUrl: normalizeManifestUrl, debridOf: debridOf, addonOrigin: addonOrigin, setAddonOrigin: setAddonOrigin, parseSetupList: parseSetupList, applySetupEntries: applySetupEntries, exportGroups: exportGroups, exportSetup: exportSetup, sizeLimitHit: sizeLimitHit, setSizeLimit: setSizeLimit, gbText: gbText, runtimeMinutes: runtimeMinutes, tmdbPeople: tmdbPeople, tmdbPerson: tmdbPerson, tmdbBrowse: tmdbBrowse, tmdbTitleTrailers: tmdbTitleTrailers, tmdbProviders: tmdbProviders, tmdbProvidersKept: tmdbProvidersKept, tmdbGenres: tmdbGenres, tmdbWhereToWatch: tmdbWhereToWatch, watchRegion: watchRegion, autoWatchRegion: autoWatchRegion, tmdbImdbId: tmdbImdbId, findFilm: findFilm, hasTmdb: function () { return !!tmdbKey(); },
         mdblistRatings: mdblistRatings,
         omdbSeasonRatings: omdbSeasonRatings,
         loadAddons: loadAddons, listCatalogs: listCatalogs, getCatalog: getCatalog,

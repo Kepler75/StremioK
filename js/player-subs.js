@@ -4,7 +4,7 @@
 (function (P) {
     'use strict';
     var S = P.S;
-    var avplay = P.avplay, useAV = P.useAV;
+    var avplay = P.avplay;   // (P.useAV: the TV's player's playback or the page's, as it is now: see player-core's engineFor)
 
     // ----- from the other parts -----
     function updateHint() { return P.updateHint.apply(null, arguments); }   // core
@@ -426,7 +426,7 @@
     // StremioK draws it like an addon subtitle. Like audio, a track is only switched
     // once playback runs. Image-based tracks (PGS) produce no text and show nothing.
     function getTextTracks() {
-        if (!useAV) { return []; }
+        if (!P.useAV) { return []; }
         try {
             var all = avplay.getTotalTrackInfo() || [], out = [];
             for (var i = 0; i < all.length; i++) { if (('' + all[i].type).toUpperCase() === 'TEXT') { out.push(all[i]); } }

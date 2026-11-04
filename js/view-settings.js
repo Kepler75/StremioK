@@ -74,8 +74,9 @@
         if (cfg.phone && V.phoneEntry) {
             var phoneBtn = U.el('div', 'pill focusable', '▣  From your phone');
             phoneBtn.__onselect = function () {
-                V.phoneEntry({ title: cfg.title || 'Enter value', what: cfg.phone, validate: cfg.validate,
-                    onText: function (t) { input.value = t; Focus.setFocus(confirmBtn); U.toast('From your phone: check it, then Confirm', 3500); },
+                var takes = cfg.phoneText;   // (text the caller takes as it is from the phone: an import's pasted file)
+                V.phoneEntry({ title: cfg.title || 'Enter value', what: cfg.phone, validate: function (t) { return takes && takes.accepts(t) ? null : (cfg.validate ? cfg.validate(t) : null); },
+                    onText: function (t) { if (takes && takes.accepts(t)) { takes.take(t); return; } input.value = t; Focus.setFocus(confirmBtn); U.toast('From your phone: check it, then Confirm', 3500); },
                     onType: function () { Focus.setFocus(input); } });
             };
             row.appendChild(phoneBtn);
@@ -367,7 +368,8 @@
             ['YouTube', 'Your YouTube channels, playlists and searches; YouTube in Search', 'youtube'],
             ['Streaming apps', 'Your apps (Prime Video, Netflix, …) that open a title\'s "where to watch" sources', 'appshortcuts'],
             ['USB drive', 'The Local tab: what\'s on your drive, matched to titles; hidden files', 'usb'],
-            ['Import configuration file', 'Import addons, API keys & IPTV playlists', 'import']] },
+            ['Import configuration file', 'Import addons, API keys & IPTV playlists', 'import'],
+            ['Export configuration', 'Your addons, playlists, API keys and settings, to your phone', 'export']] },
         playback: { title: 'Playback', rows: [
             ['Audio', 'Preferred and second-choice audio language', 'audio'],
             ['Subtitles', 'Default language, size, color, background, position, font', 'subtitles'],
@@ -430,6 +432,7 @@
         else if (_settingsSection === 'private') { settingsPrivate(wrap); }
         else if (_settingsSection === 'appshortcuts') { settingsAppShortcuts(wrap); }
         else if (_settingsSection === 'import') { settingsImport(wrap); }
+        else if (_settingsSection === 'export') { settingsExport(wrap); }
         else if (_settingsSection === 'aiomanager') { settingsAiom(wrap); }
         else if (_settingsSection === 'server') { settingsServer(wrap); }
         else if (_settingsSection === 'appearance') { settingsAppearance(wrap); }
@@ -856,6 +859,53 @@
     var IMPORT_URL_KEY = 'stremiok.importurl';
 
     var _importGen = 0;   // (the configuration file being imported, the latest)
+    // A configuration file's text: what it has listed, none ticked, to tick and import. here():
+    // the entry screen still showing (back to Settings from it). Imported settings: StremioK
+    // starts again with them.
+    function importText(text, here) {
+        var parsed = Stremio.parseSetupList(text);
+        if (!parsed.items.length) { U.toast('No supported entries found in that file' + (parsed.ignored ? ' (' + parsed.ignored + ' ignored)' : ''), 4500); return; }
+        if (here()) { App.back(); renderSettings(); }
+        pickMany('In that file: tick what to import', parsed.items.map(function (it, i) { return { key: '' + i, label: it.label, have: it.have, note: it.note }; }),
+            { button: function (n) { return 'Import ' + n; } }, function (keys) {
+                var imported = Stremio.applySetupEntries(keys.map(function (k) { return parsed.items[+k]; })), parts = [];
+                if (imported.addons) { parts.push(imported.addons + ' addon' + (imported.addons === 1 ? '' : 's')); }
+                if (imported.playlists) { parts.push(imported.playlists + ' playlist' + (imported.playlists === 1 ? '' : 's')); }
+                if (imported.omdb) { parts.push('OMDb key'); }
+                if (imported.tmdb) { parts.push('TMDB key'); }
+                if (imported.mdblist) { parts.push('MDBList key'); }
+                if (imported.settings) { parts.push('your settings'); }
+                if (imported.addons || imported.playlists) { clearCatalogCache(); }
+                var message = parts.length ? ('Imported: ' + parts.join(', ')) : 'Nothing imported';
+                if (parsed.ignored) { message += ' (' + parsed.ignored + ' ignored)'; }
+                if (imported.settings) {   // (every part of StremioK reads them afresh)
+                    U.toast(message + '. StremioK starts again with them…', 4000);
+                    setTimeout(function () { try { window.location.reload(); } catch (e) {} }, 2500);
+                    return;
+                }
+                U.toast(message, 4500);
+                renderSettings();
+            });
+    }
+    // Settings › Content › Export configuration: what goes in, all ticked at first, given to your
+    // phone (V.phoneGive) as the file Import configuration file reads (Stremio.exportSetup).
+    function settingsExport(wrap) {
+        wrap.appendChild(U.el('h2', null, 'Export configuration'));
+        var row = U.el('div', 'addon-item focusable add-row');
+        row.appendChild(U.el('div', 'a-name', '⇧  Export to your phone'));
+        row.appendChild(U.el('div', 'a-url', 'Your addons, IPTV playlists, API keys and settings, as a file to import later'));
+        row.__onselect = function () {
+            var groups = Stremio.exportGroups();
+            pickMany('Tick what to export', groups.map(function (g) { return { key: g.key, label: g.label }; }),
+                { on: groups.map(function (g) { return g.key; }), button: function (n) { return 'Export ' + n; } }, function (keys) {
+                    V.phoneGive('Export configuration', Stremio.exportSetup(keys, appVersion()),
+                        'It holds your addon links, playlist logins, API keys and MAC addresses: keep the file private. Not in it: your Trakt sign-in, history and progress.');
+                });
+        };
+        wrap.appendChild(row);
+        wrap.appendChild(U.el('div', 'hint', 'To restore it (after a reinstall, or on another TV): Import configuration file › ▣ From your phone, then choose the file there (or paste it).'));
+        focusSettings();
+    }
     function settingsImport(wrap) {
         wrap.appendChild(U.el('h2', null, 'Import configuration file'));
         var lastUrl = U.store.get(IMPORT_URL_KEY, '') || '';
@@ -881,34 +931,17 @@
                     var entry = scr('addaddon'), mine = ++_importGen;
                     function here() { return mine === _importGen && !/\bhidden\b/.test(entry.className); }
                     U.getText(v, 15000, 256 * 1024).then(function (text) {   // (a list of URLs and keys: 256 KB is plenty)
-                        var parsed = Stremio.parseSetupList(text);
-                        if (!parsed.items.length) { U.toast('No supported entries found in that file' + (parsed.ignored ? ' (' + parsed.ignored + ' ignored)' : ''), 4500); return; }
-                        if (here()) { App.back(); renderSettings(); }
-                        // what the file has, none ticked: you tick what to import
-                        pickMany('In that file: tick what to import', parsed.items.map(function (it, i) { return { key: '' + i, label: it.label, have: it.have, note: it.note }; }),
-                            { button: function (n) { return 'Import ' + n; } }, function (keys) {
-                                done(Stremio.applySetupEntries(keys.map(function (k) { return parsed.items[+k]; })), parsed.ignored);
-                            });
+                        importText(text, here);
                     }, function (err) {
                         if (!here()) { return; }
                         var why = U.problem(err);
                         U.toast(/^too large/.test(why) ? 'That file is ' + why + ': a configuration file is a short list of URLs and keys.'
                             : 'Could not fetch that configuration file (' + why + '; check the URL / CORS).', 5000);
                     });
-                    function done(imported, ignored) {
-                        var parts = [];
-                        if (imported.addons) { parts.push(imported.addons + ' addon' + (imported.addons === 1 ? '' : 's')); }
-                        if (imported.playlists) { parts.push(imported.playlists + ' playlist' + (imported.playlists === 1 ? '' : 's')); }
-                        if (imported.omdb) { parts.push('OMDb key'); }
-                        if (imported.tmdb) { parts.push('TMDB key'); }
-                        if (imported.mdblist) { parts.push('MDBList key'); }
-                        if (imported.addons || imported.playlists) { clearCatalogCache(); }
-                        var message = parts.length ? ('Imported: ' + parts.join(', ')) : 'Nothing imported';
-                        if (ignored) { message += ' (' + ignored + ' ignored)'; }
-                        U.toast(message, 4500);
-                        renderSettings();
-                    }
-                }
+                },
+                // From your phone, the file itself pasted (not a link): imported as it is
+                phoneText: { accepts: function (t) { return /\n/.test(t) || !/^https?:\/\//i.test(('' + t).trim()); },
+                    take: function (t) { ++_importGen; importText(t, function () { return true; }); } }
             });
         };
         wrap.appendChild(listRow);

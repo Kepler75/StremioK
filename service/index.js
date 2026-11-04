@@ -40,6 +40,10 @@
  *                       only; /epg/get?u=<guide>&ids=<key>|<key>&from&to[&max] -> JSON { <key>:
  *                       [[start, stop, title, desc, picture?, about?]], _icons: { <key>: logo } }: their programs and
  *                       the guide's logos for them (see epgControl)
+ *   /entry/give (POSTed: a configuration file) -> JSON { url, token }: a one-time phone page to
+ *                       copy or download it (see entryControl); the token or the ticket
+ *   /drm/license (POSTed: { u, h, c }) -> JSON { license } or { why }: a Widevine channel's license
+ *                       request posted to its license server (see drmControl); the token or the ticket
  *   /epg/ticket -> JSON { ticket }: for guide POSTs from an app without the token (see hasTicket)
  *   /epg/files -> JSON { count, bytes, xtv: { count, bytes } }: the saved guides, and Xtream lists;
  *                       /epg/clear (POST) -> { cleared }: all of them deleted
@@ -1794,12 +1798,14 @@ function handle(req, res) {
         // The app's own guide POSTs: a browser sends an Origin with every POST (the app's page is
         // file://: "null"); let through with the token, or the guide ticket (for an app that can't
         // read the token: see /epg/ticket), which no web page has (/epg/ only).
-        if (who === 'origin' && req.method === 'POST' && /^\/epg\/(load|get|clear)$/.test(path) && /^(null|file:\/\/)$/.test(String(req.headers.origin || '')) && (hasToken(parts[1]) || hasTicket(parts[1]))) { who = null; }
+        if (who === 'origin' && req.method === 'POST' && /^\/(epg\/(load|get|clear)|drm\/license|entry\/give)$/.test(path) && /^(null|file:\/\/)$/.test(String(req.headers.origin || '')) && (hasToken(parts[1]) || hasTicket(parts[1]))) { who = null; }   // (and a DRM license's: see drmControl)
         if (who) { send(res, 403, 'text/plain', 'not allowed (' + who + ')'); return; }
         if (req.method === 'OPTIONS') { if (isFs) { send(res, 403, 'text/plain', 'not allowed'); return; } res.writeHead(200); res.end(); return; }
         var epgPost = req.method === 'POST' && /^\/epg\/(load|get|clear)$/.test(path);   // (a guide's channels: in the body, see epgControl)
-        if (req.method !== 'GET' && !epgPost) { send(res, 405, 'text/plain', 'GET only'); return; }   // (before any work)
-        if (req.url.length > (/^\/epg\//.test(path) ? 32768 : /^\/fsdl\/add$/.test(path) ? 8192 : 2048)) { send(res, 414, 'text/plain', 'request too long'); return; }   // (a download's link can be long; a guide's channels, a bitset)
+        var drmPost = req.method === 'POST' && path === '/drm/license';   // (a Widevine license request: see drmControl)
+        var givePost = req.method === 'POST' && path === '/entry/give';   // (a configuration file for the phone: see entryControl)
+        if (req.method !== 'GET' && !epgPost && !drmPost && !givePost) { send(res, 405, 'text/plain', 'GET only'); return; }   // (before any work)
+        if (req.url.length > (/^\/epg\//.test(path) ? 32768 : /^\/(fsdl\/add|live\/(open|master))$/.test(path) ? 8192 : 2048)) { send(res, 414, 'text/plain', 'request too long'); return; }   // (a download's link can be long; a guide's channels, a bitset)
         // (StremioK gave up on it — a screen left, the player closed: what it still waits for is
         // dropped; 'close' before the response finished means that on every Node)
         var leaving = [];
@@ -1810,6 +1816,14 @@ function handle(req, res) {
             res.on('close', function () { clearTimeout(deadline); if (!res.finished) { leaveAll(); } });
         }
 
+        if (givePost) {
+            if (+(req.headers['content-length'] || 0) > GIVE_MAX) { send(res, 413, 'text/plain', 'too much'); req.resume(); return; }
+            var gbody = '', gover = false;
+            req.setEncoding('utf8');
+            req.on('data', function (c) { if (gover) { return; } gbody += c; if (gbody.length > GIVE_MAX) { gover = true; send(res, 413, 'text/plain', 'too much'); } });
+            req.on('end', function () { if (!gover) { entryControl(req, res, path, parts[1], gbody); } });
+            return;
+        }
         if (/^\/entry\//.test(path)) { entryControl(req, res, path, parts[1]); return; }
         if (/^\/live\//.test(path)) { liveControl(req, res, path, parts[1], leaving); return; }
         if (epgPost) {   // what's asked, in the body (to EPG_BODY_MAX), after the address's own (its token)
@@ -1818,6 +1832,14 @@ function handle(req, res) {
             req.setEncoding('utf8');
             req.on('data', function (c) { if (over) { return; } body += c; if (body.length > EPG_BODY_MAX) { over = true; send(res, 413, 'text/plain', 'too much asked'); } });
             req.on('end', function () { if (!over) { epgControl(req, res, path, (parts[1] ? parts[1] + '&' : '') + body); } });
+            return;
+        }
+        if (drmPost) {
+            if (+(req.headers['content-length'] || 0) > DRM_BODY_MAX) { send(res, 413, 'text/plain', 'too much asked'); req.resume(); return; }
+            var dbody = '', dover = false;
+            req.setEncoding('utf8');
+            req.on('data', function (c) { if (dover) { return; } dbody += c; if (dbody.length > DRM_BODY_MAX) { dover = true; send(res, 413, 'text/plain', 'too much asked'); } });
+            req.on('end', function () { if (!dover) { drmControl(req, res, parts[1], dbody, leaving); } });
             return;
         }
         if (/^\/epg\//.test(path)) { epgControl(req, res, path, parts[1]); return; }   // (a playlist's TV guide: see epgControl)
@@ -1980,6 +2002,7 @@ function liveGet(u, who, max, cb, part) {
         if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !dlHostOk(pu.hostname)) { cb(upError('a link it can\'t follow', 400)); return; }
         var h = { 'User-Agent': who.ua || TV_UA };
         if (who.ref) { h.Referer = who.ref; }
+        if (who.cookie) { h.Cookie = who.cookie; }
         var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, headers: h };
         if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
         var chunks = [], size = 0, done = false;
@@ -2502,7 +2525,7 @@ function liveSession(u, who, opts) {
         ids.sort(function (x, y) { return _live[x].last - _live[y].last; });
         delete _live[ids[0]];
     }
-    var s = { id: crypto.randomBytes(16).toString('hex'), ua: who.ua, ref: who.ref, links: {}, at: {}, next: 0, last: Date.now(), a: liveAudio(),
+    var s = { id: crypto.randomBytes(16).toString('hex'), ua: who.ua, ref: who.ref, cookie: who.cookie || '', links: {}, at: {}, next: 0, last: Date.now(), a: liveAudio(),
         fix: opts.fix !== false, cc: opts.cc && opts.cc.length ? opts.cc : null, c: ccState(), got: Object.create(null) };
     _live[s.id] = s;
     s.top = liveLink(s, u, 'm');
@@ -2546,26 +2569,28 @@ function liveProbe(u, who, cb, leaving) {
     }
     list(u);
 }
-function liveHeader(v) { v = String(v || ''); return /^[\x20-\x7e]{1,300}$/.test(v) ? v : ''; }
+function liveHeader(v, max) { v = String(v || ''); return v.length <= (max || 300) && /^[\x20-\x7e]+$/.test(v) ? v : ''; }
+function liveWho(q) { return { ua: liveHeader(q.ua), ref: liveHeader(q.ref), cookie: liveHeader(q.cookie, 4096) }; }   // (a stream's own headers, as the app sends them)
 function liveControl(req, res, path, query, leaving) {
     livePurge();
     var q = {};
     (query || '').split('&').forEach(function (kv) { var i = kv.indexOf('='); if (i > 0) { try { q[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); } catch (e) {} } });
-    if (path === '/live/master') {   // an HLS stream's quality list, asked with its own User-Agent / Referer (which a web page can't send)
+    if (path === '/live/master') {   // an HLS stream's quality list (or a DASH manifest), asked with its own User-Agent / Referer (which a web page can't send)
         if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
         var mu = q.u || '';
         if (!/^https?:\/\/[^\s]+$/i.test(mu) || mu.length > 2000) { send(res, 400, 'text/plain', 'bad link'); return; }
-        leaving.push(liveGet(mu, { ua: liveHeader(q.ua), ref: liveHeader(q.ref) }, HLS_MASTER_MAX, function (err, buf) {
+        leaving.push(liveGet(mu, liveWho(q), HLS_MASTER_MAX, function (err, buf) {
             if (err) { send(res, err.status || 502, 'text/plain', 'failed: ' + (err.message || 'unknown')); return; }
             var text = buf.toString('utf8').replace(/^\uFEFF/, '');
-            if (text.replace(/^\s+/, '').indexOf('#EXTM3U') !== 0) { send(res, 502, 'text/plain', 'not an HLS playlist'); return; }
-            send(res, 200, 'application/vnd.apple.mpegurl', text);
+            var dash = /<MPD[\s>]/i.test(text.slice(0, 4000));   // (a DASH manifest: is it a film? see the player's manifestVod)
+            if (text.replace(/^\s+/, '').indexOf('#EXTM3U') !== 0 && !dash) { send(res, 502, 'text/plain', 'not an HLS playlist'); return; }
+            send(res, 200, dash ? 'application/dash+xml' : 'application/vnd.apple.mpegurl', text);
         }));
         return;
     }
     if (path === '/live/open') {
         if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
-        var u = q.u || '', who = { ua: liveHeader(q.ua), ref: liveHeader(q.ref) };
+        var u = q.u || '', who = liveWho(q);
         if (!/^https?:\/\/[^\s]+$/i.test(u) || u.length > 2000) { send(res, 400, 'text/plain', 'bad link'); return; }
         var cc = ccAsked(q.cc);
         if (q.force === '1') {
@@ -3171,6 +3196,16 @@ function stalkerM3u(s, list, genres) {
 // episodes: a season's cmd and its episodes' numbers, or each episode's own cmd) and play (a film's
 // or an episode's link asked now, create_link, and sent there: what's saved to resume stays good).
 var STALKER_VOD_TAKE = 42, STALKER_VOD_PAGES = 4, STALKER_VOD_CATS_MS = 10 * 60000, STALKER_SEASONS = 60, STALKER_EPISODES = 500;
+// What a portal answered (a list from a position, a search, a series' seasons): kept
+// STALKER_VOD_KEEP_MS, the last STALKER_VOD_KEEP a portal, so a row or category shown again isn't
+// asked again (a portal may stop answering many quick asks); fresh=1 (Reload) lets it all go.
+var STALKER_VOD_KEEP_MS = 10 * 60000, STALKER_VOD_KEEP = 40;
+function stalkerKept(s, key) { var k = s.vodKept && s.vodKept[key]; return k && Date.now() - k.at < STALKER_VOD_KEEP_MS ? k.v : null; }
+function stalkerKeepVod(s, key, v) {
+    if (!s.vodKept) { s.vodKept = Object.create(null); s.vodOrder = []; }
+    if (!s.vodKept[key]) { s.vodOrder.push(key); while (s.vodOrder.length > STALKER_VOD_KEEP) { delete s.vodKept[s.vodOrder.shift()]; } }
+    s.vodKept[key] = { at: Date.now(), v: v };
+}
 function stalkerText(v, n) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n); }
 function stalkerCmdOk(cmd) { return !!cmd && cmd.length <= 2000 && !/[\r\n]/.test(cmd); }
 function stalkerVodItem(s, o) {
@@ -3327,6 +3362,10 @@ function stalkerControl(req, res, path, query, leaving) {
     }
     if (path === '/stalker/vod') {
         var type = q.type === 'series' ? 'series' : 'movie', what = String(q.do || '');
+        if (q.fresh === '1') { s.vodCats = null; s.vodKept = null; s.vodOrder = null; }   // (Reload: all of it read again)
+        var vkey = what === 'list' || what === 'seasons' ? [what, type, q.cat || '*', String(q.q || '').trim().slice(0, 120), parseInt(q.skip, 10) || 0, q.id || '', q.via || ''].join('|') : '';
+        var kept = vkey && stalkerKept(s, vkey);
+        if (kept) { json(kept); return; }
         stalkerWith(s, portal, mac, ctl, function (ss, done) {
             if (what === 'cats') { stalkerVodCats(ss, type, ctl, function (err, list) { done(err, { cats: list }); }); return; }
             if (what === 'list') {
@@ -3336,7 +3375,10 @@ function stalkerControl(req, res, path, query, leaving) {
             }
             if (what === 'seasons' && /^[\w-]{1,40}$/.test(q.id || '')) { stalkerSeasons(ss, q.id, q.via === 'vod', ctl, function (err, l) { done(err, { seasons: l }); }); return; }
             done(upError('bad request', 400));
-        }, function (err, r) { json(err ? { why: err.message || 'failed' } : r); });
+        }, function (err, r) {
+            if (!err && vkey) { stalkerKeepVod(s, vkey, r); }   // (an error isn't kept: asked again next time)
+            json(err ? { why: err.message || 'failed' } : r);
+        });
         return;
     }
     if (path === '/stalker/genres') {
@@ -3370,6 +3412,54 @@ function stalkerControl(req, res, path, query, leaving) {
         s.list = { at: Date.now(), m3u: r.m3u, count: r.count, cut: r.cut || null, whole: whole, genres: wanted };
         json(listed(s.list));
     });
+}
+
+// ---- A DRM channel's license (/drm/license) ----
+// A Widevine channel's license request, posted to the license server its playlist names, with the
+// playlist's headers for it (a web page can't send a User-Agent, a Cookie…, and some servers refuse
+// its origin), its answer sent back in base64. The player hands over the request and installs the
+// answer (see js/player-core.js, drmSetup). POSTed: { u: the license server, h: { name: value },
+// c: the request, base64, b64: the answer is base64 already }; the token, or the guide ticket.
+var DRM_BODY_MAX = 65536, DRM_MS = 15000, DRM_MAX = 1048576;
+var DRM_NOT = /^(host|content-length|connection|transfer-encoding|keep-alive|upgrade|te|trailer|proxy-.*)$/i;
+function drmControl(req, res, query, body, leaving) {
+    if (!entryAllowed(req, query) && !hasTicket(query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
+    var o = null;
+    try { o = JSON.parse(body); } catch (e) { o = null; }
+    function json(x) { send(res, 200, 'application/json', JSON.stringify(x)); }
+    var u = o && typeof o.u === 'string' ? o.u : '', c = o && typeof o.c === 'string' ? o.c : '', pu = null;
+    try { pu = urllib.parse(u); } catch (e) { pu = null; }
+    if (!pu || (pu.protocol !== 'http:' && pu.protocol !== 'https:') || u.length > 2000 || !dlHostOk(pu.hostname)) { json({ why: 'not a license server StremioK can reach' }); return; }
+    if (!c || !/^[A-Za-z0-9+\/=]+$/.test(c)) { json({ why: 'no license request' }); return; }
+    var data = HAS_BUFFER_FROM ? Buffer.from(c, 'base64') : new Buffer(c, 'base64'), h = { 'Content-Type': 'application/octet-stream', 'User-Agent': TV_UA, 'Accept': '*/*' };
+    Object.keys((o.h && typeof o.h === 'object') ? o.h : {}).slice(0, 16).forEach(function (k) {
+        var v = o.h[k];
+        if (/^[A-Za-z0-9-]{1,40}$/.test(k) && !DRM_NOT.test(k) && typeof v === 'string' && v.length <= 1000 && !/[\r\n]/.test(v)) { h[k] = v; }
+    });
+    h['Content-Length'] = data.length;
+    var done = false, r = null, chunks = [], size = 0;
+    var timer = setTimeout(function () { finish({ why: 'the license server didn\'t answer' }); }, DRM_MS);
+    function finish(x) { if (done) { return; } done = true; clearTimeout(timer); try { if (x.why && r) { r.abort(); } } catch (e) {} if (x.why) { log('DRM: no license (' + x.why + ')'); } json(x); }
+    leaving.push(function () { done = true; clearTimeout(timer); try { if (r) { r.abort(); } } catch (e) {} });
+    var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, method: 'POST', headers: h };
+    if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
+    try {
+        r = (pu.protocol === 'https:' ? https : http).request(opts, function (resp) {
+            var sc = resp.statusCode;
+            resp.on('data', function (b) { if (done) { return; } chunks.push(b); size += b.length; if (size > DRM_MAX) { finish({ why: 'too large an answer' }); } });
+            resp.on('end', function () {
+                if (done) { return; }
+                var all = Buffer.concat(chunks, size);
+                if (sc !== 200) { finish({ why: 'HTTP ' + sc + (all.length && all.length < 200 ? ': ' + all.toString('utf8').replace(/\s+/g, ' ').trim().slice(0, 120) : '') }); return; }
+                if (!all.length) { finish({ why: 'an empty answer' }); return; }
+                finish({ license: o.b64 ? all.toString('utf8').trim() : all.toString('base64') });
+            });
+            resp.on('error', function (e) { finish({ why: e.message || 'failed' }); });
+        });
+        r.on('error', function (e) { finish({ why: 'couldn\'t reach it (' + (e.code || e.message) + ')' }); });
+        guardSelf(r, function () { finish({ why: 'an address it can\'t reach' }); });
+        r.end(data);
+    } catch (e) { finish({ why: e.message || 'failed' }); }
 }
 
 // ---- TV guide (/epg/load, /epg/get) ----
@@ -3785,8 +3875,11 @@ function epgControl(req, res, path, query) {
 // minute. The port is open only while one is: ENTRY_CONNECTIONS at a time, each given
 // ENTRY_VISIT_MS (ENTRY_QUIET_MS of silence). It's plain HTTP: the page says so.
 var ENTRY_PORT = PORT + 10, ENTRY_MS = 5 * 60 * 1000, ENTRY_IDLE_MS = 30000, ENTRY_MAX = 8192;
+// A configuration file: pasted on the import's page (CONFIG_MAX, sent %-encoded: 3 times that), or
+// given by the TV to the export's page (GIVE_MAX, POSTed to /entry/give), shown to copy or download.
+var CONFIG_MAX = 262144, GIVE_MAX = 262144;
 var ENTRY_OPEN_MAX = 2, ENTRY_OPENS = 12, ENTRY_CONNECTIONS = 8, ENTRY_VISIT_MS = 20000, ENTRY_QUIET_MS = 10000;
-var ENTRY_TITLES = { link: 'Play a link on StremioK', addon: 'Add an addon to StremioK', playlist: 'Add an IPTV playlist to StremioK', config: 'Import a configuration file into StremioK',
+var ENTRY_TITLES = { link: 'Play a link on StremioK', addon: 'Add an addon to StremioK', playlist: 'Add an IPTV playlist to StremioK', config: 'Import a configuration file into StremioK', give: 'Your StremioK configuration',
     search: 'Search on StremioK', youtube: 'Add a YouTube catalog to StremioK', aiom: 'Your AIOManager address for StremioK', aiomkey: 'Your AIOManager API key for StremioK',
     server: 'Your streaming server’s address for StremioK', mac: 'Your Stalker portal’s MAC address for StremioK' };
 var ENTRY_TEXT = { search: 'Words to search for', youtube: 'A channel, a playlist link, or words to search YouTube for', aiomkey: 'Your account API key', mac: 'Its MAC address (00:1A:79:…)' };   // (plain text, not a link)
@@ -3826,21 +3919,22 @@ function entryIdle(token) {
     clearTimeout(e.idle);
     e.idle = setTimeout(function () { entryDrop(token); }, ENTRY_IDLE_MS);
 }
-function entryControl(req, res, path, query) {
-    if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed'); return; }
+function entryControl(req, res, path, query, body) {
+    if (!entryAllowed(req, query) && !(path === '/entry/give' && hasTicket(query))) { send(res, 403, 'text/plain', 'not allowed'); return; }   // (the export's POST: the guide ticket too)
     var tm = /(?:^|&)t=([0-9a-f]{32})(?:&|$)/.exec(query || ''), token = tm ? tm[1] : '';
-    if (path === '/entry/open') {
+    if (path === '/entry/open' || path === '/entry/give') {
+        if (path === '/entry/give' && !String(body || '').trim()) { send(res, 400, 'text/plain', 'nothing to give'); return; }
         var now = Date.now();
         _entryOpened = _entryOpened.filter(function (x) { return now - x < 60000; });
         if (_entryOpened.length >= ENTRY_OPENS) { send(res, 429, 'text/plain', 'too many, try again in a minute'); return; }
-        var wm = /(?:^|&)what=([a-z]{1,12})(?:&|$)/.exec(query || ''), what = wm && ENTRY_TITLES[wm[1]] ? wm[1] : 'link';
+        var wm = /(?:^|&)what=([a-z]{1,12})(?:&|$)/.exec(query || ''), what = path === '/entry/give' ? 'give' : wm && ENTRY_TITLES[wm[1]] && wm[1] !== 'give' ? wm[1] : 'link';
         var ip = lanAddress();
         if (!ip) { send(res, 503, 'text/plain', 'no home network address'); return; }
         _entryOpened.push(now);
         var open = Object.keys(_entries).sort(function (a, b) { return _entries[a].at - _entries[b].at; });
         while (open.length >= ENTRY_OPEN_MAX) { entryDrop(open.shift(), true); }   // (the oldest goes)
         var t = crypto.randomBytes(16).toString('hex');
-        _entries[t] = { what: what, text: null, sent: false, at: now, timer: setTimeout(function () { entryDrop(t); }, ENTRY_MS), idle: null };
+        _entries[t] = { what: what, text: null, sent: false, at: now, timer: setTimeout(function () { entryDrop(t); }, ENTRY_MS), idle: null, give: what === 'give' ? String(body) : null, seen: false };
         entryIdle(t);
         var opened = function () { send(res, 200, 'application/json', JSON.stringify({ url: 'http://' + ip + ':' + ENTRY_PORT + '/e/' + t, token: t, expires: ENTRY_MS })); };
         if (_entryServer) { opened(); return; }
@@ -3866,7 +3960,7 @@ function entryControl(req, res, path, query) {
     if (path === '/entry/poll') {
         var text = e.text;
         if (e.sent) { entryDrop(token); } else { entryIdle(token); }   // (collected: the page and its code go)
-        send(res, 200, 'application/json', JSON.stringify({ text: text }));
+        send(res, 200, 'application/json', JSON.stringify(e.give !== null ? { seen: e.seen } : { text: text }));   // (an export: whether the phone has it)
         return;
     }
     if (path === '/entry/close') { entryDrop(token); send(res, 200, 'text/plain', 'closed'); return; }
@@ -3875,16 +3969,36 @@ function entryControl(req, res, path, query) {
 function entryHtml(title, body) {
     return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
         '<title>' + title + '</title><style>body{font-family:-apple-system,Roboto,sans-serif;background:#0e1117;color:#e6e9ef;margin:0;padding:24px}' +
-        'h1{font-size:22px;margin:0 0 16px}input{width:100%;box-sizing:border-box;font-size:17px;padding:12px;border-radius:10px;border:1px solid #2a3346;background:#161b26;color:#e6e9ef}' +
+        'h1{font-size:22px;margin:0 0 16px}input,textarea{width:100%;box-sizing:border-box;font-size:17px;padding:12px;border-radius:10px;border:1px solid #2a3346;background:#161b26;color:#e6e9ef}' +
         'button{margin-top:14px;width:100%;font-size:17px;padding:12px;border:0;border-radius:10px;background:#818cf8;color:#0e1117;font-weight:600}p{color:#9aa3b5;font-size:15px}</style></head><body>' +
         '<h1>' + title + '</h1>' + body + '</body></html>';
 }
 function entryPage(req, res) {
     try {
         res.setHeader('Cache-Control', 'no-store');
-        var m = /^\/e\/([0-9a-f]{32})$/.exec(String(req.url || '')), e = m && _entries[m[1]];
+        var m = /^\/e\/([0-9a-f]{32})(\/stremiok\.txt)?$/.exec(String(req.url || '')), e = m && _entries[m[1]];
         if (!e || e.sent) { send(res, 404, 'text/plain', 'Not here (it was used, or the TV closed it)'); return; }
         var title = ENTRY_TITLES[e.what];
+        if (e.give !== null) {   // (an export: the file to copy, or download)
+            if (req.method !== 'GET') { send(res, 405, 'text/plain', 'GET only'); return; }
+            e.seen = true;
+            if (m[2]) { res.setHeader('Content-Disposition', 'attachment; filename="stremiok.txt"'); send(res, 200, 'text/plain; charset=utf-8', e.give); return; }
+            var esc = e.give.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            send(res, 200, 'text/html; charset=utf-8', entryHtml(title, '<p>It holds your addon links, playlist logins, API keys and MAC addresses: keep it somewhere private. To restore it: Settings › Content › Import configuration file, ▣ From your phone, then choose this file there (or paste it).</p>' +
+                '<textarea id="f" readonly rows="12">' + esc + '</textarea><button type="button" onclick="var f=document.getElementById(\'f\');f.focus();f.select();try{document.execCommand(\'copy\');this.textContent=\'Copied\';}catch(x){}">Copy</button>' +
+                '<a href="/e/' + m[1] + '/stremiok.txt" download="stremiok.txt"><button type="button">Download</button></a><p>It came over your home network <b>unencrypted</b>. This page closes when the TV stops showing its code.</p>'));
+            return;
+        }
+        if (m[2]) { send(res, 404, 'text/plain', 'Not here'); return; }
+        var config = e.what === 'config', max = config ? CONFIG_MAX * 3 : ENTRY_MAX;   // (a pasted file: its lines kept, %-encoded as sent)
+        if (req.method === 'GET' && config) {   // (its link, as before; or the file itself, chosen from the phone's files or pasted)
+            send(res, 200, 'text/html; charset=utf-8', entryHtml(title, '<form method="post"><p>A link to the file</p><input name="link" type="url" autocomplete="off" placeholder="https://…">' +
+                '<p>Or the file itself (an export\'s stremiok.txt)</p><input id="pick" type="file" accept=".txt,.cfg,.conf,text/plain">' +
+                '<textarea id="f" name="text" rows="8" autocomplete="off" placeholder="…or paste it here"></textarea>' +
+                '<button type="submit">Send to the TV</button></form><p>It goes straight to your TV over your home network, <b>unencrypted</b>: use this only on a network you trust (a configuration file holds your tokens, passwords and keys). This page stops working once it has been sent.</p>' +
+                '<script>document.getElementById("pick").onchange=function(){var f=this.files&&this.files[0];if(!f){return;}var r=new FileReader();r.onload=function(){document.getElementById("f").value=r.result;};r.readAsText(f);};</script>'));
+            return;
+        }
         if (req.method === 'GET') {
             var plain = ENTRY_TEXT[e.what];
             send(res, 200, 'text/html; charset=utf-8', entryHtml(title, '<form method="post"><input name="text" type="' + (plain ? 'text' : 'url') + '" autofocus autocomplete="off" placeholder="' + (plain || 'https://…') + '" required>' +
@@ -3897,14 +4011,16 @@ function entryPage(req, res) {
         req.on('data', function (c) {
             if (done) { return; }
             size += c.length;
-            if (size > ENTRY_MAX) { done = true; send(res, 413, 'text/plain', 'Too long'); return; }   // (the rest read and dropped: the connection stays usable)
+            if (size > max) { done = true; send(res, 413, 'text/plain', 'Too long'); return; }   // (the rest read and dropped: the connection stays usable)
             body += c;
         });
         req.on('end', function () {
             if (done) { return; }
             done = true;
-            var tm = /(?:^|&)text=([^&]*)/.exec(body), text = '';
-            try { text = tm ? decodeURIComponent(tm[1].replace(/\+/g, ' ')).replace(/[\r\n\t]+/g, ' ').trim() : ''; } catch (e3) { text = ''; }
+            var tm = /(?:^|&)text=([^&]*)/.exec(body), lm = config && /(?:^|&)link=([^&]*)/.exec(body), text = '';
+            try { text = tm ? decodeURIComponent(tm[1].replace(/\+/g, ' ')) : ''; } catch (e3) { text = ''; }
+            if (!text.trim() && lm) { try { text = decodeURIComponent(lm[1].replace(/\+/g, ' ')); } catch (e4) { text = ''; } }   // (a link to the file, as before)
+            text = config ? text.replace(/\r\n?/g, '\n').trim().slice(0, CONFIG_MAX) : text.replace(/[\r\n\t]+/g, ' ').trim();
             if (!text || !_entries[m[1]] || e.sent) { send(res, 400, 'text/plain', 'Nothing sent'); return; }
             e.text = text; e.sent = true;
             send(res, 200, 'text/html; charset=utf-8', entryHtml(title, '<p>Sent to your TV.</p>'));

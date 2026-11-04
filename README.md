@@ -73,11 +73,8 @@ metadata come from the addons you install (**Cinemeta**, the official one, by de
 playable sources come from whatever **stream addons you add yourself** in Settings. Streams
 that only expose a torrent `infoHash` play only through a streaming server you run (Stremio's
 or TorrServer): this app embeds no torrent or debrid engine.
-> **Note on WatchHub:** StremioK doesn't install it. Its answers say it's only for clients
-> Stremio authorizes in writing, and StremioK isn't one; "where to watch" comes from TMDB
-> instead (with a TMDB key). You can still add it yourself as a third-party addon (Settings
-> shows that notice on it); its results are rent/buy/subscription *links to external
-> services*, not video URLs. Add stream addons that return HTTP/HLS URLs for actual playback.
+> **Note on WatchHub:** StremioK doesn't install it: its answers say it's only for clients
+> Stremio authorizes in writing. "Where to watch" comes from TMDB instead (with a TMDB key).
 
 The **IPTV** feature likewise hosts no content: you supply your own M3U playlist URLs, Xtream
 accounts or Stalker portals. For YouTube entries, the bundled service finds the video's stream; the video itself
@@ -85,6 +82,12 @@ comes straight from YouTube. No video or audio is kept: everything plays straigh
 source, unless you download it to your own USB drive. What StremioK does keep, on the TV, is
 your progress, settings and copies that let it start faster (see
 [Privacy and data](docs/PRIVACY.md#what-stays-on-the-tv)).
+
+**DRM:** StremioK doesn't break or bypass copy protection. A protected channel plays only with
+the license server or keys its playlist gives (Widevine and PlayReady through the TV's player,
+ClearKey through Shaka Player), as in Kodi and other players. StremioK can't tell where a
+playlist's keys come from: use only streams and keys you're entitled to; what you add is your
+responsibility.
 
 ## Known limitations
 
@@ -109,6 +112,10 @@ your progress, settings and copies that let it start faster (see
 ## License
 
 MIT: see [LICENSE](LICENSE).
+
+It includes [Shaka Player](https://github.com/shaka-project/shaka-player) 5.3.3 (© Google LLC,
+Apache License 2.0: [js/vendor/SHAKA-LICENSE](js/vendor/SHAKA-LICENSE)), loaded only to play
+ClearKey channels.
 
 Skip timestamps come partly from [SkipDB](https://skipdb.tv), whose data is published under
 the [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/) (see its

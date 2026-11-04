@@ -151,8 +151,22 @@
     }
     function openTitle(v, opts) { App.openDetail('movie', v.id, { id: v.id, type: 'movie', name: v.title || v.name || '', poster: v.thumbnail }, null, opts); }
 
+    // A series by its details, whatever its card or row called it (an anime addon's: a film,
+    // "anime", "other"): they say it's a series, or list numbered episodes without files of
+    // their own. Its seasons and episodes, then, not sources. (A YouTube list: as it is.)
+    var AS_SERIES = /^(movie|anime|other)$/;
+    function asSeries() {
+        var meta = _d.meta, vids = (meta && Array.isArray(meta.videos)) ? meta.videos : [];
+        if (!vids.length || !AS_SERIES.test('' + _d.type) || /^(ytk|yt_id):/.test('' + (meta.id || _d.id))) { return false; }
+        if (vids.some(function (v) { return !v || (v.streams && v.streams.length); })) { return false; }
+        var numbered = vids.length > 1 && vids.every(function (v) { return typeof v.season === 'number' && typeof v.episode === 'number'; });
+        if (meta.type !== 'series' && !numbered) { return false; }
+        _d.type = 'series';
+        return true;
+    }
+
     function asEpisodeList() {
-        if (asCollection()) { return; }
+        if (asCollection() || asSeries()) { return; }   // (a collection first: its films are numbered too)
         var meta = _d.meta, t = _d.type;
         // (opened again as a series, from Continue Watching: still a YouTube list, by its own type)
         var again = !!meta && t === 'series' && /^(ytk|yt_id):/.test('' + (meta.id || _d.id)) && !!meta.type && meta.type !== 'series';

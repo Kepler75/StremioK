@@ -40,6 +40,7 @@ locally, use a wrapper package, or use the
 | `js/iptv.js` | M3U parsing, TV / radio classification, the synthetic IPTV addon |
 | `js/xtvod.js` | An Xtream account's films and series: the local addon for their catalogs, title pages and sources, and its copies on your addons' titles |
 | `js/stvod.js` | A Stalker portal's films and series, the same way, through the service |
+| `js/vendor/shaka-player.compiled.js` | Shaka Player 5.3.3 (Google, Apache 2.0: `js/vendor/SHAKA-LICENSE`), unchanged, loaded only to play a ClearKey channel |
 | `js/epg.js` | The TV guide: which guide a playlist has, its channels' keys for the service, the programs cards, the player, schedules and the Guide tab ask for |
 | `js/youtube.js` | StremioK's own YouTube: your YouTube catalogs (Settings › Content › YouTube), YouTube in Search, the built-in YouTube addon (catalogs, channel / playlist / video pages, streams), SponsorBlock and DeArrow settings and lookups |
 | `js/stremio.js` | Addon client (manifests, catalog / meta / stream / subtitles), source cache and de-duplication, source details (resolution, codec, HDR, audio…), Formats (learning, allowed resolutions), TMDB / OMDb / MDBList / TheIntroDB / SkipDB / IntroDB |

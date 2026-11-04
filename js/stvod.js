@@ -65,7 +65,8 @@ var StVod = (function () {
             if ((c && Date.now() - c.at < (c.none ? CATS_RETRY_MS : CATS_FRESH_MS)) || _catsAsked[sk]) { return; }
             _catsAsked[sk] = true;   // (once a launch: a portal that didn't answer is asked again at the next)
             function either(p) { return p.then(null, function (e) { return { failed: e }; }); }
-            Promise.all([either(ask(acc, '&type=movie&do=cats')), either(ask(acc, '&type=series&do=cats'))]).then(function (r) {
+            var fresh = _reloaded[acc.id] ? '&fresh=1' : '';   // (Reload: the service's kept lists let go too)
+            Promise.all([either(ask(acc, '&type=movie&do=cats' + fresh)), either(ask(acc, '&type=series&do=cats' + fresh))]).then(function (r) {
                 if (r[0].failed && r[1].failed) { U.log('iptv', 'Stalker “' + acc.label + '”: its films and series couldn’t be read (' + U.problem(r[0].failed) + ')'); return; }
                 var all = catsAll(), keep = {}, o = { sig: sk, movie: catList(r[0]), series: catList(r[1]), at: Date.now() };
                 if (!o.movie.length && !o.series.length) { o.none = true; U.log('iptv', 'Stalker “' + acc.label + '”: no films or series'); }
@@ -80,7 +81,8 @@ var StVod = (function () {
             });
         });
     }
-    // Reload on a portal (Settings › Content › IPTV): its categories asked again now.
+    // Reload on a portal (Settings › Content › IPTV): its categories asked again now, and the
+    // service's kept lists of it let go (fresh=1).
     function reload(id) {
         var acc = account(id), all = catsAll();
         if (!acc) { return; }

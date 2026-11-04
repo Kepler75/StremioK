@@ -4,7 +4,7 @@
 (function (P) {
     'use strict';
     var S = P.S;
-    var avplay = P.avplay, useAV = P.useAV;
+    var avplay = P.avplay;   // (P.useAV: the TV's player's playback or the page's, as it is now: see player-core's engineFor)
 
     // ----- from the other parts -----
     function exit() { return P.exit.apply(null, arguments); }   // core
@@ -752,7 +752,7 @@
     // mode this TV rejects falls back to Fit (quiet = at stream start).
     function applyAspect(quiet) {
         var a = aspectDef(P.aspectNow());
-        if (!useAV) { if (S.videoEl) { S.videoEl.style.objectFit = a[3]; } return true; }
+        if (!P.useAV) { if (S.videoEl) { S.videoEl.style.objectFit = a[3]; } return true; }
         try { avplay.setDisplayMethod(a[2]); return true; } catch (e) {
             try { avplay.setDisplayMethod(aspectDef('fit')[2]); } catch (e2) {}
             if (!quiet) { U.toast(a[1].split(' (')[0] + ' isn\'t available on this TV', 2500); }
@@ -831,7 +831,7 @@
         if (!el || !S.ctx) { return; }
         var lines = [], video = null, audio = null;
         sourceLines(lines);
-        if (useAV) {
+        if (P.useAV) {
             try {
                 var now = avplay.getCurrentStreamInfo() || [];
                 for (var i = 0; i < now.length; i++) {
@@ -853,7 +853,7 @@
         lines.push(['Subtitles', subtitleSummary()]);
         if (hasQualities()) { lines.push(['Quality', qualityLabel() + '  (' + qualityCount() + ' available)']); }
         else if (qualityUnread()) { lines.push(['Quality', 'Auto (this stream’s qualities couldn’t be read)']); }
-        if (useAV) {
+        if (P.useAV) {
             try {
                 var bw = +avplay.getStreamingProperty('CURRENT_BANDWIDTH');
                 if (bw > 0) { lines.push(['Bandwidth', (bw / 1e6).toFixed(1) + ' Mbps']); }

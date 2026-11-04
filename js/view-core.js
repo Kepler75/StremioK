@@ -140,6 +140,47 @@ var ViewParts = {};
         }, function () { if (!over) { how.textContent = 'Your phone can’t reach the TV just now (no home network, or StremioK’s service isn’t running): type it instead.'; } });
     }
     function qrSpotCanvas(text) { var s = qrSpot(text); s.className = ''; return s; }
+    // A file given to the phone (an export: YTPlay.entryGive): a QR to the service's one-time page
+    // that shows it to copy or download; kept open while the QR is on screen (asked every
+    // GIVE_POLL_MS, which also says once the phone has it), closed with Done.
+    var GIVE_POLL_MS = 3000;
+    function phoneGive(title, text, note) {
+        var existing = document.querySelector('.modal-overlay');
+        if (existing) { existing.parentNode.removeChild(existing); }
+        var overlay = U.el('div', 'modal-overlay'), box = U.el('div', 'modal-box qr-box');
+        box.appendChild(U.el('div', 'modal-msg', title));
+        var spot = U.el('div', 'qr-spot'), how = U.el('div', 'qr-note', 'Opening the page for your phone…'), link = U.el('div', 'qr-link', '');
+        box.appendChild(spot); box.appendChild(link); box.appendChild(how);
+        if (note) { box.appendChild(U.el('div', 'qr-note', note)); }
+        var row = U.el('div', 'modal-row'), done = U.el('div', 'pill focusable modal-btn', 'Done');
+        var token = null, timer = null, over = false;
+        done.__onselect = function () { closeModal(); };
+        row.appendChild(done); box.appendChild(row); overlay.appendChild(box);
+        document.body.appendChild(overlay);
+        showModal(overlay, done);
+        onModalClose(function () { over = true; if (timer) { clearTimeout(timer); } if (token && YTPlay.entryClose) { YTPlay.entryClose(token); } token = null; });
+        function poll() {
+            timer = setTimeout(function () {
+                timer = null;
+                if (over || !token) { return; }
+                YTPlay.entrySeen(token).then(function (seen) {
+                    if (over) { return; }
+                    if (seen) { how.textContent = 'Your phone has it: copy or download it there, then Done.'; }
+                    poll();
+                }, function () { if (!over) { how.textContent = 'The phone page closed. Export again to open another.'; token = null; } });
+            }, GIVE_POLL_MS);
+        }
+        if (typeof YTPlay === 'undefined' || !YTPlay.entryGive) { how.textContent = 'It needs StremioK’s service on the TV (not in a desktop browser).'; return; }
+        YTPlay.entryGive(text).then(function (r) {
+            if (over) { if (r && r.token) { YTPlay.entryClose(r.token); } return; }
+            if (!r || !r.url) { throw new Error('no page'); }
+            token = r.token;
+            spot.appendChild(qrSpotCanvas(r.url));
+            link.textContent = r.url;
+            how.textContent = 'Scan it with your phone (on the same Wi-Fi as the TV): the page shows the file to copy or download. For the next 5 minutes, unencrypted over your home network: only on a network you trust.';
+            poll();
+        }, function () { if (!over) { how.textContent = 'Your phone can’t reach the TV just now (no home network, or StremioK’s service isn’t running).'; } });
+    }
 
     // Show `overlay` (already in the page) as the modal: focus moves into it, and
     // closeModal() returns focus to where it was on the screen underneath.
@@ -444,7 +485,7 @@ var ViewParts = {};
         var go = U.el('div', 'pill focusable modal-btn');
         function ticked() { return items.filter(function (it) { return on[it.key]; }).map(function (it) { return it.key; }); }
         function drawGo() { go.textContent = opts.button(ticked().length); }
-        var all = U.el('div', 'pick-item focusable', 'Select all');
+        var all = U.el('div', 'pick-item focusable', can.length && can.every(function (it) { return on[it.key]; }) ? 'Select none' : 'Select all');   // (all ticked at first: an export's)
         all.__onselect = function () {
             var every = can.every(function (it) { return on[it.key]; });
             can.forEach(function (it) { on[it.key] = !every; });
@@ -890,7 +931,7 @@ var ViewParts = {};
     V.buildTopMenu = buildTopMenu;
     V.closeModal = closeModal;
     V.confirm = confirm;
-    V.qrModal = qrModal;
+    V.qrModal = qrModal; V.phoneGive = phoneGive;
     V.phoneEntry = phoneEntry;
     V.header = header;
     V.isModalOpen = isModalOpen;

@@ -13,7 +13,7 @@ In a list you order, ▲ / ▼ move an item one place and ⇈ / ⇊ move it to t
 - [Content](#content): [Addons](#addons), [AIOManager](#aiomanager),
   [Streaming server](#streaming-server), [Integrations](#integrations), [IPTV](#iptv), [YouTube](#youtube),
   [Streaming apps](#streaming-apps), [USB drive](#usb-drive),
-  [Import configuration file](#import-configuration-file)
+  [Import configuration file](#import-configuration-file), [Export configuration](#export-configuration)
 - [Playback](#playback): [Audio](#audio), [Subtitles](#subtitles), [Skipping](#skipping),
   [Seeking & buffering](#seeking--buffering), [Source ranking](#source-ranking),
   [Formats](#formats), [Private viewing](#private-viewing)
@@ -35,8 +35,8 @@ it has none or the logo can't be loaded.
 | *+ Add addon* | a manifest link | Adds an addon (`https://…/manifest.json`, or a `stremio://` install link). Only v3 addons work. |
 | *Import addons from your Stremio account* | | Lists your Stremio account's addons to tick and import. |
 | *AIOManager* | | Its own page: see [AIOManager](#aiomanager). |
-| Each addon | *Refresh*, *Turn off* / *Turn on*, *Remove*, *Share*, *Configure*, ⇈ ▲ ▼ ⇊ | Reloads it, switches it off (kept, not asked for anything) or on, removes it, shows a QR code of its link (with your tokens: show it only to your own devices) or of its setup page, or moves it. Higher addons describe titles first. |
-| *Wait for addons* | **Normal** (12 s; sources 15, search 25), 20, 30, 45, 60 seconds | How long StremioK waits for an addon's answer. Longer helps an addon hosted where it sleeps when unused: it fails the first time and answers the next. |
+| Each addon | *Refresh*, *Turn off* / *Turn on*, *Remove*, *Share*, *Configure*, ⇈ ▲ ▼ ⇊ | Reloads it, switches it off (kept, not asked for anything) or on, removes it, shows a QR code of its link (with your tokens: for your own devices) or setup page, or moves it. Higher addons describe titles first. |
+| *Wait for addons* | **Normal** (12 s; sources 15, search 25), 20, 30, 45, 60 seconds | How long StremioK waits for an addon. Longer helps one that sleeps when unused (it fails the first time, then answers). |
 | *Local-network links from internet addons* | **Blocked**, Allowed | Blocked, internet addons can't point links into your home network; your own network's addons and your playlists still can. See [Privacy](PRIVACY.md#your-home-network). |
 
 ### AIOManager
@@ -59,8 +59,8 @@ sources that are only torrents; Stremio's can also convert a video the TV can't 
 |---------|---------|--------------|
 | *Server* | **Off**, Stremio server, TorrServer | The one you run. Stremio's comes with the Stremio app for computers (port 11470) or on its own; TorrServer's usual port is 8090. |
 | *Address* | its link, e.g. `http://192.168.0.10:11470` | *Test* says whether it answers. |
-| *Wait for a torrent to start* | 45 seconds, 1, **2**, 3, 5 minutes | How long a torrent source has to start playing before the next source: finding people sharing it takes a while. |
-| *Convert videos the TV can't play* | **Off**, On | Stremio's server only: a source that doesn't start is tried once more, converted by the server, before the next source. The 2017 TV can't play what it converts. |
+| *Wait for a torrent to start* | 45 seconds, 1, **2**, 3, 5 minutes | How long a torrent source gets to start before the next: finding people sharing it takes a while. |
+| *Convert videos the TV can't play* | **Off**, On | Stremio's server only: a source that doesn't start is tried once more, converted, before the next. The 2017 TV can't play what it converts. |
 
 ### Integrations
 
@@ -85,7 +85,7 @@ Each says whether its guide was read. See [IPTV and radio](USER-GUIDE.md#iptv-an
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Auto-refresh* | **Off**, Every hour, Every 3 hours, Every 6 hours, Every 12 hours | All playlists and their TV guides downloaded again, as *Reload* does. |
-| *Stalker channels* | **First 100 pages**, Whole portal | How much of a portal listing its channels page by page is read (100 pages: about 1,400). *Whole portal*, up to 30,000: many minutes on every *Reload* and *Auto-refresh*, and a portal may slow down, cut off or block a MAC that asks so much. A portal's *Channel groups* read only those instead. |
+| *Stalker channels* | **First 100 pages**, Whole portal | How much of a portal listing its channels page by page is read (100 pages: about 1,400). *Whole portal*, up to 30,000: many minutes each *Reload* and *Auto-refresh*; a portal may slow down or block a MAC that asks so much. A portal's *Channel groups* read only those instead. |
 
 ### YouTube
 
@@ -112,7 +112,7 @@ TV models, so the list comes from the TV itself. On the TV only.
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | Each drive | *Index again* | Its index: videos, how many are matched, when. |
-| *Match videos to titles* | **Off (not asked yet)**, On, Off | Whether file names are looked up with your search addons. Asked the first time a folder has videos to match. |
+| *Match videos to titles* | **Off (not asked yet)**, On, Off | Whether file names are looked up with your search addons; asked the first time a folder has videos to match. |
 | *Show hidden files* | **Off**, On | Lists files starting with "." and the system folders. |
 | *Clear the USB index* | | Title pages stop offering the drive's files; Local still browses it. |
 | *Forget matches* | | Every video is matched again from its name, yours too. |
@@ -120,8 +120,15 @@ TV models, so the list comes from the TV itself. On the TV only.
 ### Import configuration file
 
 A link to a text file (up to 256 KB) with one addon link, playlist link or API key per line;
-lines starting with `#` are ignored. What it has is listed to tick and import. See
-[Getting started](USER-GUIDE.md#add-your-addons).
+`#` lines are ignored. From your phone: its link, or the file (chosen or pasted). What it has
+is listed to tick and import. See [Getting started](USER-GUIDE.md#add-your-addons).
+
+### Export configuration
+
+Your addons (in order), playlists and Stalker portals (names, guide links), API keys
+and settings (not your Trakt sign-in, history or progress), as a file your phone copies or
+downloads, to import later. It holds your passwords and keys: keep it private. Imported
+settings replace yours (StremioK restarts).
 
 ## Playback
 
@@ -131,7 +138,7 @@ lines starting with `#` are ignored. What it has is listed to tick and import. S
 |---------|---------|--------------|
 | *Preferred language* | **Default (first track)**, a language | The audio track picked when there's one in it. |
 | *Second choice* | **none**, a language | Picked when there's none in the preferred language. |
-| *Switching to it* | **Quick (no wait)**, Safe: waits 3, 6 or 10 seconds | Quick picks the track before the video starts. Safe picks it once playback runs, then reloads the audio 6 seconds back; use it if Quick names your language but you hear another. Live streams always switch the Safe way. |
+| *Switching to it* | **Quick (no wait)**, Safe: waits 3, 6 or 10 seconds | Quick picks the track before the video starts. Safe picks it once playback runs, reloading the audio 6 seconds back: for when Quick names your language but you hear another. Live streams always switch the Safe way. |
 
 ### Subtitles
 
@@ -166,8 +173,8 @@ lines starting with `#` are ignored. What it has is listed to tick and import. S
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Seek step* | 5, **10**, 15, 30 seconds | How far LEFT / RIGHT jump. FF / REW jump three steps; holding a direction speeds up. |
-| *Reconnect live channels* | Off, **A few times**, Keep trying | A live channel that drops (its connection lost, or it freezes or ends) opens again at the live edge. A few times: up to 3 in 5 minutes. Keep trying: no limit, each try a little later (up to a minute apart); BACK stops it. Off: the player closes. |
-| *Buffer* | **Normal (the TV's own)**, More, Most | How much the TV's player loads before it starts and after running dry (More: 8 and 10 seconds; Most: 15 and 20). It applies from the next video. More takes a little longer to start but runs dry less on a slow connection. A 2017 TV stays within a few seconds' worth more. |
+| *Reconnect live channels* | Off, **A few times**, Keep trying | A live channel that drops (lost, frozen or ended) opens again at the live edge. A few times: up to 3 in 5 minutes. Keep trying: no limit, tries spaced up to a minute; BACK stops it. Off: the player closes. |
+| *Buffer* | **Normal (the TV's own)**, More, Most | How much the TV's player loads before it starts and after running dry (More: 8 and 10 seconds; Most: 15 and 20). More starts a little slower but runs dry less on a slow connection. A 2017 TV stays within a few seconds' worth more. |
 
 ### Source ranking
 
@@ -176,11 +183,11 @@ for what's left out and what *▶ Play* does. Their rows sum up what's set.
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Played before first* | **On**, Off | Sources that played for this title (or, for a series, like its recent episodes') come first. Off, they rank like any other. |
+| *Played before first* | **On**, Off | Sources that played for this title (or, for a series, like its recent episodes') come first; Off, they rank like others. |
 | *Filters ›* | a page (below) | What's left out, or sent to the bottom. |
 | *When you press Play ›* | a page (below) | Whether the list shows, and what happens when a source doesn't start. |
 | The criteria, in order | ▲ / ▼ to move, OK to turn on or off | What orders the sources (see [The criteria](#the-criteria)). *Restore defaults* puts them back. |
-| *Addons* (Feed sources) | ▲ / ▼, OK to turn off | The addons that give sources: their order (also the order they're asked in; a file two offer is listed under the higher one). One turned off isn't asked. |
+| *Addons* (Feed sources) | ▲ / ▼, OK to turn off | The addons that give sources, in the order they're asked (a file two offer is listed under the higher one). One turned off isn't asked. |
 
 **Filters:**
 
@@ -194,8 +201,8 @@ for what's left out and what *▶ Play* does. Their rows sum up what's set.
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Skip the source list* | **Off**, On | On, *▶ Play* on a movie, OK on an episode and *▶ Play SxEx* play the top source as soon as the addons have answered, without showing the list (with nothing playable, it shows as usual). The remote's ▶ Play key does this whichever you choose. |
-| *The next source if one doesn't start* | **On**, Off | A source the TV refuses, or that hasn't started after 45 seconds, gives way to the next, up to 3 more. Off: back to the list at once. Not for live channels, YouTube videos or USB files. |
+| *Skip the source list* | **Off**, On | On, *▶ Play* on a movie, OK on an episode and *▶ Play SxEx* play the top source once the addons have answered, without the list (with nothing playable, it shows). The remote's ▶ Play key does this whichever you choose. |
+| *The next source if one doesn't start* | **On**, Off | A source the TV refuses, or that hasn't started after 45 seconds, gives way to the next (up to 3 more); Off: back to the list. Not for live channels, YouTube or USB files. |
 
 #### Size limits
 
@@ -229,7 +236,7 @@ them.
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| Each row | **Working**, Not working | Something becomes *Working* once a source with it has played for a couple of seconds, and *Not working* after failing with two different files. OK switches it by hand. |
+| Each row | **Working**, Not working | *Working* once a source with it has played a couple of seconds, *Not working* after failing with two different files. OK switches it by hand. |
 | *Mark "Not working" automatically* | **On**, Off | Off, failed starts aren't recorded; what's marked stays. |
 | *Resolutions* | 4K, 1440p, 1080p, 720p, SD, Unknown: **Allowed**, Not allowed | A resolution not allowed sends its sources to the bottom at once. |
 | *Forget all formats* | | Starts over (the resolutions stay as you set them). |
@@ -238,7 +245,7 @@ them.
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Private viewing* | **Off**, On | On, what you play isn't recorded: see [Privacy](PRIVACY.md#private-viewing). It stays on until turned off; StremioK's name at the top is drawn as an outline meanwhile. UP › *◐ Private* turns it on or off for what's playing. |
+| *Private viewing* | **Off**, On | On, what you play isn't recorded: see [Privacy](PRIVACY.md#private-viewing). It stays on until turned off; StremioK's name at the top shows as an outline. UP › *◐ Private* turns it on or off for what's playing. |
 
 ## Appearance
 
@@ -256,7 +263,7 @@ them.
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Start on* | **Watching** (Continue Watching), any Home tab | The tab StremioK opens on (the Guide once its guide is read; Watching for a hidden tab). |
-| *Titles in a Home row* | **30**, 50, 100, 200, Unlimited | How many titles a Home row holds, for catalogs and IPTV groups. More load slower; *Unlimited* much slower, an addon may refuse so many requests, and very long rows can slow an older TV. ★ Favorites shows all yours. |
+| *Titles in a Home row* | **30**, 50, 100, 200, Unlimited | How many titles a Home row holds (catalogs, IPTV groups). More load slower; *Unlimited* much slower, an addon may refuse so many requests, and very long rows can slow an older TV. ★ Favorites shows all yours. |
 | *Home bar preview* | **Most recent first**, As in Watching, Off | Continue Watching on the TV's own home bar (StremioK must be on it: Apps › StremioK › *Add to Home*): up to 8 tiles you can play. Sideloaded app, Tizen 4 and later. |
 | *Menu ›* | ⇈ ▲ ▼ ⇊, OK to show or hide | The top menu's order between Watching (first) and Settings (last), and which Home tabs show. Discover and Search always show. |
 | *Home feeds ›* | ▲ / ▼, OK to show or hide | The order of the Home rows, and which show. |
@@ -279,7 +286,7 @@ with its last steps. *Startup* shows how long this launch and the one before too
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Use the TV's database* | **On**, Off | The database holds StremioK's big copies (Home's saved rows, IPTV playlist copies, USB drive indexes, your Trakt history). Off, they're kept in the settings storage instead (about 5 MB in all) and the database is deleted. |
+| *Use the TV's database* | **On**, Off | The database holds StremioK's big copies (Home's saved rows, IPTV playlist copies, USB drive indexes, your Trakt history). Off: kept in the settings storage (about 5 MB in all), the database deleted. |
 | *TV storage* | | What StremioK keeps, item by item, with sizes (its saved TV guides too), and the TV's free disk space. |
 | *Tidy up the TV's database* | | Gives back the space of old versions the TV hasn't cleared out. |
 | *Clear saved copies* | | Gives up the copies that can be made again (Home's saved rows, IPTV playlist copies, saved TV guides and Xtream lists, the USB index). |

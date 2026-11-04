@@ -108,6 +108,9 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
   series. Only the rest of a catalog of another type (an IPTV or sports addon's) is taken for
   live channels, played straight away; "No playable source for this channel" is noted in
   Diagnostics (which, and why).
+- **A series by its details:** a title whose details say it's a series, or list numbered
+  episodes (season and episode) without files of their own, opens on its seasons and
+  episodes, whatever its card or row called it (a film, *anime*, *other*).
 - **Anime ids and IMDb ids:** a movie known by an anime database's id (`mal:32281`) whose
   details also give its IMDb id (AIOMetadata's do) has its sources asked for by both: addons
   that gather from others (AIOStreams) ask only their anime sources by the anime id (Your Name.:
@@ -347,8 +350,33 @@ channels where it gives one; the rest is read from the source's name and file.
   in the background; its guides are read again at once (`&force=1`).
 - **Headers:** a channel's User-Agent and Referer (`#EXTVLCOPT:http-user-agent=` /
   `http-referrer=` or `http-referer=`, the same `#EXTINF` attributes, `#EXTHTTP:{…}`, or after
-  a `|` in its link: `…m3u8|Referer=…`) are applied where the TV allows it (these two only,
-  printable, within a sane length) and follow the channel when you switch sources.
+  a `|` in its link: `…m3u8|Referer=…`) and its Cookie (`#EXTHTTP:{"cookie": …}`, or after the
+  `|`) are applied where the TV allows it (these three only, printable, within a sane length,
+  an addon's `proxyHeaders` too): by the TV's player, the service's reads and its relay, not
+  downloads. They follow the channel when you switch sources.
+- **Films in a playlist:** a link to a file (a video file's name, an Xtream `/movie/` or `/series/`
+  one) plays as a film from the start. A DASH or HLS link (not an Xtream `/live/` one) has its
+  manifest read as it opens (with the channel's headers, through the service when it has some):
+  DASH `type="static"` (or none), HLS `#EXT-X-ENDLIST` or `#EXT-X-PLAYLIST-TYPE:VOD` (a master
+  playlist: its first variant's) make it a film, seekable once known.
+- **Configuration files:** a line an addon link, playlist link or OMDb / TMDB / MDBList key (what any
+  StremioK imports), and `#!stremiok <kind> <JSON>` lines, comments to an older one: `playlist`
+  (a playlist's name, guide link, off), `stalker` (a portal: its address, MAC, name, groups) and
+  `store` (one of the settings StremioK keeps, from a fixed list; integrations merged, without
+  Trakt's). An export is posted to the service (`/entry/give`) for a one-time phone page with
+  *Copy* and *Download*; the import's phone page takes a link, or the file chosen on the phone or pasted (256 KB).
+- **DRM:** Kodi's `#KODIPROP:inputstream.adaptive.` lines, before or after a channel's `#EXTINF`:
+  `license_type` with `license_key` (`URL|headers|R{SSM}|`, the answer as it comes or `B` for
+  base64), `drm_legacy` (`system|URL|headers`) or `drm` (JSON: `server_url`, `req_headers`);
+  `stream_headers` and `manifest_headers` give the stream's own User-Agent and Referer.
+  Widevine (`com.widevine.alpha`) and PlayReady (`com.microsoft.playready`) with a license
+  server play: PlayReady's license the TV's player fetches itself (given the headers), Widevine's
+  request the player hands over, posted by the service (`/drm/license`, with the playlist's
+  headers) and its answer given back. ClearKey (keys as `kid:key` pairs, JSON or a key server;
+  the TV's player has none) plays in the page's own `<video>` through Shaka Player 5.3.3
+  (`js/vendor`, Apache 2.0), loaded the first time one plays; only then, everything else staying
+  with the TV's player. It goes without the channel's User-Agent, Referer or Cookie (a browser
+  can't send them). Another system or template: said so, not played. Not repacked by the service.
 
 ### Xtream, Stalker and YouTube links
 
@@ -368,7 +396,9 @@ channels where it gives one; the rest is read from the source's name and file.
   (`type=vod` and `type=series`, `get_categories`), a category's titles newest first or a search
   (`get_ordered_list`, up to 42 from a position, 4 of the portal's pages at most), a series'
   seasons and episodes (by `movie_id`; a season that doesn't list its episodes, by `season_id`).
-  A copy of one of your titles is found by searching the portal for its name (year within one).
+  What's read (a list from a position, a search, a series' seasons) is kept 10 minutes, the last
+  40 a portal, so a row or category shown again isn't asked again; *Reload* on the portal reads it
+  all again. A copy of one of your titles is found by searching the portal for its name (year within one).
   A source is the service's `/stalker/play`, which asks `create_link` when the player opens it
   and redirects there, so a link saved to resume stays good.
 - **A channel's own format:** the player's *Format* swaps one channel's `/live/…/123.ts` and
@@ -744,6 +774,7 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 | Xtream films and series | `/xtvod/list`, `/xtvod/find` | An account's newest titles and Search; a title's copies | + token or header |
 | Stalker | `/stalker/list`, `/stalker/link`, `/stalker/genres`, `/stalker/vod`, `/stalker/play` | A portal's channels as an M3U playlist; a channel's link to play; its genres; its films and series; a film's or episode's link, redirected to | + token or header (`play`: or the guide ticket) |
 | TV guide | `/epg/load`, `/epg/get` | Reads a playlist's guide for your channels; their programs | + token or header |
+| DRM | `/drm/license` (a POST) | Posts a Widevine channel's license request to its license server | + token or the guide ticket |
 | Live relay | `/live/open`, then `/live/<id>/…` | Checks a channel's sound and captions; relays it repacked, captions as subtitles | open: + token or header |
 
 ### YouTube

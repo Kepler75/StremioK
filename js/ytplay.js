@@ -50,12 +50,27 @@ var YTPlay = (function () {
         var t = (typeof LocalMedia !== 'undefined' && LocalMedia.serviceToken) ? LocalMedia.serviceToken() : Promise.resolve('');
         return t.then(function (tk) { return tk ? { q: '&token=' + encodeURIComponent(tk), h: null } : HEADER; }, function () { return HEADER; });
     }
+    // An export (a configuration file) given to the phone: a one-time page to copy or download it
+    // -> { url, token } (polled like an entry: { seen }; closed with entryClose). POSTed: the token,
+    // or the guide ticket (the page's POST carries an Origin the header alone doesn't pass).
+    function entryGive(text) {
+        if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
+        return ensureService().then(entryAuth).then(function (a) {
+            return (a.q ? Promise.resolve(a.q) : ticketOf(a)).then(function (cred) {
+                return U.postJSON(PROXY + '/entry/give' + (cred ? '?' + cred.replace(/^&/, '') : ''), text, 10000, 65536, a.h);
+            });
+        });
+    }
     function entryOpen(what) {
         return entryAuth().then(function (a) { return U.getJSON(PROXY + '/entry/open?what=' + encodeURIComponent(what || 'link') + a.q, 8000, undefined, null, a.h); });
     }
     function entryPoll(token) {
         return entryAuth().then(function (a) { return U.getJSON(PROXY + '/entry/poll?t=' + encodeURIComponent(token) + a.q, 5000, undefined, null, a.h); })
             .then(function (r) { return (r && typeof r.text === 'string') ? r.text : null; });
+    }
+    function entrySeen(token) {   // (an export's page: kept open by asking, and whether the phone has opened it)
+        return entryAuth().then(function (a) { return U.getJSON(PROXY + '/entry/poll?t=' + encodeURIComponent(token) + a.q, 5000, undefined, null, a.h); })
+            .then(function (r) { return !!(r && r.seen); });
     }
     function entryClose(token) {
         return entryAuth().then(function (a) { return U.getText(PROXY + '/entry/close?t=' + encodeURIComponent(token) + a.q, 4000, 4096, null, true, a.h); }).then(null, function () {});
@@ -71,7 +86,7 @@ var YTPlay = (function () {
         if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
         var cc = opts && opts.cc ? opts.cc.map(function (c) { return c.ch + (c.lang ? '-' + c.lang : ''); }).join(',') : '';
         return ensureService().then(entryAuth).then(function (a) {
-            var q = '/live/open?u=' + encodeURIComponent(url) + (h && h.ua ? '&ua=' + encodeURIComponent(h.ua) : '') + (h && h.ref ? '&ref=' + encodeURIComponent(h.ref) : '') + (force ? '&force=1' : '') +
+            var q = '/live/open?u=' + encodeURIComponent(url) + (h && h.ua ? '&ua=' + encodeURIComponent(h.ua) : '') + (h && h.ref ? '&ref=' + encodeURIComponent(h.ref) : '') + (h && h.cookie ? '&cookie=' + encodeURIComponent(h.cookie) : '') + (force ? '&force=1' : '') +
                 (force && opts && opts.fix === false ? '&fix=0' : '') + (force && cc ? '&cc=' + encodeURIComponent(cc) : '');
             return U.getJSON(PROXY + q + a.q, force ? 5000 : 30000, 65536, cancel || null, a.h);
         });
@@ -81,7 +96,7 @@ var YTPlay = (function () {
     function hlsMaster(url, h) {
         if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
         return ensureService().then(entryAuth).then(function (a) {
-            var q = '/live/master?u=' + encodeURIComponent(url) + (h && h.ua ? '&ua=' + encodeURIComponent(h.ua) : '') + (h && h.ref ? '&ref=' + encodeURIComponent(h.ref) : '');
+            var q = '/live/master?u=' + encodeURIComponent(url) + (h && h.ua ? '&ua=' + encodeURIComponent(h.ua) : '') + (h && h.ref ? '&ref=' + encodeURIComponent(h.ref) : '') + (h && h.cookie ? '&cookie=' + encodeURIComponent(h.cookie) : '');
             return U.getText(PROXY + q + a.q, 12000, 524288, null, false, a.h);
         });
     }
@@ -167,6 +182,18 @@ var YTPlay = (function () {
                 if (err && /^HTTP 403\b/.test(err.message || '') && /ticket=/.test(q)) { _ticket = null; }   // (the service started again since: a new ticket next time)
                 if (!(err && /^HTTP (403|405)\b/.test(err.message || '') && body.length < 6000)) { throw err; }
                 return U.getJSON(PROXY + path + (q ? q + '&' : '?') + body, 15000, maxBytes, null, a.h);
+            });
+        });
+    }
+    // A Widevine channel's license request (challenge: base64), posted by the service to its
+    // license server with the playlist's headers (see service/index.js, drmControl) -> { license:
+    // base64 } or { why }. b64: the server answers in base64 already.
+    function drmLicense(server, headers, challenge, b64) {
+        if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
+        return ensureService().then(entryAuth).then(function (a) {
+            return (a.q ? Promise.resolve(a.q) : ticketOf(a)).then(function (cred) {
+                var body = JSON.stringify({ u: server, h: headers || {}, c: challenge, b64: !!b64 });
+                return U.postJSON(PROXY + '/drm/license' + (cred ? '?' + cred.replace(/^&/, '') : ''), body, 20000, 2 * 1048576, a.h);
             });
         });
     }
@@ -272,6 +299,6 @@ var YTPlay = (function () {
         return MODE === 'tizenbrew' ? 'TizenBrew module' : MODE === 'wgt' ? 'Sideloaded app (.wgt)' : 'Browser (development)';
     }
 
-    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, hlsMaster: hlsMaster, aiomAddons: aiomAddons, stalkerList: stalkerList, stalkerVod: stalkerVod, stalkerPlayUrl: stalkerPlayUrl, stalkerGenres: stalkerGenres, stalkerLink: stalkerLink, xtvodAsk: xtvodAsk, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
+    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, hlsMaster: hlsMaster, aiomAddons: aiomAddons, stalkerList: stalkerList, stalkerVod: stalkerVod, drmLicense: drmLicense, stalkerPlayUrl: stalkerPlayUrl, stalkerGenres: stalkerGenres, stalkerLink: stalkerLink, xtvodAsk: xtvodAsk, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, entryGive: entryGive, entrySeen: entrySeen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
         installLabel: installLabel, unavailableMessage: unavailableMessage, isRunning: isRunning, port: PORT };
 })();

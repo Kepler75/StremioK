@@ -4,7 +4,7 @@
 (function (P) {
     'use strict';
     var S = P.S;
-    var avplay = P.avplay, useAV = P.useAV;
+    var avplay = P.avplay;   // (P.useAV: the TV's player's playback or the page's, as it is now: see player-core's engineFor)
 
     // ----- from the other parts -----
     function doAVSeek() { return P.doAVSeek.apply(null, arguments); }   // core
@@ -59,7 +59,7 @@
     // buffering. true: picked (the caller seeks). Safe: once it plays, as before. Not on
     // live streams (nothing to seek) or YouTube videos.
     function audioOnReady() {
-        if (!useAV || S.isLive || (S.ctx && S.ctx.yt) || getAudioCfg().switch === 'safe') { return false; }
+        if (!P.useAV || S.isLive || (S.ctx && S.ctx.yt) || getAudioCfg().switch === 'safe') { return false; }
         var tracks = getAudioTracks();
         _audioIdx = playingAudioIndex(tracks);
         _audioPending = false;   // (decided here: not again once it plays)
@@ -73,7 +73,7 @@
     }
 
     function getAudioTracks() {
-        if (useAV) {
+        if (P.useAV) {
             try {
                 var all = avplay.getTotalTrackInfo() || [];
                 var out = [];
@@ -166,7 +166,7 @@
     // The audio track the player is on: AVPlay reports it (a file can flag a track
     // other than the first as its default); otherwise assume the first track.
     function playingAudioIndex(tracks) {
-        if (useAV) {
+        if (P.useAV) {
             try {
                 var now = avplay.getCurrentStreamInfo() || [];
                 for (var i = 0; i < now.length; i++) {
@@ -204,7 +204,7 @@
     // ignores re-picking the same track; stepping through a different track first makes
     // it switch for real (the manual workaround, in one press).
     function selectAudio(index, message, force) {
-        if (useAV) {
+        if (P.useAV) {
             if (force) {
                 var tracks = getAudioTracks();
                 for (var k = 0; k < tracks.length; k++) {

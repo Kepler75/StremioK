@@ -48,7 +48,9 @@ var PlayerParts = {};
     function skipShown() { return P.skipShown.apply(null, arguments); }   // controls
 
     var avplay = (window.webapis && webapis.avplay) ? webapis.avplay : null;
-    var useAV = !!avplay;
+    // useAV: this playback is the TV's player's (everything but a ClearKey channel: see startShaka);
+    // the page's own <video> otherwise, and in a desktop browser. P.useAV says which, as it is now.
+    var hasAV = !!avplay, useAV = hasAV;
     P.avplay = avplay; P.useAV = useAV;
 
     // The playback session: read by every part, written here (and a few fields where noted).
@@ -434,6 +436,7 @@ var PlayerParts = {};
         S.active = true; S.cur = 0; S.dur = 0; _bg = null; S.actual = null;
         // Stremio "tv" and "radio" types are strong live hints; refined after prepare.
         S.isLive = !(ctx.stream && ctx.stream._vod) && ((ctx.type === 'tv' || ctx.type === 'radio') || /^iptv:/.test(ctx.id || '') || !!ctx.isLive);   // (an IPTV channel: live, a sports one too; a film in a playlist isn't)
+        if (S.isLive) { vodCheck(ctx); }   // (one whose manifest says it's a film: not live after all)
         formatStart(ctx);
         S.ctx.resumeSec = (ctx.trailer || ctx.fromStart) ? 0 : (ctx.resumeSec || getResume(ctx.type, ctx.id));   // (Play from start: 0:00)
 
@@ -455,6 +458,7 @@ var PlayerParts = {};
         renderOSD();   // show the NEW title immediately (not the previous item's)
         U.spinner(true, ctx.switching ? 'Switching source…' : ctx.initialQualityHeight ? 'Opening stream at ' + ctx.initialQualityHeight + 'p…' : 'Opening stream…');
 
+        engineFor(ctx);   // (the TV's player, or a ClearKey channel's own: see startShaka)
         // (a TorrServer torrent that doesn't say which of its files: its file list asked for first)
         var go = function () { if (useAV) { startLive(ctx, settle); } else { startHTML5(ctx.url); } };
         if (ctx.stream && ctx.stream._pickFile && typeof Stremio !== 'undefined' && Stremio.torrentFile) {
@@ -580,8 +584,45 @@ var PlayerParts = {};
 
     // Decides live vs VOD from the reported duration (0 / non-finite = live).
     function markLiveFromDuration() {
-        if (S.ctx && !(S.ctx.stream && S.ctx.stream._vod) && (S.ctx.type === 'tv' || S.ctx.type === 'radio' || /^iptv:/.test(S.ctx.id || ''))) { S.isLive = true; }
+        if (S.ctx && !(S.ctx.stream && S.ctx.stream._vod) && !S.ctx._vodManifest && (S.ctx.type === 'tv' || S.ctx.type === 'radio' || /^iptv:/.test(S.ctx.id || ''))) { S.isLive = true; }
         if (!S.dur || S.dur <= 0 || !isFinite(S.dur)) { S.isLive = true; }
+        else if (S.ctx && S.ctx._vodManifest) { S.isLive = false; }   // (its manifest said it's a film before it was ready: see vodCheck)
+    }
+
+    // A playlist's entry whose link isn't a file's may still be a film: its manifest says so (DASH
+    // type="static", or none; HLS #EXT-X-ENDLIST or PLAYLIST-TYPE:VOD, a master playlist's first
+    // variant's). Read as it opens (with the channel's headers, through the service when it has
+    // some), not for an Xtream /live/ link; once known, it plays as a film (seeking, no ● LIVE).
+    var MANIFEST_LINK = /\.(mpd|m3u8?)(?:[?#]|$)/i, XT_LIVE_PATH = /\/live\/[^\/?#]+\/[^\/?#]+\/[^\/?#]+$/i;
+    function manifestText(url, h) {
+        if (!/\.mpd(?:[?#]|$)/i.test(url) && P.hlsMasterText) { return P.hlsMasterText(url, h); }   // (HLS: read once, with the quality list)
+        if (h && (h.ua || h.ref || h.cookie) && typeof YTPlay !== 'undefined' && YTPlay.hlsMaster) { return YTPlay.hlsMaster(url, h); }
+        return U.getText(url, 8000, 524288, null, true);
+    }
+    function linkFrom(base, ref) {
+        if (/^https?:\/\//i.test(ref)) { return ref; }
+        var m = /^(https?:\/\/[^\/?#]+)([^?#]*)/i.exec(base);
+        if (!m) { return ''; }
+        return ref.charAt(0) === '/' ? m[1] + ref : m[1] + m[2].replace(/[^\/]*$/, '') + ref;
+    }
+    function manifestVod(url, h, inner) {
+        return manifestText(url, h).then(function (t) {
+            t = '' + t;
+            if (/<MPD[\s>]/i.test(t)) { return !/<MPD\b[^>]*\btype\s*=\s*["']dynamic["']/i.test(t); }
+            if (/#EXT-X-ENDLIST|#EXT-X-PLAYLIST-TYPE:\s*VOD/i.test(t)) { return true; }
+            var v = /#EXT-X-STREAM-INF[^\n]*\n\s*([^#\s][^\r\n]*)/i.exec(t), next = v ? linkFrom(url, v[1].trim()) : '';
+            return next && !inner ? manifestVod(next, h, true) : false;
+        });
+    }
+    function vodCheck(ctx) {
+        if (!ctx || ctx.yt || ctx.trailer || (ctx.stream && ctx.stream._vod) || !/^iptv:/.test(ctx.id || '')) { return; }
+        var url = ctx.url || '';
+        if (!MANIFEST_LINK.test(url) || XT_LIVE_PATH.test(url.replace(/[?#].*$/, '').replace(/\.[a-z0-9]+$/i, ''))) { return; }
+        manifestVod(url, U.sanitizeHeaders(ctx._headers)).then(function (vod) {
+            if (!vod || S.ctx !== ctx) { return; }
+            ctx._vodManifest = true;
+            if (S.active && S.playStarted && S.dur > 0 && isFinite(S.dur) && S.isLive) { S.isLive = false; U.log('player', 'A playlist entry that\'s a film (its manifest): seeking on'); renderOSD(); }
+        }, function () {});
     }
 
     // settle: a re-open of what's playing (a quality switch, or its retry). This TV's player
@@ -611,8 +652,57 @@ var PlayerParts = {};
         }
         openAV(url, token);
     }
+    // A DRM channel (its playlist's #KODIPROP lines, see IPTV's drmInto): set once the stream is
+    // open, before it's prepared (Samsung's order). PlayReady: the player asks its license server
+    // itself, with the playlist's headers. Widevine: the player hands over its license request
+    // (ondrmevent's Challenge), posted by StremioK's service (drmEvent), and the answer given back;
+    // Tizen 5 and later take its session in one call, earlier ones in three. ClearKey: Shaka's (see
+    // startShaka); one whose keys can't be read, or another system: said so, not opened.
+    function tizenMajor() { try { return parseInt(tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version'), 10) || 0; } catch (e) { return 0; } }
+    function drmSetup(drm) {
+        try {
+            if (drm.sys === 'playready') {
+                var o = { DeleteLicenseAfterUse: true, LicenseServer: drm.url }, h = drm.h || {}, rest = [];
+                Object.keys(h).forEach(function (k) {
+                    if (/^user-agent$/i.test(k)) { o.UserAgent = h[k]; } else if (/^cookie$/i.test(k)) { o.Cookie = h[k]; } else { rest.push(k + ': ' + h[k]); }
+                });
+                if (rest.length) { o.HttpHeader = rest.join('\r\n'); }
+                avplay.setDrm('PLAYREADY', 'SetProperties', JSON.stringify(o));
+                return;
+            }
+            var session = 'stremiok-' + Date.now(), v = tizenMajor();
+            if (!v || v >= 5) {
+                try { avplay.setDrm('WIDEVINE_CDM', 'SetProperties', JSON.stringify({ AppSession: session, DataType: 'MPEG-DASH' })); return; } catch (e5) { if (v) { throw e5; } }   // (not known: the older calls next)
+            }
+            avplay.setDrm('WIDEVINE_CDM', 'Initialize', '');
+            avplay.setDrm('WIDEVINE_CDM', 'widevine_app_session', session);
+            avplay.setDrm('WIDEVINE_CDM', 'widevine_data_type', 'MPEG-DASH');
+        } catch (e) { U.log('player', 'DRM not set up (' + (e && (e.name || e.message || e)) + ')'); }
+    }
+    function drmEvent(drm, data, token) {
+        if (!drm || drm.sys !== 'widevine' || !data || data.name !== 'Challenge' || !data.challenge) { return; }
+        var ctx = S.ctx;
+        if (typeof YTPlay === 'undefined' || !YTPlay.drmLicense) { ctx._drmWhy = 'StremioK’s service isn’t there'; return; }
+        YTPlay.drmLicense(drm.url, drm.h, data.challenge, drm.b64).then(function (r) {
+            if (!S.active || token !== _playToken) { return; }
+            if (!r || !r.license) { throw new Error((r && r.why) || 'no answer'); }
+            avplay.setDrm('WIDEVINE_CDM', 'widevine_license_data', data.session_id + 'PARAM_START_POSITION' + r.license + 'PARAM_START_POSITION');
+        }).then(null, function (e) {
+            if (S.ctx !== ctx) { return; }
+            ctx._drmWhy = U.problem(e);
+            U.log('player', 'DRM: no license for this channel (' + ctx._drmWhy + ')');
+        });
+    }
+    function drmName(d) { return { clearkey: 'ClearKey', widevine: 'Widevine', playready: 'PlayReady' }[d.sys] || 'its DRM'; }
     var BUFFERS = { more: [8, 10], most: [15, 20] };
     function openAV(url, token) {
+        var drm = S.ctx && S.ctx.stream && S.ctx.stream._drm;
+        if (drm && !drm.ok) {   // (ClearKey, or a license StremioK can't ask for)
+            U.log('player', 'Not played: ' + drmName(drm) + (drm.sys === 'clearkey' ? '' : ' without a license server StremioK can use') + ' (' + where(url) + ')');
+            U.spinner(false);
+            failedStart(drm.sys === 'clearkey' ? 'This ClearKey channel’s keys can’t be read (its playlist’s #KODIPROP lines)' : 'This channel’s DRM can’t be played on the TV (' + drmName(drm) + ')');
+            return;
+        }
         try {
             avplay.open(url);
             // Best-effort per-stream HTTP headers (some IPTV channels need a UA / Referer).
@@ -621,6 +711,7 @@ var PlayerParts = {};
                 var h = U.sanitizeHeaders(S.ctx && S.ctx._headers);
                 if (h && h.ua) { avplay.setStreamingProperty('USER_AGENT', h.ua); }
                 if (h && h.ref) { avplay.setStreamingProperty('CUSTOM_MESSAGE', 'Referer:' + h.ref); }
+                if (h && h.cookie) { avplay.setStreamingProperty('COOKIE', h.cookie); }
             } catch (eh) {}
             // A bigger buffer (Settings › Playback › Seeking & buffering): seconds loaded before it
             // starts, and before it goes on after running dry (the TV's own when Normal)
@@ -661,6 +752,10 @@ var PlayerParts = {};
                     if (!S.active || token !== _playToken) { return; }
                     showEmbeddedText(text, duration);
                 },
+                ondrmevent: function (type, data) {
+                    if (!S.active || token !== _playToken) { return; }
+                    drmEvent(drm, data, token);
+                },
                 onerror: function (err) {
                     // stop()/close() may emit a late NOT_SUPPORTED_FORMAT for an HLS
                     // session that played successfully. Ignore callbacks after exit or
@@ -688,6 +783,7 @@ var PlayerParts = {};
                     exitLater();
                 }
             });
+            if (drm) { drmSetup(drm); }
             try { avplay.setStreamingProperty('ADAPTIVE_INFO', adaptiveInfo()); } catch (e0) {}
             _openedAt = Date.now();
             setTimeout(startCheck, startMs() + 500);
@@ -723,7 +819,7 @@ var PlayerParts = {};
                 if (tryFallback()) { return; }
                 U.log('player', 'Could not open: ' + (err && (err.name || err.message || err)) + ' (' + where(url) + ')');
                 reportStart(false, err && (err.name || err.message || err));
-                failedStart('Could not open stream');
+                failedStart(S.ctx && S.ctx._drmWhy ? 'No license for this channel: ' + S.ctx._drmWhy : 'Could not open stream');
             });
         } catch (e) {
             U.log('player', 'AVPlay failed: ' + (e && e.message));
@@ -757,18 +853,71 @@ var PlayerParts = {};
 
     // The desktop's <video> has no start timeout of its own (AVPlay's prepare does): a
     // stream the browser never gets going would leave the spinner up for good.
+    // A ClearKey channel (its playlist's #KODIPROP lines with keys or a key server, see IPTV's
+    // drmShaka): the TV's player has no ClearKey, so it alone plays in the page's own <video>
+    // through Shaka Player (js/vendor, Apache 2.0), loaded the first time one plays. Every other
+    // playback stays with the TV's player (engineFor: chosen as each starts, and after one, back).
+    var SHAKA_SRC = 'js/vendor/shaka-player.compiled.js', SHAKA_START_MS = 40000;
+    var _shakaPl = null, _shakaGone = null, _shakaLoad = null;
+    function shakaDrm(ctx) { var d = ctx && ctx.stream && ctx.stream._drm; return d && d.sys === 'clearkey' && d.shaka ? d : null; }
+    function loadShaka() {
+        if (typeof shaka !== 'undefined') { return Promise.resolve(); }
+        if (!_shakaLoad) {
+            _shakaLoad = U.loadScript(SHAKA_SRC).then(function () { if (typeof shaka !== 'undefined' && shaka.polyfill) { shaka.polyfill.installAll(); } });
+            _shakaLoad.then(null, function () { _shakaLoad = null; });
+        }
+        return _shakaLoad;
+    }
+    function shakaStop() {   // (its player let go: the <video> free for the next)
+        var pl = _shakaPl;
+        _shakaPl = null;
+        if (pl) { _shakaGone = (_shakaGone || Promise.resolve()).then(function () { return pl.destroy(); }).then(null, function () {}); }
+        return _shakaGone || Promise.resolve();
+    }
+    function engineFor(ctx) {
+        var av = hasAV && !shakaDrm(ctx);
+        if (av === useAV) { return; }
+        if (useAV) { try { avplay.stop(); } catch (e0) {} try { avplay.close(); } catch (e1) {} objEl.className = ''; }   // (the TV's player shut, for the page's)
+        else { shakaStop(); try { S.videoEl.pause(); S.videoEl.removeAttribute('src'); } catch (e2) {} S.videoEl.className = ''; }
+        useAV = av; P.useAV = av;
+    }
+    function shakaLoadInto(url, drm, token, fail) {
+        loadShaka().then(function () {
+            if (!S.active || token !== _playToken) { return; }
+            if (typeof shaka === 'undefined' || !shaka.Player.isBrowserSupported()) { throw new Error('this TV’s browser can’t play it'); }
+            return shakaStop().then(function () {
+                if (!S.active || token !== _playToken) { return; }
+                var pl = _shakaPl = new shaka.Player(), cfg = { streaming: { bufferingGoal: 10 } };
+                cfg.drm = drm.keys ? { clearKeys: drm.keys } : { servers: { 'org.w3.clearkey': drm.url } };
+                pl.configure(cfg);
+                var h = drm.h || {};
+                if (!drm.keys && Object.keys(h).length) {   // (the key server's own headers: those a page may send)
+                    pl.getNetworkingEngine().registerRequestFilter(function (type, req) {
+                        if (type === shaka.net.NetworkingEngine.RequestType.LICENSE) { Object.keys(h).forEach(function (k) { if (!/^(user-agent|referer|cookie|host|origin)$/i.test(k)) { req.headers[k] = h[k]; } }); }
+                    });
+                }
+                pl.addEventListener('error', function (ev) { if (token === _playToken) { fail(shakaWhy(ev.detail)); } });
+                return pl.attach(S.videoEl).then(function () { return token === _playToken ? pl.load(url) : null; }).then(function () {
+                    if (!S.active || token !== _playToken) { return; }
+                    var p = S.videoEl.play();
+                    if (p && p['catch']) { p['catch'](function () {}); }
+                });
+            });
+        }).then(null, function (e) { if (S.active && token === _playToken) { fail(shakaWhy(e)); } });
+    }
+    function shakaWhy(e) { return e && e.code ? 'Shaka error ' + e.code : (e && e.message) || 'it didn’t start'; }
     var HTML5_START_MS = 20000;
     function startHTML5(url) {
         url = opened(url);
-        var token = ++_playToken, loaded = false;
+        var token = ++_playToken, loaded = false, drm = shakaDrm(S.ctx);
         S.videoEl.className = 'active';
-        S.videoEl.src = url;
+        if (!drm) { S.videoEl.src = url; }
         setTimeout(function () {
             if (loaded || !S.active || token !== _playToken) { return; }
             reportStart(false, 'TIMEOUT');
             U.spinner(false);
             U.toast('This stream didn\'t start'); exitLater();
-        }, HTML5_START_MS);
+        }, drm ? SHAKA_START_MS : HTML5_START_MS);
         S.videoEl.onloadedmetadata = function () {
             if (!S.active || token !== _playToken) { return; }
             loaded = true;
@@ -789,12 +938,21 @@ var PlayerParts = {};
             if (S.active && token === _playToken) { onEnded(); }
         };
         S.videoEl.onerror = function () {
-            if (!S.active || token !== _playToken) { return; }
+            if (!S.active || token !== _playToken || drm) { return; }   // (Shaka's own errors: see shakaLoadInto)
             reportStart(false, S.videoEl.error && S.videoEl.error.code === 2 ? 'NETWORK' : 'MEDIA_ERR');
             U.toast('Playback error'); exitLater();
         };
-        var p = S.videoEl.play();
-        if (p && p['catch']) { p['catch'](function () {}); }
+        if (drm) {
+            shakaLoadInto(url, drm, token, function (why) {
+                if (loaded) { U.log('player', 'ClearKey channel: ' + why); U.toast('Playback error: ' + why); exitLater(); return; }
+                U.log('player', 'ClearKey channel didn’t play (' + why + ')');
+                U.spinner(false);
+                failedStart('This ClearKey channel didn’t play (' + why + ')');
+            });
+        } else {
+            var p = S.videoEl.play();
+            if (p && p['catch']) { p['catch'](function () {}); }
+        }
         applyAspect(true);
         startTicker();
     }
@@ -1057,7 +1215,7 @@ var PlayerParts = {};
     // playback (the next sources aren't). Not a source that needs its own request headers.
     function convertOnFail() {
         var c = S.ctx;
-        if (!c || !S.active || S.playing || S.isLive || c.trailer || c.yt || c.localFile || !c.stream || c._converted || c._headers) { return false; }
+        if (!c || !S.active || S.playing || S.isLive || c.trailer || c.yt || c.localFile || !c.stream || c._converted || c._headers || c.stream._drm) { return false; }
         var u = (typeof Stremio !== 'undefined' && Stremio.convertUrl) ? Stremio.convertUrl(c.url) : null;
         if (!u) { return false; }
         c._converted = true; c._convertedFrom = c.url;   // (kept by what replaces it: Continue Watching saves its own link)
@@ -1150,7 +1308,7 @@ var PlayerParts = {};
     // needs repacking too.
     var LIVE_KEY = 'stremiok.livefix', LIVE_KEEP = 300, LIVE_DAYS = 14;
     function liveFixable(ctx) {
-        return useAV && S.isLive && !!ctx && !ctx.yt && !ctx.trailer && /^https?:\/\//i.test(ctx.url || '') &&
+        return useAV && S.isLive && !!ctx && !ctx.yt && !ctx.trailer && !(ctx.stream && ctx.stream._drm) && /^https?:\/\//i.test(ctx.url || '') &&
             typeof YTPlay !== 'undefined' && !!YTPlay.liveOpen && YTPlay.installMode() !== 'browser';
     }
     function liveKnown(url) {
@@ -1369,10 +1527,12 @@ var PlayerParts = {};
             try { avplay.close(); } catch (e2) {}
             objEl.className = '';
         } else {
+            shakaStop();
             try { S.videoEl.pause(); } catch (e3) {}
             S.videoEl.removeAttribute('src');
             S.videoEl.className = '';
         }
+        useAV = hasAV; P.useAV = hasAV;   // (the next playback the TV's player's, unless it's ClearKey too)
         document.body.style.background = '';
         U.byId('app').className = '';
         U.spinner(false);

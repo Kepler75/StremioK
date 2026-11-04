@@ -99,4 +99,6 @@ The docs and scripts stay out of the package.
 - **Apps2Samsung:** install the newer release's `.wgt` the same way.
 - **Tizen Studio:** build and install again from the newer code.
 
-Your settings, addons and progress stay.
+Your settings, addons and progress stay, if it's signed with the same certificate as before (see
+[Troubleshooting](TROUBLESHOOTING.md#installing)). Settings › Content › *Export configuration*
+keeps a copy of your setup to import after a reinstall.

@@ -304,13 +304,84 @@ var IPTV = (function () {
     function idOf(s, exact) { return slug(s) + '-' + hash(exact === undefined ? s : exact); }
 
     function attr(line, re) { var m = line.match(re); return m ? m[1] : ''; }
-    // A header a playlist gives a channel, by name: its User-Agent or Referer (the only two the
+    // A header a playlist gives a channel, by name: its User-Agent, Referer or Cookie (the ones the
     // TV's player takes: any other is left out). Checked when played (U.sanitizeHeaders).
     function headerInto(c, name, value) {
         var n = ('' + name).trim().toLowerCase(), v = ('' + (value || '')).trim();
         if (!v) { return; }
-        if (n === 'user-agent') { c.ua = v; } else if (n === 'referer' || n === 'referrer') { c.ref = v; }
+        if (n === 'user-agent') { c.ua = v; } else if (n === 'referer' || n === 'referrer') { c.ref = v; } else if (n === 'cookie') { c.cookie = v; }
     }
+
+    // A channel's DRM, from Kodi's #KODIPROP:inputstream.adaptive.<key>=<value> lines: { sys:
+    // 'widevine' | 'playready' | 'clearkey' | 'other', url: its license server, h: { name: value }
+    // for the license request, b64: its answer comes in base64, bad: a request or answer template
+    // StremioK can't follow, keys: ClearKey's { kid: key } (hex) when the playlist gives them }.
+    // Widevine or PlayReady with a license server: the TV's player (drmPlayable); ClearKey with keys
+    // or a key server: Shaka Player (drmShaka, see the player's startShaka). stream_headers /
+    // manifest_headers: the stream's own User-Agent and Referer.
+    function drmSys(v) { v = ('' + v).toLowerCase(); return /widevine/.test(v) ? 'widevine' : /playready/.test(v) ? 'playready' : /clearkey/.test(v) ? 'clearkey' : 'other'; }
+    function headersOf(text) {   // "Name=value&Name2=value2" (values may be %-encoded) -> { Name: value }
+        var out = {}, n = 0;
+        ('' + (text || '')).split('&').forEach(function (kv) {
+            var eq = kv.indexOf('='), k = eq > 0 ? kv.slice(0, eq).trim() : '', v = eq > 0 ? kv.slice(eq + 1) : '';
+            try { v = decodeURIComponent(v); } catch (e) {}
+            if (/^[A-Za-z0-9-]{1,40}$/.test(k) && v && v.length <= 1000 && !/[\r\n]/.test(v) && n < 16) { out[k] = v; n++; }
+        });
+        return out;
+    }
+    function hexOf(v) {   // a key id or key: hex (32 digits), or base64url (a JWK's)
+        v = ('' + (v || '')).trim();
+        if (/^[0-9a-f]{32}$/i.test(v)) { return v.toLowerCase(); }
+        if (!/^[A-Za-z0-9_-]{21,24}={0,2}$/.test(v)) { return ''; }
+        try {
+            var bin = atob(v.replace(/-/g, '+').replace(/_/g, '/').replace(/=+$/, '') + '=='.slice(0, (4 - v.replace(/=+$/, '').length % 4) % 4)), out = '';
+            for (var i = 0; i < bin.length; i++) { out += (bin.charCodeAt(i) < 16 ? '0' : '') + bin.charCodeAt(i).toString(16); }
+            return out.length === 32 ? out : '';
+        } catch (e) { return ''; }
+    }
+    // ClearKey's keys as a playlist gives them: kid:key[,kid:key], { "kid": "key" }, or a JWK set
+    // { "keys": [{ "kid", "k" }] } -> { kid: key } in hex, or null.
+    function keysOf(text) {
+        var out = {}, n = 0, j = null;
+        function put(kid, key) { kid = hexOf(kid); key = hexOf(key); if (kid && key && n < 32) { out[kid] = key; n++; } }
+        text = ('' + (text || '')).trim();
+        if (text.charAt(0) === '{') {
+            try { j = JSON.parse(text); } catch (e) { j = null; }
+            if (j && Array.isArray(j.keys)) { j.keys.forEach(function (k) { if (k) { put(k.kid, k.k); } }); }
+            else if (j && typeof j === 'object') { Object.keys(j).forEach(function (k) { put(k, j[k]); }); }
+        } else {
+            text.split(',').forEach(function (pair) { var p = pair.split(':'); if (p.length === 2) { put(p[0], p[1]); } });
+        }
+        return n ? out : null;
+    }
+    function drmServer(d, url, headers) {
+        if (/^https?:\/\/[^\s|]+$/i.test(url || '') && url.length <= 2000) { d.url = url; }
+        else if (url) { d.inline = true; d.keys = keysOf(url); }   // (ClearKey's kid:key, or keys as JSON)
+        if (headers) { d.h = headersOf(headers); }
+    }
+    function drmInto(c, key, v) {
+        if (key === 'stream_headers' || key === 'manifest_headers') { var sh = headersOf(v); Object.keys(sh).forEach(function (k) { headerInto(c, k, sh[k]); }); return; }
+        var d = c.drm || (c.drm = { sys: '' });
+        if (key === 'license_type') { d.sys = drmSys(v); return; }
+        if (key === 'license_key') {   // URL|headers|request template|answer template
+            var p = v.split('|');
+            drmServer(d, p[0], p[1]);
+            if (p[2] && p[2] !== 'R{SSM}') { d.bad = true; }
+            if (p[3] === 'B') { d.b64 = true; } else if (p[3]) { d.bad = true; }
+            return;
+        }
+        if (key === 'drm_legacy') { var q = v.split('|'); d.sys = drmSys(q[0]); drmServer(d, q[1], q[2]); return; }
+        if (key === 'drm') {   // {"com.widevine.alpha": {"license": {"server_url": …, "req_headers": "Name=value&…"}}}
+            var j = null;
+            try { j = JSON.parse(v); } catch (e) { j = null; }
+            var sys = j && typeof j === 'object' ? Object.keys(j)[0] : '', lic = sys && j[sys] && j[sys].license;
+            d.sys = sys ? drmSys(sys) : 'other';
+            if (lic && typeof lic === 'object') { drmServer(d, typeof lic.server_url === 'string' ? lic.server_url : '', typeof lic.req_headers === 'string' ? lic.req_headers : ''); }
+            if (lic && (lic.keyids || lic.keys)) { d.inline = true; d.keys = keysOf(JSON.stringify(lic.keyids || { keys: lic.keys })); }
+        }
+    }
+    function drmPlayable(d) { return !!d && (d.sys === 'widevine' || d.sys === 'playready') && !!d.url && !d.bad && !d.inline; }
+    function drmShaka(d) { return !!d && d.sys === 'clearkey' && !d.bad && (!!d.keys || (!!d.url && !d.inline)); }
 
     // A link to a file, not a stream: a film or an episode (an Xtream account's /movie/… and
     // /series/… links, or a video file's name), played as one (seeking; see Player's isLive).
@@ -327,7 +398,7 @@ var IPTV = (function () {
     // parseM3UAsync). max: channels kept; any beyond are only counted (dropped). guides: the TV
     // guides it names (url-tvg / x-tvg-url / tvg-url, several split by commas).
     function m3uReader(max) {
-        var r = { channels: [], dropped: 0, title: '', guides: [] }, cur = null, seen = {};
+        var r = { channels: [], dropped: 0, title: '', guides: [] }, cur = null, seen = {}, pre = null;   // (pre: #KODIPROP lines before a channel's #EXTINF)
         function add(c) {
             var base = 'iptv:' + idOf(c.tvgId || c.name);
             var id = base, n = 2;
@@ -360,6 +431,7 @@ var IPTV = (function () {
                     sport: /^sports?$/i.test(kind),   // (StremioK's own mark: the Sports tab)
                     url: ''
                 };
+                if (pre) { if (pre.drm) { cur.drm = pre.drm; } if (!cur.ua && pre.ua) { cur.ua = pre.ua; } if (!cur.ref && pre.ref) { cur.ref = pre.ref; } if (!cur.cookie && pre.cookie) { cur.cookie = pre.cookie; } pre = null; }
                 if (/^guide$/i.test(kind)) {   // (StremioK's own mark: a channel watched elsewhere, kept for its TV guide alone; a link after it is ignored)
                     if (max && r.channels.length >= max) { r.dropped++; cur = null; return; }
                     cur.guideOnly = true; cur.radio = false; cur.type = 'tv';
@@ -369,6 +441,9 @@ var IPTV = (function () {
                 }
             } else if (/^#EXTVLCOPT:http-(user-agent|referr?er)=/i.test(s)) {   // (http-referer: the one-r spelling too)
                 if (cur) { var opt = /^#EXTVLCOPT:http-(user-agent|referr?er)=(.*)$/i.exec(s); headerInto(cur, opt[1], opt[2]); }
+            } else if (/^#KODIPROP:inputstream\.adaptive\.[a-z_]+=/i.test(s)) {   // a channel's DRM (Kodi's: see drmInto)
+                var kp = /^#KODIPROP:inputstream\.adaptive\.([a-z_]+)=(.*)$/i.exec(s);
+                drmInto(cur || (pre = pre || {}), kp[1].toLowerCase(), kp[2].trim());
             } else if (s.indexOf('#EXTHTTP:') === 0) {   // #EXTHTTP:{"User-Agent": "…", "Referer": "…"}
                 var j = null;
                 try { j = JSON.parse(s.slice(9)); } catch (e) { j = null; }
@@ -625,7 +700,7 @@ var IPTV = (function () {
 
     function sameKey(c) {
         var p = U.parseUrl(c.url);   // (scheme and host in lower case)
-        return [p ? p.href : c.url, c.name, c.group, c.type, c.ua || '', c.ref || ''].join('\u0001');
+        return [p ? p.href : c.url, c.name, c.group, c.type, c.ua || '', c.ref || '', c.cookie || ''].join('\u0001');
     }
 
     function reload(id) {   // (its TV guide read again too: EPG.start)
@@ -732,7 +807,11 @@ var IPTV = (function () {
         var from = sourceOf(c);
         var st = { url: c.url, name: c.name, title: 'IPTV · ' + c.group + (from ? ' · ' + from : '') };
         if (c.vod) { st._vod = true; }
-        var h = U.sanitizeHeaders({ ua: c.ua, ref: c.ref });   // (only what the player takes, checked)
+        if (c.drm) {   // (see the player's drmSetup and startShaka)
+            st._drm = { sys: c.drm.sys || 'other', url: c.drm.url || '', h: c.drm.h || {}, b64: !!c.drm.b64, ok: drmPlayable(c.drm), shaka: drmShaka(c.drm) };
+            if (c.drm.keys) { st._drm.keys = c.drm.keys; }
+        }
+        var h = U.sanitizeHeaders({ ua: c.ua, ref: c.ref, cookie: c.cookie });   // (only what the player takes, checked)
         if (h) { st._headers = h; }
         return [st];
     }
@@ -750,7 +829,7 @@ var IPTV = (function () {
             if (!url && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(c.url)) { return []; }
             var st = plainStreams(c)[0];
             st.url = url || c.url;
-            var h = U.sanitizeHeaders({ ua: STB_UA, ref: c.ref });
+            var h = U.sanitizeHeaders({ ua: STB_UA, ref: c.ref, cookie: c.cookie });
             if (h) { st._headers = h; }
             return [st];
         });
