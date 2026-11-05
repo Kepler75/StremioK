@@ -227,13 +227,13 @@
             });
         });
         var ofType = _dv.cats.filter(function (c) { return c.type === _dv.type; });
-        pill('Catalog:  ' + catLabel(_dv.cat) + '  ▾', function () {
+        pill('Catalog:  ' + catLabel(_dv.cat) + '  ▾', function () {   // (.discover-cat: the one cut short when the bar is full)
             pickList('Catalog', ofType.map(function (c) { return [Stremio.catalogKey(c), catLabel(c)]; }), Stremio.catalogKey(_dv.cat), function (k) {
                 var c = ofType.filter(function (x) { return Stremio.catalogKey(x) === k; })[0];
                 if (!c || c === _dv.cat) { return; }
                 choose(_dv.type, c); reload();
             });
-        });
+        }).className += ' discover-cat';
         var f = genreFilter(_dv.cat);
         if (f) {
             pill(f.label + ':  ' + (_dv.value ? genreLabel(_dv.value) : 'All') + '  ▾', function () { genrePicker(f, false); });
@@ -323,18 +323,23 @@
     // measures nothing.
     var WINDOW = 600;
     function gridEl() { return scr('discover').querySelector('.discover-grid'); }
+    // A card's top in the grid's own pixels: where it's laid out (offsetTop), not where it's
+    // drawn: the focused card is drawn larger (its scale), its top a few pixels higher, and a
+    // single row (three titles) measured with it counted one card per row: LEFT / RIGHT went
+    // nowhere and UP / DOWN went along the row.
+    function cardTop(el) { return typeof el.offsetTop === 'number' ? el.offsetTop : el.getBoundingClientRect().top / U.zoom(); }
     function cols() {
         var els = _dv.cardEls || [];
         if (_dv.cols && els.length > _dv.cols) { return _dv.cols; }
         if (els.length < 2) { return 1; }
-        var top = els[0].getBoundingClientRect().top, n = 1;   // (the cards of the first row share its top)
-        while (n < els.length && Math.abs(els[n].getBoundingClientRect().top - top) < 2) { n++; }
+        var top = cardTop(els[0]), n = 1;   // (the cards of the first row share its top)
+        while (n < els.length && Math.abs(cardTop(els[n]) - top) < 2) { n++; }
         if (n < els.length) { _dv.cols = n; }   // (known once a second row exists)
         return Math.max(1, n);
     }
     function rowHeight() {
         var els = _dv.cardEls, c = cols();
-        return (els.length > c) ? (els[c].getBoundingClientRect().top - els[0].getBoundingClientRect().top) / U.zoom() : 0;   // (in the grid's own pixels)
+        return (els.length > c) ? cardTop(els[c]) - cardTop(els[0]) : 0;   // (in the grid's own pixels)
     }
     function drawGrid() {
         var grid = gridEl();

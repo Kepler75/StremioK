@@ -3,6 +3,27 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.2.9 — 2026-11-05
+- **A Modern look** (Settings › Appearance › *Look*): the focused title's backdrop behind Home and
+  its page, large logos, rounder posters, a centered menu, with any background. *Effects*: blur and
+  motion where the TV handles them (Auto: Tizen 6 and later), Light, or Full. Classic stays as it
+  was.
+- **ClearKey channels with a key server** whose stream names only Widevine or PlayReady now ask
+  that server (they stopped with Shaka's error 6012) (#11).
+- **HLS through StremioK's service** (Settings › Playback › Seeking & buffering), for hosts that want
+  a Referer, User-Agent or Cookie on every piece, which the TV's player can't always send: for the
+  sources that need it, or all HLS. Hold OK on a source › *Play through StremioK's service* for just
+  that one (#13).
+- **Anime and "other" catalogs:** their shows open on their seasons and episodes from Discover and
+  Search too, not on sources, and a debrid download on its files (#13).
+- **Episode pictures:** one that doesn't load (Cinemeta's for long shows past their first seasons)
+  gives way to TMDB's, with a TMDB key (#13).
+- **Stalker films and series** (Settings › Content › IPTV): what's read of a portal is kept 10
+  minutes, 5, or not at all.
+- **YouTube backdrops** in 1280×720 where the video has them.
+- **Fixed:** a row's title cut off scrolling back up at high zooms; Discover's bar too wide at 140%;
+  LEFT / RIGHT on a single line of Discover titles; the Guide unreadable on Light Gray and White.
+
 ## 2.2.8 — 2026-11-04
 - **DRM channels** (a playlist's `#KODIPROP` lines): Widevine and PlayReady play in the TV's player
   with the license server the playlist names; ClearKey with its keys or key server, through Shaka

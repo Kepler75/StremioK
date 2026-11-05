@@ -101,6 +101,7 @@ sources. Try again later.
 | Nothing plays; the screen stays black | A source that hasn't started playing after 45 seconds gives way to the next one; with none left, StremioK says it didn't start. Try another source. |
 | It stalls | A stalled stream reloads at the same position; if it keeps stalling, you're back on the source list. Try another source, or *Buffer: More* or *Most* (Settings › Playback › Seeking & buffering) on a slow connection. |
 | An HLS quality won't start | It steps down a quality, then falls back to *Auto*. |
+| An HLS source stays on "Opening stream…" while direct ones play | Its host may want a Referer (or User-Agent, Cookie) on every piece, which the TV's player can't always send. Hold OK on it › *Play through StremioK's service*; for all such sources, *HLS through StremioK's service* (Settings › Playback › Seeking & buffering). |
 | A live channel keeps reconnecting | Its connection drops, or its server stops the stream; StremioK opens it again ("Connection lost — reconnecting…"). How often is up to *Reconnect live channels* (Settings › Playback › Seeking & buffering). |
 | A live channel closes when it drops | *Reconnect live channels* is Off, or it dropped 3 times in 5 minutes ("This channel keeps dropping"). *Keep trying* never gives up. |
 | After a pause, it jumps ahead | The TV's player sometimes does this. StremioK takes it back on its own and notes it in Diagnostics (see the [technical reference](TECHNICAL-REFERENCE.md#starting-and-recovering)). |
@@ -141,6 +142,7 @@ sources. Try again later.
 
 | What you see | Why, and what to do |
 |--------------|---------------------|
+| Browsing is slow, the spinner shows often | Usually *Titles in a Home row* set high: *Unlimited* asks each addon for up to 200 pages a row, every 15 minutes, and IPTV groups hold all their channels. Use 30 or 50 (Settings › Home). With a Stalker portal, keep *Stalker films and series* at 10 minutes: *Off* asks it for each row again. |
 | Watching shows a title's name, no poster | No poster was saved, or its link stopped loading, and no other is known (no IMDb id). Open the title from a row showing its poster and play 10 seconds: Watching keeps it. |
 
 ## IPTV

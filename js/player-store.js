@@ -248,7 +248,8 @@
         return { aspect: d.aspect || 'fit', seek: SEEK_STEPS.indexOf(+d.seek) !== -1 ? +d.seek : 10,
             buffer: d.buffer === 'more' || d.buffer === 'most' ? d.buffer : 'normal',
             reconnect: d.reconnect === 'off' || d.reconnect === 'always' ? d.reconnect : 'few',
-            phone: d.phone === 'infuse' || d.phone === 'link' ? d.phone : 'vlc' };   // (Continue on phone: what the QR opens)
+            phone: d.phone === 'infuse' || d.phone === 'link' ? d.phone : 'vlc',   // (Continue on phone: what the QR opens)
+            hls: d.hls === 'headers' || d.hls === 'all' ? d.hls : 'off' };   // (HLS through StremioK's service: see player-core's viaService)
     }
     function setPlayerCfg(cfg) {   // (what's given changes; the rest stays)
         var d = U.store.get(PLAYERCFG_KEY, {}) || {};

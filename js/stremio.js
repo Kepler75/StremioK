@@ -162,6 +162,8 @@ var Stremio = (function () {
     function getPrefs() {
         var p = U.store.get(PREFS_KEY, {}) || {};
         return { posterShape: p.posterShape || 'portrait', accent: p.accent || 'indigo', bg: p.bg || 'dark',
+            look: p.look === 'modern' ? 'modern' : 'classic',   // Settings > Appearance: Classic, or Modern (a backdrop behind Home, the title's logo, rounder posters)
+            effects: p.effects === 'light' || p.effects === 'full' ? p.effects : 'auto',   // ...Modern's blur and motion: by the TV (auto), off (light) or on (full)
             zoom: [110, 120, 130, 140].indexOf(p.zoom) !== -1 ? p.zoom : 100,   // Settings > Appearance: everything bigger (percent)
             rowCards: p.rowCards === 'all' || [50, 100, 200].indexOf(p.rowCards) !== -1 ? p.rowCards : 30,   // Settings > Home: titles in a Home row ('all': Unlimited)
             formatsAuto: p.formatsAuto !== false,   // Settings > Formats: mark "Not working" on its own
@@ -553,7 +555,7 @@ var Stremio = (function () {
     var EXPORT_LINE = '#!stremiok ';
     var EXPORT_STORE = ['stremiok.prefs', 'stremiok.feeds', 'stremiok.searchfeeds', 'stremiok.sourcefeeds', 'stremiok.ranking', 'stremiok.server', 'stremiok.formats',
         'stremiok.resblock', 'stremiok.subcfg', 'stremiok.audiocfg', 'stremiok.playercfg', 'stremiok.private', 'stremiok.youtube', 'stremiok.appshortcuts',
-        'stremiok.appsallowed', 'stremiok.aiomanager', 'stremiok.iptv.stalkerall', 'stremiok.iptv.every', 'stremiok.local.matching', 'stremiok.local.hidden',
+        'stremiok.appsallowed', 'stremiok.aiomanager', 'stremiok.iptv.stalkerall', 'stremiok.iptv.stalkerkeep', 'stremiok.iptv.every', 'stremiok.local.matching', 'stremiok.local.hidden',
         'stremiok.addonsoff', 'stremiok.integrations'];
     function plural(n, one) { return n + ' ' + one + (n === 1 ? '' : 's'); }
     function iptvLists() { return (_hasIptv && IPTV.getPlaylists) ? IPTV.getPlaylists() : []; }

@@ -656,7 +656,9 @@ var ViewParts = {};
         }
         function isLive() {
             var t = titleType(meta.type || fallbackType);
-            var isTitle = t === 'movie' || t === 'series' || TITLE_ID.test(meta.id || '');
+            // (an "anime" or "other" item: a title whatever its id; a debrid library's download, an
+            // addon's own "cnc:…" show: its page, so its episodes or files, not a channel's sources)
+            var isTitle = t === 'movie' || t === 'series' || TITLE_ID.test(meta.id || '') || /^(anime|other)$/i.test(t || '');
             return !!fallbackType && fallbackType !== 'movie' && fallbackType !== 'series' && !isTitle && !/^(youtube|channel)$/i.test(fallbackType) && !/^(ytk|yt_id):/.test(meta.id || '');
         }
         c.__onselect = function () {

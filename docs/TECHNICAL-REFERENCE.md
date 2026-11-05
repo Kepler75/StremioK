@@ -52,6 +52,13 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
   settings storage, read at once, and the whole (up to 60 rows, about 1.5 MB) in the TV's
   database, written without holding up the remote. The whole replaces the snapshot a moment
   later, unless fresh rows came first.
+- **The Modern look** (Settings › Appearance › *Look*): `css/modern.css`, every rule under
+  `body.look-modern` (Classic untouched). On the title tabs (not the live ones or Local) the
+  focused title's backdrop fills the screen; its logo, facts and synopsis sit just above the
+  rows, sized per zoom (`zoom-110` … `zoom-140`). Continue
+  Watching and the Calendar use Cinemeta's backdrop and logo for an IMDb id; a YouTube video,
+  its 1280×720 thumbnail (`maxresdefault`, else `hq720`). *Effects* adds `fx-full` (blur, fades,
+  motion); Auto where the browser can blur behind a panel (`backdrop-filter`: Tizen 6 and later).
 - If the stylesheet doesn't apply on a cold start, it's asked for again (through one extra
   stylesheet link, at once and after 1, 2, 4 and 8 s). StremioK starts as soon as it applies,
   or after that anyway (noted in Diagnostics).
@@ -101,16 +108,18 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
 
 ## Title pages
 
-- **Which cards open a title page:** a card opens its title page when the item is a movie or
-  series itself, or has a title's id (`tt…`, `tmdb:`, `tvdb:`, `mal:`, `kitsu:`, `anilist:`,
-  `anidb:`, `tvmaze:`), whatever its catalog's type: AIOMetadata's *anime* catalogs (MAL By
-  Studio…) list films and shows, and its "anime.movie" / "anime.series" are taken as movie /
-  series. Only the rest of a catalog of another type (an IPTV or sports addon's) is taken for
-  live channels, played straight away; "No playable source for this channel" is noted in
-  Diagnostics (which, and why).
+- **Which cards open a title page:** a movie or series, or anything with a title's id (`tt…`,
+  `tmdb:`, `tvdb:`, `mal:`, `kitsu:`, `anilist:`, `anidb:`, `tvmaze:`), whatever its catalog's
+  type (AIOMetadata's *anime* catalogs list both; its "anime.movie" / "anime.series" count as
+  movie / series), and anything of type *anime* or *other* (a debrid library, an addon's own
+  ids: `cnc:…`). The rest of a catalog of another type (an IPTV or sports addon's) is taken for
+  live channels, played at once; "No playable source for this channel" is noted in Diagnostics
+  (which, and why).
 - **A series by its details:** a title whose details say it's a series, or list numbered
   episodes (season and episode) without files of their own, opens on its seasons and
   episodes, whatever its card or row called it (a film, *anime*, *other*).
+- **Episode stills:** the addon's; with a TMDB key, TMDB's where it has none or its picture
+  doesn't load (some long shows' are missing past their first seasons).
 - **Anime ids and IMDb ids:** a movie known by an anime database's id (`mal:32281`) whose
   details also give its IMDb id (AIOMetadata's do) has its sources asked for by both: addons
   that gather from others (AIOStreams) ask only their anime sources by the anime id (Your Name.:
@@ -185,10 +194,10 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
 - **Where to watch** sources are recognized by the address they link to or the addon's label,
   never by the file name. An app opens if it's the app the link names, else your listed
   streaming app for it (matched by name across spellings; a service's Amazon or Apple TV channel
-  opens that app), else the one visible installed app for it. An addon can't pick any other app:
-  the app a link names is used only if it's one of your streaming apps or a visible app for that
-  same service, never a hidden or system app. A where-to-watch addon's app link for the title (a
-  `tizenUrl`) is handed to the app the way the TV's Smart Hub does.
+  opens that app), else the one visible installed app for it. An addon can't pick another: the
+  app a link names is used only if it's one of your streaming apps or a visible one for that
+  service, never a hidden or system app. A `tizenUrl` (a where-to-watch addon's app link) is
+  handed over as the TV's Smart Hub does.
 
 ## Playback
 
@@ -374,9 +383,10 @@ channels where it gives one; the rest is read from the source's name and file.
   request the player hands over, posted by the service (`/drm/license`, with the playlist's
   headers) and its answer given back. ClearKey (keys as `kid:key` pairs, JSON or a key server;
   the TV's player has none) plays in the page's own `<video>` through Shaka Player 5.3.3
-  (`js/vendor`, Apache 2.0), loaded the first time one plays; only then, everything else staying
-  with the TV's player. It goes without the channel's User-Agent, Referer or Cookie (a browser
-  can't send them). Another system or template: said so, not played. Not repacked by the service.
+  (`js/vendor`, Apache 2.0), loaded only for it, without the channel's User-Agent, Referer or
+  Cookie (a browser can't send them). A key server's manifest naming only other systems gets
+  ClearKey named beside them (else Shaka's error 6012). Another system or template: said so, not
+  played. Not repacked by the service.
 
 ### Xtream, Stalker and YouTube links
 
@@ -397,10 +407,10 @@ channels where it gives one; the rest is read from the source's name and file.
   (`get_ordered_list`, up to 42 from a position, 4 of the portal's pages at most), a series'
   seasons and episodes (by `movie_id`; a season that doesn't list its episodes, by `season_id`).
   What's read (a list from a position, a search, a series' seasons) is kept 10 minutes, the last
-  40 a portal, so a row or category shown again isn't asked again; *Reload* on the portal reads it
-  all again. A copy of one of your titles is found by searching the portal for its name (year within one).
-  A source is the service's `/stalker/play`, which asks `create_link` when the player opens it
-  and redirects there, so a link saved to resume stays good.
+  40 a portal (*Stalker films and series*: 5, or 0: `&keep=`), so a row shown again isn't asked
+  again; *Reload* reads it all again. A copy of one of your titles: a search for its name (year
+  within one). A source is the service's `/stalker/play`, which asks `create_link` as the player
+  opens it and redirects, so a link saved to resume stays good.
 - **A channel's own format:** the player's *Format* swaps one channel's `/live/…/123.ts` and
   `.m3u8`, kept by channel (the last 300).
 - **YouTube behind a link:** an Xtream channel's link (`…/live/user/pass/id.ext`) is looked at
@@ -618,14 +628,12 @@ them.
   settings, addons or playlists clears regenerable caches (saved Home rows, playlist copies, show
   info, saved manifests) until it fits; if it still can't be saved, you're told and it's in
   Diagnostics.
-- **When the database is full:** when something large compared with what the TV allows doesn't
-  fit, Home's saved rows are given up first, then a USB drive's index, then playlist copies, one
-  kind at a time until it fits. A refusal for something small isn't that (the TV refuses even a
-  few KB at times, for a while: right after an install, or while its database catches up on
-  space it hasn't reclaimed yet): nothing is given up, and it's tried again a minute later, up
-  to three times (meanwhile the Trakt history is kept in the settings storage). Each refusal is
-  noted in Diagnostics with the item's size, what the TV allows and uses, and its free disk
-  space. The Trakt history is only saved again when it changed.
+- **When the database is full:** something large that doesn't fit gives up Home's saved rows
+  first, then a USB drive's index, then playlist copies, one kind at a time. A small item refused
+  (the TV does that for a while after an install, or while it reclaims space) gives up nothing:
+  it's tried again a minute later, up to three times (the Trakt history meanwhile in the settings
+  storage). Each refusal is noted in Diagnostics with the item's size, what the TV allows and
+  uses, and its free space. The Trakt history is saved again only when it changed.
 - **TV storage** (Diagnostics › Storage) shows how much the TV says the database uses of what it
   allows, how much of that is StremioK's own data and how much the database's own (old versions
   of items saved again), each item with its size, how many times it was saved since StremioK
@@ -821,12 +829,11 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 - **Limits:** these YouTube and SponsorBlock requests go through one gate: 6 at a time, 40
   waiting (more are told it's busy), at most 600 started a minute, identical ones sharing one
   download (up to 16 waiting on it), each given 30 seconds from start to finish (and 15 s of
-  silence). Answers are capped both downloaded (8 MB) and unpacked (10 MB), so a small gzip
-  can't expand into gigabytes. Resolving a page: at most 2 at a time, a few waiting, 30 fresh
+  silence). Answers are capped at 8 MB downloaded and 10 MB unpacked (no gzip bombs). Resolving a page: at most 2 at a time, a few waiting, 30 fresh
   a minute, kept 4 minutes. Lists: 60 fresh a minute, kept 10 minutes. SponsorBlock: 300 a
-  minute, kept an hour. A request StremioK gives up on (its screen left, the player closed)
-  drops the work still waiting for it, and a shared download nobody waits for any more is
-  stopped; a lookup already running finishes and is kept for the next ask.
+  minute, kept an hour. A request given up (screen left, player closed) drops its
+  waiting work and a shared download nobody else waits for; a lookup already running finishes
+  and is kept.
 
 ### USB drives and files
 
@@ -894,8 +901,17 @@ rule as downloads applies.
 AAC sound is cut mid-frame. If it is, it returns a relay link that passes the picture as it is
 and repacks the sound into whole frames, each with its own time. At most 4 relays at a time,
 each dropped after 5 minutes unused; playlists up to 1 MB and segments up to 32 MB, 20 seconds
-each. The channel's User-Agent and Referer are passed on, and the same host rule as downloads
-applies.
+each. The channel's User-Agent, Referer and Cookie are passed on, and the same host rule as
+downloads applies.
+
+**HLS through StremioK's service** (Settings › Playback › Seeking & buffering, or hold OK on a
+source › *Play through StremioK's service*): an HLS source opens the relay without the look
+(`&force=1&fix=0`), so every playlist and piece is fetched with its headers. *Sources that need
+headers*: those with their own User-Agent, Referer or Cookie; *All HLS sources*: any `.m3u8`.
+Not YouTube, DRM or USB files. A film's (`&film=1`) keeps every link it named (a live channel's
+keeps its last 400), relays its keys, init sections and encrypted pieces too, asks a byte range
+as one, and is dropped after 3 hours unused. If the service doesn't answer, the source plays as
+it is.
 
 Closed captions (CEA-608 in H.264, HEVC or MPEG-2 pictures) at a segment's start: the look reads
 the whole segment, up to 8 MB. Asked for (`&cc=CC1-en`; `&fix=0`: sound as it is), the relay adds

@@ -87,7 +87,7 @@ var YTPlay = (function () {
         var cc = opts && opts.cc ? opts.cc.map(function (c) { return c.ch + (c.lang ? '-' + c.lang : ''); }).join(',') : '';
         return ensureService().then(entryAuth).then(function (a) {
             var q = '/live/open?u=' + encodeURIComponent(url) + (h && h.ua ? '&ua=' + encodeURIComponent(h.ua) : '') + (h && h.ref ? '&ref=' + encodeURIComponent(h.ref) : '') + (h && h.cookie ? '&cookie=' + encodeURIComponent(h.cookie) : '') + (force ? '&force=1' : '') +
-                (force && opts && opts.fix === false ? '&fix=0' : '') + (force && cc ? '&cc=' + encodeURIComponent(cc) : '');
+                (force && opts && opts.fix === false ? '&fix=0' : '') + (force && cc ? '&cc=' + encodeURIComponent(cc) : '') + (force && opts && opts.film ? '&film=1' : '');
             return U.getJSON(PROXY + q + a.q, force ? 5000 : 30000, 65536, cancel || null, a.h);
         });
     }

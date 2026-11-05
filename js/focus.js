@@ -55,13 +55,24 @@ var Focus = (function () {
                     else if (nr.right > pr.right - mx) { p.scrollLeft += (nr.right - (pr.right - mx)) / z; }
                 }
                 if (canY) {
-                    var my = 70;
-                    if (nr.top < pr.top + my) { p.scrollTop -= (pr.top + my - nr.top) / z; }
+                    // going up into a row of posters: its title in view too (a margin in
+                    // screen pixels is less of the page under a zoom: at 140% it cut the title)
+                    var my = 70, top = nr.top, mt = my, row = rowAbove(node, p);
+                    if (row) { var rr = row.getBoundingClientRect(); if (rr.top <= nr.top && rr.bottom >= nr.bottom && nr.top - rr.top < 160 * z) { top = rr.top; mt = 6 * z; } }   // (its first line only; a rect that doesn't hold the node: not used)
+                    if (top < pr.top + mt) { p.scrollTop -= (pr.top + mt - top) / z; }
                     else if (nr.bottom > pr.bottom - my) { p.scrollTop += (nr.bottom - (pr.bottom - my)) / z; }
                 }
             }
             p = p.parentNode;
         }
+    }
+
+    // The row of posters (.row: its title above them) the node is in, inside the box p.
+    function rowAbove(node, p) {
+        for (var n = node.parentNode; n && n !== p; n = n.parentNode) {
+            if (n.classList && n.classList.contains('row')) { return n; }
+        }
+        return null;
     }
 
     function move(dir) {

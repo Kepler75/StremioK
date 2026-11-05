@@ -396,7 +396,7 @@ var PlayerParts = {};
     // is what's learned from it (s.stream, through ctx.learnFor); the title, its episodes and
     // whether it's private stay.
     var SOURCE_FIELDS = ['url', 'variantUrl', 'initialQualityHeight', 'yt', 'ytLang', '_headers', 'localSubs', 'localFile', 'subExtra', 'sourceSubs', 'formatInfo', 'onStarted', 'onFailed', 'stream',
-        '_reported', 'fromStart', 'resumeSec', 'switching'];
+        '_reported', 'fromStart', 'resumeSec', 'switching', 'viaService', '_relay', '_relayFor', '_relayCc'];
     // keep: a source that didn't start gives way to the next (nextSourceOnFail): the same place to
     // resume, and Play from the start as it was.
     function replaceSource(s, keep) {
@@ -881,6 +881,28 @@ var PlayerParts = {};
         else { shakaStop(); try { S.videoEl.pause(); S.videoEl.removeAttribute('src'); } catch (e2) {} S.videoEl.className = ''; }
         useAV = av; P.useAV = av;
     }
+    // A key server, and a DASH manifest naming only other systems (Widevine, PlayReady): Shaka asks
+    // a key server only for a system the manifest names (else its error 6012), so ClearKey is
+    // named after each group of them, its key ids the manifest's own (their default_KID). One
+    // naming it already (or its common key-id system), an HLS playlist: as they are.
+    var CK_URI = 'urn:uuid:e2719d58-a985-b3c9-781a-b030af78d30e';
+    var CP_RUN = /(?:<((?:[\w.-]+:)?)ContentProtection\b[^>]*?(?:\/>|>[\s\S]*?<\/(?:[\w.-]+:)?ContentProtection>)\s*)+/g;
+    var CK_NAMED = /e2719d58-a985-b3c9-781a-b030af78d30e|1077efec-c0b2-4d02-ace3-3c1e52e2fb4b/i;
+    function ckNamed(text) {
+        if (!/<(?:[\w.-]+:)?MPD\b/.test(text) || CK_NAMED.test(text)) { return text; }
+        return text.replace(CP_RUN, function (run, pre) { return run + '<' + pre + 'ContentProtection schemeIdUri="' + CK_URI + '" value="ClearKey1.0"/>'; });
+    }
+    function ckManifests(pl) {
+        var said = false, SU = shaka.util && shaka.util.StringUtils;
+        if (!SU) { return; }
+        pl.getNetworkingEngine().registerResponseFilter(function (type, resp) {
+            if (type !== shaka.net.NetworkingEngine.RequestType.MANIFEST || !resp || !resp.data) { return; }
+            var text = SU.fromUTF8(resp.data), out = ckNamed(text);
+            if (out === text) { return; }
+            resp.data = SU.toUTF8(out);
+            if (!said) { said = true; U.log('player', 'ClearKey named in the manifest beside its other DRM, for the playlist’s key server'); }
+        });
+    }
     function shakaLoadInto(url, drm, token, fail) {
         loadShaka().then(function () {
             if (!S.active || token !== _playToken) { return; }
@@ -890,6 +912,7 @@ var PlayerParts = {};
                 var pl = _shakaPl = new shaka.Player(), cfg = { streaming: { bufferingGoal: 10 } };
                 cfg.drm = drm.keys ? { clearKeys: drm.keys } : { servers: { 'org.w3.clearkey': drm.url } };
                 pl.configure(cfg);
+                if (!drm.keys) { ckManifests(pl); }
                 var h = drm.h || {};
                 if (!drm.keys && Object.keys(h).length) {   // (the key server's own headers: those a page may send)
                     pl.getNetworkingEngine().registerRequestFilter(function (type, req) {
@@ -1345,7 +1368,32 @@ var PlayerParts = {};
         ctx._relay = r.url; ctx._relayFor = ctx.url; ctx._relayCc = cc || null; ctx._ccOffer = cc ? null : ctx._ccOffer;
         return true;
     }
+    // HLS through StremioK's service (Settings › Playback › Seeking & buffering: 'off' | 'headers':
+    // sources with their own User-Agent, Referer or Cookie | 'all'; or ctx.viaService, hold OK on a
+    // source): the relay without the look, so every playlist and piece is fetched with the source's
+    // headers (the TV's player can't always send them). A film's relay keeps every link (film=1).
+    // Not YouTube, DRM, USB files or the service's own links; the service not answering: as it is.
+    var HLS_LINK = /\.m3u8?(?:[?#]|$)/i;
+    function viaService(ctx) {
+        if (!useAV || !ctx || ctx.yt || ctx.trailer || ctx.localFile || (ctx.stream && ctx.stream._drm)) { return false; }
+        if (typeof YTPlay === 'undefined' || !YTPlay.liveOpen || YTPlay.installMode() === 'browser') { return false; }
+        var url = ctx.url || '';
+        if (!/^https?:\/\//i.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)[:\/]/i.test(url)) { return false; }
+        if (!HLS_LINK.test(url) && !(ctx.formatInfo && ctx.formatInfo.container === 'hls')) { return false; }
+        if (ctx.viaService) { return true; }
+        var mode = P.playerCfg().hls;
+        return mode === 'all' || (mode === 'headers' && !!U.sanitizeHeaders(ctx._headers));
+    }
+    function startViaService(ctx, settle) {
+        var live = !!S.isLive, known = live && liveFixable(ctx) ? liveKnown(ctx.url) : null;
+        YTPlay.liveOpen(ctx.url, ctx._headers, true, { fix: !!(known && known.fix), film: !live }).then(function (r) {
+            if (S.ctx !== ctx || !S.active) { return; }
+            relayed(ctx, r, null);
+            startAV(ctx.url, settle);
+        }, function () { if (S.ctx === ctx && S.active) { startAV(ctx.url, settle); } });
+    }
     function startLive(ctx, settle) {
+        if (!ctx._relay && viaService(ctx)) { startViaService(ctx, settle); return; }
         var known = liveFixable(ctx) ? liveKnown(ctx.url) : null, cc = ccOf(known);
         if (cc && cc.length) { ctx._ccOffer = cc; }
         var withCc = ccWanted(ctx, cc) ? cc : null;
@@ -1404,7 +1452,7 @@ var PlayerParts = {};
     // The relay didn't start (StremioK's service gone): the channel as it is.
     function relayFailed() {
         if (S.playStarted || !S.ctx || !S.ctx._relay) { return false; }
-        U.log('player', 'Live sound relay failed: playing the channel as it is');
+        U.log('player', 'StremioK’s service relay didn’t start: playing the stream as it is');
         S.ctx._relay = null;
         startAV(S.ctx.url);
         return true;

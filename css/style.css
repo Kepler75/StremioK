@@ -476,9 +476,13 @@ html, body {
 .format-row.focusable.focused .a-name { color: inherit; }
 
 /* --- Discover --- */
-.discover-bar { position: absolute; top: 112px; left: 60px; right: 60px; white-space: nowrap; }
-.discover-bar .pill { margin-right: 12px; }
-.discover-search { width: 300px; margin-right: 12px; padding: 12px 22px; font-size: 22px; vertical-align: middle; background: #1a1f2b; color: #e6e9ef; border: 4px solid transparent; border-radius: 30px; }
+/* one line that fits under any zoom: the search field gives way first (down to 130px), then the
+   catalog's name and the count (cut short …); the other pickers and Clear keep their size */
+.discover-bar { position: absolute; top: 112px; left: 60px; right: 60px; white-space: nowrap; display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; }
+.discover-bar .pill { margin-right: 12px; -webkit-flex: none; flex: none; }
+.discover-bar .pill.discover-cat { -webkit-flex: 0 1 auto; flex: 0 1 auto; min-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.discover-count { -webkit-flex: 0 2 auto; flex: 0 2 auto; min-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.discover-search { -webkit-flex: 0 1 300px; flex: 0 4 300px; min-width: 130px; width: 300px; margin-right: 12px; padding: 12px 22px; font-size: 22px; vertical-align: middle; background: #1a1f2b; color: #e6e9ef; border: 4px solid transparent; border-radius: 30px; }
 .discover-search.focused { border-color: #818cf8; }
 .discover-count { display: inline-block; margin-left: 14px; font-size: 20px; color: #8b93a5; vertical-align: middle; }
 #screen-discover .home-info { top: 196px; height: 124px; }

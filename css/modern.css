@@ -1,0 +1,146 @@
+/* StremioK — the Modern look (Settings › Appearance › Look). Every rule here is under
+   body.look-modern, so Classic stays exactly as style.css draws it. body.fx-full adds the
+   effects a newer TV handles (blur behind the menu, fades, cards easing into focus, a soft
+   shadow); without it (Effects: Light, and Auto on Tizen 3 to 5.5) the same look, drawn
+   without them: a large blur repainted on every move is what slows an older TV down.
+   Chromium 47 (Tizen 3): no CSS variables, no backdrop-filter; gradients, flexbox and
+   transforms are fine. */
+
+body.look-modern { background: #0e1117; font-family: 'SK Roboto', Arial, "Tizen Sans", sans-serif; }
+body.look-modern #screen-home { background: #0e1117; }
+
+/* --- Home: the focused title's backdrop, behind everything (view-home.js homeBackdrop) --- */
+.home-bg { display: none; }
+body.look-modern .home-bg { display: block; position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; background: #0e1117; }
+body.look-modern .home-bg .hb { position: absolute; top: 0; right: 0; width: 80%; height: 86%; background-size: cover; background-position: center top; opacity: 0; }
+body.look-modern .home-bg .hb.on { opacity: 1; }
+body.look-modern.fx-full .home-bg .hb { -webkit-transition: opacity 0.45s ease; transition: opacity 0.45s ease; }
+/* dark on the left, under the text, and at the bottom, under the rows */
+body.look-modern .home-bg .hb-shade { position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(90deg, #0e1117 20%, rgba(14,17,23,0.78) 32%, rgba(14,17,23,0.3) 52%, rgba(14,17,23,0) 72%),
+                linear-gradient(0deg, #0e1117 30%, rgba(14,17,23,0.82) 44%, rgba(14,17,23,0) 66%),
+                linear-gradient(180deg, rgba(14,17,23,0.55) 0%, rgba(14,17,23,0) 16%); }
+
+/* --- The top menu: light text on the picture, the current item a soft pill, focus white --- */
+body.look-modern .header { position: relative; z-index: 3; height: 104px; padding: 30px 90px 0 90px; }
+body.look-modern .home-header .tabbar-inline { background: rgba(22,27,38,0.78); border-radius: 36px; padding: 5px; }
+body.look-modern.fx-full .home-header .tabbar-inline { background: rgba(42,51,70,0.42); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+body.look-modern .tab-pill, body.look-modern .header .hchip { background: transparent; color: rgba(255,255,255,0.74); font-size: 23px; padding: 9px 22px; margin-right: 2px; border: 3px solid transparent; border-radius: 30px; }
+body.look-modern .menu-scroll > .hchip { background: rgba(22,27,38,0.78); margin-left: 10px; }   /* (Settings, after the bar) */
+body.look-modern.fx-full .menu-scroll > .hchip { background: rgba(42,51,70,0.42); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+body.look-modern .tab-ic { display: none; }
+body.look-modern .tab-pill.active, body.look-modern .home-header .hchip.active { background: rgba(255,255,255,0.16); color: #ffffff; }
+body.look-modern .tab-pill.focusable.focused, body.look-modern .header .hchip.focusable.focused { background: #fff; color: #000; border-color: #ffffff; box-shadow: none; }
+body.look-modern .brand { font-size: 34px; color: #ffffff; letter-spacing: 0.5px; }
+/* the menu centered on the screen: its items centered in their strip (auto margins, which give
+   way to sideways scrolling when they don't all fit), and a space on the left as wide as the
+   StremioK name and its gap on the right, the first to give way when the menu fills the line */
+body.look-modern .home-header::before { content: ''; display: block; -webkit-flex: 0 1000 170px; flex: 0 1000 170px; min-width: 0; }
+body.look-modern .home-header .menu-scroll > :first-child { margin-left: auto; }
+body.look-modern .home-header .menu-scroll > :last-child { margin-right: auto; }
+body.look-modern .brand .dot { color: #818cf8; }
+
+/* --- Home: the focused title, large, over its backdrop (.hero: the title tabs) ---
+   Anchored to the rows: the synopsis just above them, a taller logo growing upward. Its room
+   is set for each zoom (U.setZoom's zoom-110 … zoom-140 on the page, which is laid out
+   1080 / zoom tall): one row of posters always fits below it. */
+body.look-modern .home-info.hero, body.look-modern .home-info.hero.on { top: 120px; left: 90px; right: auto; width: 940px; height: 446px; padding: 0;
+    border: 0; border-radius: 0; background: none; z-index: 2;
+    display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; -webkit-justify-content: flex-end; justify-content: flex-end; }
+body.look-modern .home-info.hero .home-info-title { height: auto; line-height: 1.1; font-size: 66px; font-weight: bold; letter-spacing: -1px; white-space: normal; max-height: 150px; -webkit-flex: none; flex: none; }
+body.look-modern .home-info.hero .home-info-logo { display: block; max-height: 150px; max-width: 620px; }
+body.look-modern .home-info.hero .home-info-meta { font-size: 25px; line-height: 32px; color: rgba(255,255,255,0.86); margin: 22px 0 12px 0; -webkit-flex: none; flex: none; }
+body.look-modern .home-info.hero .home-info-desc { font-size: 25px; line-height: 36px; color: rgba(255,255,255,0.8); max-height: 144px; max-width: 900px; -webkit-flex: none; flex: none; }
+body.look-modern .home-info.hero + .rows { top: 586px; }
+body.look-modern.zoom-110 .home-info.hero { top: 112px; height: 398px; }
+body.look-modern.zoom-110 .home-info.hero + .rows { top: 530px; }
+body.look-modern.zoom-110 .home-info.hero .home-info-logo { max-height: 130px; }
+body.look-modern.zoom-110 .home-info.hero .home-info-desc { max-height: 108px; }
+body.look-modern.zoom-120 .home-info.hero { top: 106px; height: 346px; }
+body.look-modern.zoom-120 .home-info.hero + .rows { top: 476px; }
+body.look-modern.zoom-120 .home-info.hero .home-info-logo { max-height: 112px; }
+body.look-modern.zoom-120 .home-info.hero .home-info-desc { max-height: 108px; }
+body.look-modern.zoom-130 .home-info.hero { top: 100px; height: 296px; }
+body.look-modern.zoom-130 .home-info.hero + .rows { top: 418px; }
+body.look-modern.zoom-130 .home-info.hero .home-info-logo { max-height: 96px; }
+body.look-modern.zoom-130 .home-info.hero .home-info-desc { max-height: 72px; }
+body.look-modern.zoom-140 .home-info.hero { top: 94px; height: 248px; }
+body.look-modern.zoom-140 .home-info.hero + .rows { top: 356px; }
+body.look-modern.zoom-140 .home-info.hero .home-info-logo { max-height: 80px; }
+body.look-modern.zoom-140 .home-info.hero .home-info-title { font-size: 48px; }
+body.look-modern.zoom-140 .home-info.hero .home-info-meta { margin: 12px 0 8px 0; }
+body.look-modern.zoom-140 .home-info.hero .home-info-desc { max-height: 72px; }
+body.look-modern .rows { z-index: 2; }
+
+/* the details strip elsewhere (the live tabs, Local, Discover): as in Classic, in its place,
+   with the Modern colors */
+body.look-modern .home-info:not(.hero) { left: 72px; right: 72px; border-left: 0; border-radius: 16px; }
+body.look-modern .home-info.on:not(.hero) { background: rgba(255,255,255,0.07); }
+body.look-modern .home-info:not(.hero) .home-info-meta { color: rgba(255,255,255,0.78); }
+body.look-modern .home-info:not(.hero) .home-info-desc { color: rgba(255,255,255,0.8); }
+
+/* --- Rows and posters: rounder, no frame, focus a white ring --- */
+body.look-modern .row-title { font-size: 28px; color: #ffffff; }
+body.look-modern #screen-home .row-title { margin: 0 0 4px 90px; }   /* (Home: in line with the title above; Search, Discover: their own margins) */
+body.look-modern #screen-home .row-scroller { padding: 26px 90px; }
+body.look-modern .card { border: 0; border-radius: 16px; background: rgba(255,255,255,0.07); margin-right: 26px; }
+body.look-modern .card .cap { padding: 20px 12px 8px 12px; font-size: 18px; line-height: 22px; max-height: 72px; background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0.9)); }   /* (two lines fit, a landscape poster's too) */
+body.look-modern .card.focusable.focused { border: 0; box-shadow: 0 0 0 4px #fff; -webkit-transform: scale(1.06); transform: scale(1.06); }
+body.look-modern .card.focusable.moving { border: 0; box-shadow: 0 0 0 4px #f59e0b; }
+body.look-modern.fx-full .card { -webkit-transition: -webkit-transform 0.16s ease-out, box-shadow 0.16s ease-out; transition: transform 0.16s ease-out, box-shadow 0.16s ease-out; }
+body.look-modern.fx-full .card.focusable.focused { box-shadow: 0 0 0 4px #fff, 0 18px 44px rgba(0,0,0,0.7); }
+body.look-modern .card .prog { height: 6px; border-radius: 0 3px 3px 0; }
+body.look-modern #screen-home .row-empty { margin-left: 90px; }
+
+/* --- A light background (Light Gray, White: body.bg-light): the see-through white fills
+   see-through dark instead; the rest follows the background through U.applyTheme --- */
+body.look-modern.bg-light .tab-pill.active, body.look-modern.bg-light .home-header .hchip.active { background: rgba(0,0,0,0.1); }
+body.look-modern.bg-light .btn-row .pill, body.look-modern.bg-light .season-bar .pill { background: rgba(0,0,0,0.08); }
+body.look-modern.bg-light .btn-row .pill:first-child { background: rgba(0,0,0,0.82); color: #f5f5f5; }   /* (not #ffffff: that one turns dark on a light background) */
+body.look-modern.bg-light .btn-row .pill.focusable.focused, body.look-modern.bg-light .tab-pill.focusable.focused, body.look-modern.bg-light .header .hchip.focusable.focused,
+body.look-modern.bg-light .season-bar .pill.focusable.focused, body.look-modern.bg-light .stream.focusable.focused, body.look-modern.bg-light .ep.focusable.focused { background: #111111; color: #f5f5f5; border-color: #111111; }
+body.look-modern.bg-light .card { background: rgba(0,0,0,0.06); }
+body.look-modern.bg-light .card.focusable.focused { box-shadow: 0 0 0 4px #111111; }
+body.look-modern.bg-light .home-info.on:not(.hero) { background: rgba(0,0,0,0.05); }
+
+/* --- A title's page: its backdrop over the whole screen, a large logo, round buttons --- */
+body.look-modern #screen-detail { background: #0e1117; }
+body.look-modern .detail-hero, body.look-modern .detail-hero.hero-full { height: 100%; }
+body.look-modern .detail-hero .shade, body.look-modern .detail-hero.hero-full .shade {
+    background: linear-gradient(90deg, #0e1117 6%, rgba(14,17,23,0.84) 30%, rgba(14,17,23,0.3) 60%, rgba(14,17,23,0) 82%),
+                linear-gradient(0deg, #0e1117 0%, rgba(14,17,23,0.6) 26%, rgba(14,17,23,0) 56%),
+                linear-gradient(180deg, rgba(14,17,23,0.5) 0%, rgba(14,17,23,0) 16%); }
+body.look-modern .detail-body { left: 90px; right: 90px; top: 150px; }
+body.look-modern .detail-title { font-size: 62px; letter-spacing: -1px; }
+body.look-modern .detail-title.has-logo { height: 130px; }
+body.look-modern .detail-logo { max-height: 130px; max-width: 640px; }
+body.look-modern .series-body .detail-title.has-logo { height: 84px; }
+body.look-modern .series-body .detail-logo { max-height: 84px; }
+body.look-modern.zoom-120 .detail-title.has-logo, body.look-modern.zoom-130 .detail-title.has-logo, body.look-modern.zoom-140 .detail-title.has-logo { height: 84px; }
+body.look-modern.zoom-120 .detail-logo, body.look-modern.zoom-130 .detail-logo, body.look-modern.zoom-140 .detail-logo { max-height: 84px; }
+body.look-modern.zoom-130 .series-body .detail-title.has-logo, body.look-modern.zoom-140 .series-body .detail-title.has-logo { height: 64px; }
+body.look-modern.zoom-130 .series-body .detail-logo, body.look-modern.zoom-140 .series-body .detail-logo { max-height: 64px; }
+body.look-modern .detail-meta { color: rgba(255,255,255,0.86); font-size: 23px; }
+body.look-modern .detail-desc { color: rgba(255,255,255,0.82); font-size: 23px; line-height: 32px; max-width: 980px; }   /* (whole lines in its capped height) */
+/* A series: its text block right under the menu, as in Classic (the episode panel starts where
+   it ends, view-detail.js fitPanel, and no lower than 512px); under a high zoom a shorter
+   synopsis, so two episodes show below it */
+body.look-modern .series-body { top: 112px; }
+body.look-modern.zoom-130 .series-body { max-height: 340px; }
+body.look-modern.zoom-130 .series-body .detail-desc { max-height: 96px; }
+body.look-modern.zoom-140 .series-body { max-height: 292px; }
+body.look-modern.zoom-140 .series-body .detail-desc { max-height: 64px; }
+body.look-modern.zoom-140 .series-body .detail-ratings { margin-bottom: 8px; }
+body.look-modern.zoom-140 .series-body .detail-meta { margin-bottom: 8px; }
+body.look-modern.zoom-120 .series-body .detail-title.has-logo { height: 64px; }
+body.look-modern.zoom-120 .series-body .detail-logo { max-height: 64px; }
+body.look-modern.zoom-140 .series-body .detail-title.has-logo { height: 56px; }
+body.look-modern.zoom-140 .series-body .detail-logo { max-height: 56px; }
+body.look-modern .btn-row .pill { background: rgba(255,255,255,0.16); color: #ffffff; border: 3px solid transparent; border-radius: 40px; padding: 14px 32px; font-size: 23px; }
+body.look-modern .btn-row .pill:first-child { background: rgba(255,255,255,0.9); color: #000; }
+body.look-modern .btn-row .pill.focusable.focused { background: #fff; color: #000; border-color: #ffffff; box-shadow: 0 0 0 4px rgba(255,255,255,0.35); }
+body.look-modern.fx-full .btn-row .pill { -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+body.look-modern .season-bar .pill { background: rgba(255,255,255,0.12); color: #ffffff; border-radius: 30px; }
+body.look-modern .season-bar .pill.focusable.focused { background: #fff; color: #000; }
+body.look-modern .stream.focusable.focused, body.look-modern .ep.focusable.focused { background: #fff; color: #000; border-color: #ffffff; box-shadow: none; }
+body.look-modern .stream, body.look-modern .ep { border-radius: 14px; background: rgba(22,27,38,0.72); }

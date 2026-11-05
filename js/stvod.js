@@ -27,10 +27,15 @@ var StVod = (function () {
         for (var i = 0; i < l.length; i++) { if (l[i].id === id) { return l[i]; } }
         return null;
     }
+    // How long the service keeps what it read of a portal (Settings › Content › IPTV › Stalker films
+    // and series): 10 minutes, 5, or 0 (not kept).
+    var KEEP_KEY = 'stremiok.iptv.stalkerkeep', KEEPS = [10, 5, 0];
+    function keepMinutes() { var m = U.store.get(KEEP_KEY, 10); return KEEPS.indexOf(m) !== -1 ? m : 10; }
+    function setKeepMinutes(m) { U.store.set(KEEP_KEY, KEEPS.indexOf(+m) !== -1 ? +m : 10); }
     // The service's answer ({ why }: an error).
     function ask(acc, more) {
         if (typeof YTPlay === 'undefined' || !YTPlay.stalkerVod) { return Promise.reject(new Error('Stalker portals are read by StremioK’s service (not in a desktop browser)')); }
-        return YTPlay.stalkerVod(acc.url, acc.mac, more).then(function (r) {
+        return YTPlay.stalkerVod(acc.url, acc.mac, more + '&keep=' + keepMinutes()).then(function (r) {
             if (!r || r.why) { throw new Error((r && r.why) || 'no answer'); }
             return r;
         });
@@ -285,5 +290,5 @@ var StVod = (function () {
         })).then(function (all) { return [].concat.apply([], all).filter(Boolean); });
     }
 
-    return { accounts: accounts, isEnabled: isEnabled, onChange: onChange, reload: reload, synthAddon: synthAddon, catalog: catalog, meta: meta, streams: streams, refreshCats: refreshCats };
+    return { accounts: accounts, keepMinutes: keepMinutes, setKeepMinutes: setKeepMinutes, isEnabled: isEnabled, onChange: onChange, reload: reload, synthAddon: synthAddon, catalog: catalog, meta: meta, streams: streams, refreshCats: refreshCats };
 })();

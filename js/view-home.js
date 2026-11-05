@@ -650,7 +650,7 @@
         };
         c.__onlongpress = function () { continueActions(e, base, preview, target, c); };
         c.__cwKey = showKey(e);
-        c.__meta = { name: e.name, description: e.position
+        c.__meta = { _id: base, _bg: a.background || e.background || '', _ep: e.type === 'series' && target ? codeOfId(target) : '', name: e.name, description: e.position
             ? 'Resume at ' + U.fmtTime(e.position) + (e.duration ? '  of  ' + U.fmtTime(e.duration) : '')
             : e.upNext !== undefined ? 'Next episode' + (e.upNext ? ': “' + e.upNext + '”' : '') + '   ·   from Trakt'
             : 'Added, not started yet' };
@@ -786,7 +786,7 @@
                 var c = posterCard({ id: u.show, type: 'series', name: u.name, poster: u.poster || calPoster(u.show) }, 'series');
                 var code = epCodeOf(u.ep);
                 c.appendChild(U.el('div', 'card-new card-code', code));
-                c.__meta = { name: u.name, description: code + (u.ep.t ? '  “' + u.ep.t + '”' : '') + '   ·   ' + (u.ep.r > now ? 'out ' : 'came out ') + U.dayLabel(u.ep.r) };
+                c.__meta = { _id: u.show, name: u.name, description: code + (u.ep.t ? '  “' + u.ep.t + '”' : '') + '   ·   ' + (u.ep.r > now ? 'out ' : 'came out ') + U.dayLabel(u.ep.r) };
                 c.__onselect = function () { App.openDetail('series', u.show, { name: u.name, poster: u.poster, type: 'series' }, u.ep.id); };
                 c.__onplay = function () { App.openDetail('series', u.show, { name: u.name, poster: u.poster, type: 'series' }, u.ep.id, { playBest: true }); };
                 return c;
@@ -1240,9 +1240,12 @@
             if (launch && asked === 'guide' && (Stremio.getPrefs().hiddenTabs || []).indexOf('guide') === -1) { _wantGuide = _homeTab; }   // (see EPG.onChange below)
         }
 
+        var hero = U.look() === 'modern' && !NO_HERO[_homeTab];   // (Modern: the focused title's backdrop, behind it all)
+        if (hero) { s.appendChild(homeBackdrop(_homeTab)); }
         s.appendChild(buildTopMenu(_homeTab));
-        // The focused title's details, between the top menu and the rows (#home-info).
-        var info = U.el('div', 'home-info');
+        // The focused title's details, between the top menu and the rows (#home-info); Modern's
+        // title tabs: large, over the backdrop (hero).
+        var info = U.el('div', 'home-info' + (hero ? ' hero' : ''));
         info.appendChild(U.el('div', 'home-info-title'));
         info.appendChild(U.el('div', 'home-info-meta'));
         info.appendChild(U.el('div', 'home-info-desc'));
@@ -1315,7 +1318,61 @@
     // Details strip: updated when focus settles on a Home card (debounced, so holding a
     // direction doesn't redo it for every card passed).
     var _homeInfoTimer = null;
-    function fillHomeInfo(m) { fillInfoBox(scr('home').querySelector('.home-info'), m); }
+    function fillHomeInfo(m) { fillInfoBox(scr('home').querySelector('.home-info'), m); fillBackdrop(scr('home').querySelector('.home-bg'), m); }
+    // Modern look: the focused title's backdrop behind Home, two layers taking turns, so the
+    // new one fades in over the last (Effects: Full) once it has loaded; a picture that doesn't
+    // load gives way to the next of its choices (U.heroImages). A title without one: black; the
+    // menu (no title): the last kept. Not on the live tabs and Local (their pictures are
+    // logos and program stills: the details strip shows those).
+    var NO_HERO = { tv: 1, guide: 1, radio: 1, sport: 1, local: 1 };
+    var _homeBg = { tab: '', src: '' };   // (the last one, for when Home draws that tab again)
+    function homeBackdrop(tab) {
+        var bg = U.el('div', 'home-bg');
+        bg.appendChild(U.el('div', 'hb'));
+        bg.appendChild(U.el('div', 'hb'));
+        bg.appendChild(U.el('div', 'hb-shade'));
+        if (_homeBg.src && _homeBg.tab === tab) { bg.children[0].style.backgroundImage = 'url("' + _homeBg.src + '")'; bg.children[0].className = 'hb on'; bg.__src = _homeBg.src; }
+        bg.__tab = tab;
+        return bg;
+    }
+    // Continue Watching and the Calendar keep only a little of a title: for an IMDb one, its logo
+    // is Cinemeta's for that id (one that doesn't load: its name, as for any logo).
+    function ttLogo(m) {
+        var tt = m && m._id && /^(tt\d{5,10})(?::|$)/.exec(m._id);
+        return tt ? 'https://images.metahub.space/logo/medium/' + tt[1] + '/img' : '';
+    }
+    // A title's backdrop: its own; else, for an IMDb title (Continue Watching, the Calendar keep
+    // only a little of it), Cinemeta's picture for that id.
+    function backdropOf(m) {
+        if (!m) { return null; }
+        var b = m.background || m._bg || '', tt = !b && /^(tt\d{5,10})(?::|$)/.exec(m.id || m._id || '');
+        if (tt) { b = 'https://images.metahub.space/background/medium/' + tt[1] + '/img'; }
+        return U.heroImages(b);
+    }
+    function fillBackdrop(bg, m) {
+        if (!bg || !m || !(m.name || m.title)) { return; }   // (the menu: the last one stays)
+        var list = backdropOf(m) || [], key = list.join(' ');
+        if (bg.__src === key) { return; }
+        bg.__src = key;
+        function show(src) {
+            var on = bg.querySelector('.hb.on'), next = on === bg.children[0] ? bg.children[1] : bg.children[0];
+            if (src) { next.style.backgroundImage = 'url("' + src + '")'; next.className = 'hb on'; }
+            if (on) { on.className = 'hb'; }
+            _homeBg = { tab: bg.__tab, src: src || '' };
+        }
+        if (!list.length) { show(''); return; }
+        (function next(i) {
+            if (i >= list.length) { if (bg.__src === key) { show(''); } return; }
+            var img = new Image();
+            img.onload = function () {
+                if (bg.__src !== key) { return; }   // (focus moved on before it came)
+                if (img.naturalWidth && img.naturalWidth < 200) { next(i + 1); return; }   // (a stand-in, not the picture)
+                show(list[i]);
+            };
+            img.onerror = function () { if (bg.__src === key) { next(i + 1); } };
+            img.src = list[i];
+        })(0);
+    }
     // Fill a details strip (Home, Discover) with a title's logo / name, facts and synopsis.
     function fillInfoBox(box, m) {
         if (!box) { return; }
@@ -1329,10 +1386,17 @@
         if (m.name || m.title) { box.classList.add('on'); } else { box.classList.remove('on'); }   // shaded only while describing a title
         var t = box.children[0], name = m.name || m.title || '';
         U.clear(t);
-        var logoSrc = U.cardImage(m.logo, 'logo');
+        var logoSrc = U.cardImage(m.logo || ttLogo(m), 'logo');
+        // an episode in Continue Watching: its name says which (Breaking Bad S1E1), its logo
+        // doesn't, so the facts begin with it then
+        var ep = logoSrc && m._ep ? m._ep : '';
         if (logoSrc) {   // the title's logo when it has one; its name if that fails to load
             var img = U.el('img', 'home-info-logo');
-            img.onerror = function () { if (img.parentNode === t) { U.clear(t); t.textContent = name; } };
+            img.onerror = function () {
+                if (img.parentNode !== t) { return; }
+                U.clear(t); t.textContent = name;
+                if (ep && box.children[1].textContent.indexOf(ep) === 0) { box.children[1].textContent = box.children[1].textContent.slice(ep.length).replace(/^\s*·\s*/, ''); }
+            };
             t.appendChild(img);
             U.deferImage(img, logoSrc, true);   // (through the queue, ahead of the rest)
         } else {
@@ -1344,6 +1408,7 @@
             bits = ['Now  ' + EPG.hhmm(g.now.start) + '–' + EPG.hhmm(g.now.stop) + '   ' + g.now.title];
             desc = (g.now.desc ? g.now.desc + '   ' : '') + (g.next ? 'Next  ' + EPG.hhmm(g.next.start) + '   ' + g.next.title : '');
         }
+        if (ep) { bits.unshift(ep); }
         box.children[1].textContent = bits.join('   ·   ');
         box.children[2].textContent = desc;
         // a program's picture from the TV guide (the Guide tab's focused one, a channel's now)

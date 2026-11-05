@@ -197,9 +197,15 @@
     // Zoom: everything bigger (see U.setZoom), in percent.
     var ZOOMS = [['100', '100%'], ['110', '110%'], ['120', '120%'], ['130', '130%'], ['140', '140%']];
     function zoomPct() { return Stremio.getPrefs().zoom; }
+    // Look: Classic (the stylesheet as it is) or Modern (css/modern.css, its rules only under
+    // body.look-modern). Effects, Modern's blur and motion: Auto turns them on where the TV's
+    // browser can blur behind a panel (Tizen 6 and later), Light keeps them off, Full on.
+    var LOOKS = [['classic', 'Classic'], ['modern', 'Modern']];
+    var EFFECTS = [['auto', 'Auto (by the TV)'], ['light', 'Light'], ['full', 'Full']];
     function applyAppearance() {
-        var a = appearance();
+        var a = appearance(), p = Stremio.getPrefs();
         U.applyTheme(a.accent, a.bg);
+        U.setLook(p.look, p.effects, a.bg === 'gray' || a.bg === 'white');
         U.setZoom(zoomPct() / 100);
     }
     function settingsAppearance(wrap) {
@@ -210,6 +216,10 @@
         } };
         var accents = U.ACCENT_KEYS.map(function (k) { return [k, ACCENT_NAMES[k] || k, null, U.accentColor(k)]; });
         wrap.appendChild(U.el('h2', null, 'Appearance'));
+        var looks = { get: function () { var p = Stremio.getPrefs(); return { look: p.look, effects: p.effects }; },
+            set: function (cfg) { Stremio.setPref('look', cfg.look); Stremio.setPref('effects', cfg.effects); applyAppearance(); markHomeDirty(); } };
+        wrap.appendChild(subPickRow('Look', LOOKS, 'look', looks));
+        wrap.appendChild(subPickRow('Effects', EFFECTS, 'effects', looks));
         wrap.appendChild(subPickRow('Background', BACKGROUNDS, 'bg', store));
         wrap.appendChild(subPickRow('Accent color', accents, 'accent', store));
         wrap.appendChild(subPickRow('Zoom', ZOOMS, 'zoom', {
@@ -478,7 +488,7 @@
         wrap.appendChild(U.el('h2', null, 'Settings'));
         wrap.appendChild(sectionRow('Content', 'Addons, API keys, IPTV playlists, streaming apps, importing a configuration file', 'content'));
         wrap.appendChild(sectionRow('Playback', 'Audio and subtitles, source ranking, feed sources, formats', 'playback'));
-        wrap.appendChild(sectionRow('Appearance', 'Background, accent color, zoom, posters, spoilers', 'appearance'));
+        wrap.appendChild(sectionRow('Appearance', 'Look, background, accent color, zoom, posters, spoilers', 'appearance'));
         wrap.appendChild(sectionRow('Home', 'The tab it opens on, the top menu, Home feeds, Search results', 'home'));
         wrap.appendChild(sectionRow('Diagnostics', 'Logs, storage, installed apps; how StremioK was installed', 'diagnostics'));
         if (typeof YTPlay !== 'undefined' && YTPlay.installMode && YTPlay.installMode() === 'tizenbrew') { wrap.appendChild(U.el('div', 'hint', TIZENBREW_NOTE)); }
@@ -1229,6 +1239,13 @@
             }
         }));
 
+        if (typeof StVod !== 'undefined' && StVod.keepMinutes) {   // (what the service keeps of a portal's films and series)
+            wrap.appendChild(subPickRow('Stalker films and series', [['10', 'Kept 10 minutes'], ['5', 'Kept 5 minutes'], ['0', 'Off (asked each time)']], 'keep', {
+                get: function () { return { keep: String(StVod.keepMinutes()) }; },
+                set: function (c) { StVod.setKeepMinutes(+c.keep); }
+            }));
+        }
+
         wrap.appendChild(U.el('div', 'hint',
             'Channels are grouped into IPTV and Radio rows on Home. ▲ / ▼ set the playlists\' order: a channel in two playlists comes from the first.'));
         var s = scr('settings'), want = null;
@@ -1636,14 +1653,17 @@
     // Seeking & buffering: how far LEFT / RIGHT jump; a bigger buffer for slow connections; how
     // often a live channel that drops is opened again.
     var RECONNECTS = [['off', 'Off'], ['few', 'A few times (3 in 5 minutes)'], ['always', 'Keep trying']];
+    // (an HLS source through the service, with its own headers on every piece: see player-core's viaService)
+    var HLS_ROUTES = [['off', 'Off'], ['headers', 'Sources that need headers'], ['all', 'All HLS sources']];
     function settingsSeeking(wrap) {
         wrap.appendChild(U.el('h2', null, 'Seeking & buffering'));
-        var store = { get: function () { var c = Player.playerCfg(); return { seek: '' + c.seek, buffer: c.buffer, reconnect: c.reconnect }; },
-            set: function (cfg) { Player.setPlayerCfg({ seek: +cfg.seek || 10, buffer: cfg.buffer, reconnect: cfg.reconnect }); } };
+        var store = { get: function () { var c = Player.playerCfg(); return { seek: '' + c.seek, buffer: c.buffer, reconnect: c.reconnect, hls: c.hls }; },
+            set: function (cfg) { Player.setPlayerCfg({ seek: +cfg.seek || 10, buffer: cfg.buffer, reconnect: cfg.reconnect, hls: cfg.hls }); } };
         wrap.appendChild(subPickRow('Seek step', [['5', '5 s'], ['10', '10 s'], ['15', '15 s'], ['30', '30 s']], 'seek', store));
         wrap.appendChild(subPickRow('Buffer', [['normal', 'Normal (the TV’s own)'], ['more', 'More'], ['most', 'Most']], 'buffer', store));
         wrap.appendChild(subPickRow('Reconnect live channels', RECONNECTS, 'reconnect', store));
-        wrap.appendChild(U.el('div', 'hint', 'Seek step: how far LEFT / RIGHT jump (FF / REW jump three steps). Buffer: More or Most starts a little slower but stops less on a slow connection, from the next video you play. Reconnect: a live channel that drops opens again; Keep trying waits a little longer each time (BACK stops it).'));
+        wrap.appendChild(subPickRow('HLS through StremioK’s service', HLS_ROUTES, 'hls', store));
+        wrap.appendChild(U.el('div', 'hint', 'Seek step: FF / REW jump three. Buffer: More or Most starts slower but stops less on a slow connection. Reconnect: a live channel that drops opens again (BACK stops it). HLS through StremioK’s service: for a host that wants headers the TV’s player can’t send; a step more before it starts.'));
         focusSettings();
     }
     function settingsSkipping(wrap) {

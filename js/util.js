@@ -1115,8 +1115,9 @@ var U = (function () {
     function showOn(item) {   // the image is in the browser now: put it on this node
         if (item.bg) { item.img.style.backgroundImage = cssUrl(item.src); } else { item.img.src = item.src; }
     }
-    function failOn(item) {   // it can't load: this node's own fallback
-        if (!item.bg && typeof item.img.onerror === 'function') { try { item.img.onerror(); } catch (e) {} }
+    function failOn(item) {   // it can't load: this node's own fallback (a background's: its __bgFail)
+        var f = item.bg ? item.img.__bgFail : item.img.onerror;
+        if (typeof f === 'function') { try { f.call(item.img); } catch (e) {} }
     }
     // A download that neither loads nor fails (a stalled host) gives up after this, so a
     // few of them can't hold every slot and stop all later artwork.
@@ -1243,7 +1244,7 @@ var U = (function () {
                 function done(ok) {
                     if (finished) { return; }
                     stop();
-                    if (ok) { markLoaded(it.src); if (it.bg) { showOn(it); } } else { _failedAt.set(it.src, Date.now()); }
+                    if (ok) { markLoaded(it.src); if (it.bg) { showOn(it); } } else { _failedAt.set(it.src, Date.now()); if (it.bg) { failOn(it); } }
                     var waiting = _inflight[it.src] || [];
                     delete _inflight[it.src];
                     waiting.forEach(function (w) { if (ok) { showOn(w); } else { failOn(w); } });
@@ -1307,6 +1308,16 @@ var U = (function () {
     //   role: 'poster' | 'landscape' | 'still' (episode thumbnail) | 'hero' (a title page's
     //   backdrop) | 'logo' | 'cast' (a cast card) | 'profile' (a person page's photo)
     var TMDB_W = { poster: 342, landscape: 780, still: 300, hero: 1280, logo: 500, cast: 185, profile: 342 };
+    // A backdrop behind a page (the Modern look's Home, a title's page): its pictures to try, the
+    // best first. A YouTube video's thumbnail (hqdefault: 480x360, bars above and below) gives
+    // way to its 1280x720 ones (maxresdefault, else hq720; an older video may have neither, so
+    // the thumbnail last). Anything else: its 'hero' size.
+    function heroImages(url) {
+        var yt = typeof url === 'string' && url.match(/^(https:\/\/i\.ytimg\.com\/vi\/[\w-]{6,20}\/)(?:hq|mq|sd)?default\.jpg$/);
+        if (yt) { return [yt[1] + 'maxresdefault.jpg', yt[1] + 'hq720.jpg', url]; }
+        var one = cardImage(url, 'hero');
+        return one ? [one] : [];
+    }
     function cardImage(url, role) {
         if (!url || typeof url !== 'string') { return null; }
         if (/^\/\//.test(url)) { url = 'https:' + url; }   // (a scheme-relative link)
@@ -1410,7 +1421,7 @@ var U = (function () {
         [[255, 210, 87], [138, 90, 0]]   // gold ratings
     ];
     // Drawn over video or pictures: keep their own (light-on-dark) look.
-    var KEEP_DARK = /#osd|#player-|#subs|#sub-menu|#skip-prompt|#stream-info|#cast-strip|#yt-links|#yt-card|#toast|#hold-hint|#spinner|\.skip-btn|\.pb-btn|\.sm-|\.si-|\.card \.cap|\.card-new|\.card-watched|\.card-rating|\.grid-cell|\.r-|\.spin\b/;
+    var KEEP_DARK = /#osd|#player-|#subs|#sub-menu|#skip-prompt|#stream-info|#cast-strip|#yt-links|#yt-card|#toast|#hold-hint|#spinner|\.skip-btn|\.pb-btn|\.sm-|\.si-|\.card \.cap|\.card-new|\.card-watched|\.card-rating|\.card-epg|\.grid-cell|\.r-|\.spin\b/;
     var LIGHT_EXTRA = '.card .cap { color: #ffffff }\n' +
         // title logos are made for dark backgrounds: a soft dark outline keeps them readable
         '.detail-logo, .home-info-logo { -webkit-filter: drop-shadow(0 0 2px rgba(0,0,0,0.85)) drop-shadow(0 0 6px rgba(0,0,0,0.45)); ' +
@@ -1430,6 +1441,26 @@ var U = (function () {
         s.height = on ? Math.ceil(1080 / _zoom) + 'px' : '';
         s.webkitTransform = s.transform = on ? 'scale(' + _zoom + ')' : '';
         s.webkitTransformOrigin = s.transformOrigin = on ? '0 0' : '';
+        var cl = document.body.classList;   // (zoom-110 … zoom-140: the Modern look's room for each, css/modern.css)
+        if (cl) { [110, 120, 130, 140].forEach(function (z) { cl.remove('zoom-' + z); }); if (on) { cl.add('zoom-' + Math.round(_zoom * 100)); } }
+    }
+
+    // Look (Settings › Appearance): 'modern' puts look-modern on the page (css/modern.css), and
+    // fx-full for its blur and motion: 'auto' where the TV's browser can blur what's behind a
+    // panel (Tizen 6, 2021 TVs, and later), so not on older ones, where they'd slow it down.
+    function canBlur() {
+        try { return !!(window.CSS && CSS.supports && (CSS.supports('backdrop-filter', 'blur(2px)') || CSS.supports('-webkit-backdrop-filter', 'blur(2px)'))); } catch (e) { return false; }
+    }
+    var _look = 'classic';
+    function look() { return _look; }
+    function setLook(lk, fx, light) {   // (light: Light Gray or White, bg-light: css/modern.css's fills for them)
+        _look = lk === 'modern' ? 'modern' : 'classic';
+        var b = document.body;
+        if (!b || !b.classList) { return; }
+        var full = _look === 'modern' && (fx === 'full' || (fx !== 'light' && canBlur()));
+        b.classList[_look === 'modern' ? 'add' : 'remove']('look-modern');
+        b.classList[full ? 'add' : 'remove']('fx-full');
+        b.classList[light ? 'add' : 'remove']('bg-light');
     }
 
     // bg: 'dark' (the stylesheet's own), 'black', 'gray' or 'white' (the last two with dark text)
@@ -1444,7 +1475,10 @@ var U = (function () {
         if (light) {
             pairs.push([THEME_BASE.bg, light.page, 'bg'], [[22, 27, 38], light.panel, 'bg'], [[26, 31, 43], light.card, 'bg'],
                 [[42, 51, 70], light.raised, 'bg'], [[38, 48, 74], light.raised, 'bg'], [[23, 32, 58], light.deep, 'bg'],
-                [[58, 33, 48], [243, 214, 220], 'bg'], [[255, 255, 255], [17, 17, 17], 'color']);
+                [[58, 33, 48], [243, 214, 220], 'bg'], [[255, 255, 255], [17, 17, 17], 'color'],
+                // the Guide: its channel column, the strip behind the programs (the lines
+                // between them), the program on now
+                [[18, 23, 34], light.deep, 'bg'], [[14, 18, 25], light.page, 'bg'], [[34, 43, 61], light.raised, 'bg']);
             LIGHT_TEXT.forEach(function (t) { pairs.push([t[0], t[1], 'text']); });
         }
         var el = byId('theme-override');
@@ -1628,7 +1662,7 @@ var U = (function () {
         postJSON: postJSON, redactUrl: redactUrl, problem: problem, problemDetail: problemDetail, listOf: listOf, lru: lru, cachedJSON: cachedJSON,
         parseUrl: parseUrl, urlProblem: urlProblem, isPlaylistUrl: isPlaylistUrl, isManifestUrl: isManifestUrl,
         isPrivateHost: isPrivateHost, urlIsPrivate: urlIsPrivate, setLocalPolicy: setLocalPolicy, sanitizeHeaders: sanitizeHeaders, drawable: drawable,
-        log: log, logEntries: logEntries, clearLog: clearLog, bigStore: bigStore, diskInfo: diskInfo,
+        look: look, setLook: setLook, canBlur: canBlur, heroImages: heroImages, log: log, logEntries: logEntries, clearLog: clearLog, bigStore: bigStore, diskInfo: diskInfo,
         store: store, toast: toast, spinner: spinner,
         deferImage: deferImage, deferBg: deferBg, cardImage: cardImage, prioritizeImages: prioritizeImages, requeueImages: requeueImages,
         fmtTime: fmtTime, dayLabel: dayLabel, settleAll: settleAll, cancelToken: cancelToken, isHidden: isHidden, whenVisible: whenVisible, crumb: crumb, sessionStart: sessionStart, sessionState: sessionState, mark: mark, startupMarks: startupMarks, loadScript: loadScript, qrModules: qrModules, qrCanvas: qrCanvas, qrScale: qrScale,

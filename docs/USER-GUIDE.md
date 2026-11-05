@@ -390,15 +390,15 @@ addons is shown once ("also on …").
 - **Filter:** next to ▶ Play best, **Addon: All ▾** and **Resolution: All ▾** (where there's a
   choice). Pick one to show only those sources ("Showing 9 of 40 sources"); ▶ Play best then
   plays the best of them. The filter stays while you're on the title and its episodes.
-- **Hold OK on a source** to mark it *not suitable* for this title (wrong language, poor
-  quality, a fake…): it moves to the bottom and is never picked by ▶ Play best or for the next
-  episode; hold OK again to put it back. The mark follows the file, from any addon. The same
-  menu has *Play from the start* when you've a place to resume, and *⬇ Download to USB drive*
-  with a drive plugged in (see [Downloads](#downloads)).
+- **Hold OK on a source** to mark it *not suitable* for this title (wrong language, a fake…):
+  it moves to the bottom, never picked by ▶ Play best or for the next episode; hold OK
+  again to put it back. The mark follows the file. The same menu has *Play from the start*
+  when you've a place to resume, *Play through StremioK's service* (HLS whose host wants
+  headers), and *⬇ Download to USB drive* with a drive plugged in (see [Downloads](#downloads)).
 - **When a source doesn't start**, the next one is tried ("Didn't start: trying the next
   source (2 of 4)…") at the same place, up to 3 more; when none starts, you're back on the
-  list ([how a start is judged](TECHNICAL-REFERENCE.md#starting-and-recovering)). When a debrid service sends a notice instead of the video, StremioK says what it means
-  (see [Troubleshooting](TROUBLESHOOTING.md#a-source-doesnt-start)).
+  list ([how a start is judged](TECHNICAL-REFERENCE.md#starting-and-recovering)). A debrid service's notice instead of the video: StremioK says what it means
+  ([Troubleshooting](TROUBLESHOOTING.md#a-source-doesnt-start)).
 - **Skip the source list** (Settings › Playback › Source ranking › *When you press Play*) plays
   the top source as soon as the addons have answered. For the list: hold OK
   on an episode › *Details*, or *Select source* while it plays.

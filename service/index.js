@@ -2003,6 +2003,7 @@ function liveGet(u, who, max, cb, part) {
         var h = { 'User-Agent': who.ua || TV_UA };
         if (who.ref) { h.Referer = who.ref; }
         if (who.cookie) { h.Cookie = who.cookie; }
+        if (who.range) { h.Range = who.range; }   // (a film's piece that's part of a file: EXT-X-BYTERANGE)
         var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, headers: h };
         if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
         var chunks = [], size = 0, done = false;
@@ -2021,7 +2022,8 @@ function liveGet(u, who, max, cb, part) {
                     if (!gone) { get(urllib.resolve(url, resp.headers.location)); }
                     return;
                 }
-                if (sc !== 200) { resp.resume(); end(upError('HTTP ' + sc, sc >= 400 && sc < 600 ? sc : 502)); return; }
+                if (who.range && sc === 200) { resp.resume(); end(upError('the server sent the whole file, not the part asked for', 502)); return; }
+                if (sc !== 200 && !(sc === 206 && who.range)) { resp.resume(); end(upError('HTTP ' + sc, sc >= 400 && sc < 600 ? sc : 502)); return; }
                 resp.on('data', function (c) {
                     if (done) { return; }
                     chunks.push(c); size += c.length; held += c.length; _liveHeld += c.length;
@@ -2489,31 +2491,57 @@ function ccList(s, text, base, k) {
 // A playlist with its links through the relay: a master's variants and renditions (m), a media
 // playlist's segments (s, numbered from its media sequence); encrypted or fMP4 segments, keys:
 // fetched directly (their absolute links).
-function liveLink(s, url, kind, seq, ch) {
-    var key = kind + (ch !== undefined ? ch : '') + ' ' + url;
+// A film's relay (&film=1: HLS through StremioK's service) keeps every link (up to
+// LIVE_FILM_LINKS: seeking goes back to any of them), a live channel's its last LIVE_LINKS.
+// raw: a key, an init section or an encrypted / fMP4 piece, passed on as it is; range: a byte
+// range of its link ('bytes=a-b').
+var LIVE_FILM_LINKS = 30000, LIVE_FILM_IDLE_MS = 3 * 3600 * 1000;
+function liveLink(s, url, kind, seq, ch, raw, range) {
+    var key = kind + (ch !== undefined ? ch : '') + (range ? '@' + range : '') + ' ' + url;
     if (s.at[key] !== undefined) { return s.at[key]; }
-    var n = s.next++;
-    s.links[n] = { url: url, kind: kind, seq: seq, ch: ch, key: key };
+    var n = s.next++, keep = s.film ? LIVE_FILM_LINKS : LIVE_LINKS;
+    s.links[n] = { url: url, kind: kind, seq: seq, ch: ch, key: key, raw: !!raw, range: range || '' };
     s.at[key] = n;
-    var old = s.links[n - LIVE_LINKS];
-    if (old) { delete s.at[old.key]; delete s.links[n - LIVE_LINKS]; }
+    var old = s.links[n - keep];
+    if (old) { delete s.at[old.key]; delete s.links[n - keep]; }
     return n;
+}
+// EXT-X-BYTERANGE's "<length>[@<offset>]" as a Range header, after the one before it (a piece
+// without an offset follows the last of the same link): { range, end } or null.
+function liveRange(v, last, url) {
+    var m = /^\s*(\d+)(?:@(\d+))?\s*$/.exec(v || '');
+    if (!m) { return null; }
+    var len = +m[1], off = m[2] !== undefined ? +m[2] : (last && last.url === url ? last.end : 0);
+    if (!(len > 0)) { return null; }
+    return { range: 'bytes=' + off + '-' + (off + len - 1), end: off + len, url: url };
 }
 function liveBase(s) { return 'http://localhost:' + PORT + '/live/' + s.id + '/'; }
 function liveRewrite(s, text, base) {
     var master = /#EXT-X-STREAM-INF/.test(text), direct = !master && /#EXT-X-KEY:METHOD=(?!NONE)|#EXT-X-MAP/.test(text);
     var sq = /#EXT-X-MEDIA-SEQUENCE:\s*(\d+)/.exec(text), seq = sq ? +sq[1] : 0, pre = liveBase(s);
+    var span = null, last = null;   // (a film's: the byte range of the next piece, and of the one before)
     return String(text).split(/\r?\n/).map(function (ln) {
         var t = ln.trim();
         if (!t) { return ln; }
         if (t.charAt(0) === '#') {
+            if (s.film && /^#EXT-X-BYTERANGE:/.test(t)) { span = t.slice(17); return ln; }
             return t.replace(/URI="([^"]*)"/, function (all, v) {
                 var abs = urllib.resolve(base, v);
-                return 'URI="' + (/^#EXT-X-MEDIA:/.test(t) ? pre + 'm?n=' + liveLink(s, abs, 'm') : abs) + '"';
+                if (/^#EXT-X-MEDIA:/.test(t)) { return 'URI="' + pre + 'm?n=' + liveLink(s, abs, 'm') + '"'; }
+                if (s.film && /^#EXT-X-(KEY|MAP|SESSION-KEY):/.test(t)) {   // (a film's key or init section: with its headers too)
+                    var br = /^#EXT-X-MAP:/.test(t) && /BYTERANGE="([^"]*)"/.exec(t), r = br ? liveRange(br[1], null, abs) : null;
+                    return 'URI="' + pre + 's?n=' + liveLink(s, abs, 's', -1, undefined, true, r ? r.range : '') + '"';
+                }
+                return 'URI="' + abs + '"';
             });
         }
         var abs = urllib.resolve(base, t);
         if (master) { return pre + 'm?n=' + liveLink(s, abs, 'm'); }
+        if (s.film) {
+            var rg = span !== null ? liveRange(span, last, abs) : null;
+            span = null; last = rg;
+            return pre + 's?n=' + liveLink(s, abs, 's', seq++, undefined, direct, rg ? rg.range : '');
+        }
         if (direct) { seq++; return abs; }
         return pre + 's?n=' + liveLink(s, abs, 's', seq++);
     }).join('\n');
@@ -2526,14 +2554,14 @@ function liveSession(u, who, opts) {
         delete _live[ids[0]];
     }
     var s = { id: crypto.randomBytes(16).toString('hex'), ua: who.ua, ref: who.ref, cookie: who.cookie || '', links: {}, at: {}, next: 0, last: Date.now(), a: liveAudio(),
-        fix: opts.fix !== false, cc: opts.cc && opts.cc.length ? opts.cc : null, c: ccState(), got: Object.create(null) };
+        fix: opts.fix !== false && !opts.film, cc: opts.cc && opts.cc.length && !opts.film ? opts.cc : null, film: !!opts.film, c: ccState(), got: Object.create(null) };
     _live[s.id] = s;
     s.top = liveLink(s, u, 'm');
     return s;
 }
 function livePurge() {
     var now = Date.now();
-    Object.keys(_live).forEach(function (id) { if (now - _live[id].last > LIVE_IDLE_MS) { delete _live[id]; } });
+    Object.keys(_live).forEach(function (id) { if (now - _live[id].last > (_live[id].film ? LIVE_FILM_IDLE_MS : LIVE_IDLE_MS)) { delete _live[id]; } });   // (a film may be paused a while)
 }
 // The look: the playlist (a master's first variant), then the start of the segment a player
 // starts with (the third from the end); with captions in that start, the whole segment (up to
@@ -2594,7 +2622,7 @@ function liveControl(req, res, path, query, leaving) {
         if (!/^https?:\/\/[^\s]+$/i.test(u) || u.length > 2000) { send(res, 400, 'text/plain', 'bad link'); return; }
         var cc = ccAsked(q.cc);
         if (q.force === '1') {
-            var sf = liveSession(u, who, { fix: q.fix !== '0', cc: cc });
+            var sf = liveSession(u, who, { fix: q.fix !== '0', cc: cc, film: q.film === '1' });
             send(res, 200, 'application/json', JSON.stringify({ fix: true, sure: true, why: 'asked for', url: liveBase(sf) + 'm?n=' + sf.top }));
             return;
         }
@@ -2615,11 +2643,13 @@ function liveControl(req, res, path, query, leaving) {
         try { return ccSegment(s.c, body, link.seq); } catch (e) { log('live captions: ' + (e && e.message)); s.c = ccState(); return null; }
     }
     if (kind === 'v' && s.c.segs[link.seq]) { send(res, 200, 'text/vtt; charset=utf-8', ccVtt(s.c.segs[link.seq], link.ch)); return; }
-    leaving.push((seg && s.cc ? liveShared : liveGet)(link.url, s, seg ? LIVE_SEG_MAX : LIVE_LIST_MAX, function (err, body, at) {
+    var who = link.range ? { ua: s.ua, ref: s.ref, cookie: s.cookie, range: link.range } : s;   // (a byte range: asked as one)
+    leaving.push((seg && s.cc ? liveShared : liveGet)(link.url, who, seg ? LIVE_SEG_MAX : LIVE_LIST_MAX, function (err, body, at) {
         if (err) { send(res, err.status || 502, 'text/plain', 'failed: ' + (err.message || 'unknown')); return; }
         if (kind === 'v') { var cs = captions(body); send(res, 200, 'text/vtt; charset=utf-8', cs ? ccVtt(cs, link.ch) : 'WEBVTT\n'); return; }
         if (kind === 'c') { send(res, 200, 'application/vnd.apple.mpegurl', ccList(s, body.toString('utf8'), at, link.ch)); return; }
         if (kind !== 's') { send(res, 200, 'application/vnd.apple.mpegurl', s.cc && kind === 'm' && +q.n === s.top ? ccMaster(s, body.toString('utf8'), at) : liveRewrite(s, body.toString('utf8'), at)); return; }
+        if (link.raw) { send(res, 200, 'application/octet-stream', body); return; }   // (a film's key, init section or encrypted piece: as it came)
         var out = body;
         if (s.cc) { captions(body); }
         if (s.fix) { try { out = liveFix(s, body, link.seq); } catch (e) { log('live: ' + (e && e.message)); s.a = liveAudio(); } }
@@ -3199,8 +3229,10 @@ var STALKER_VOD_TAKE = 42, STALKER_VOD_PAGES = 4, STALKER_VOD_CATS_MS = 10 * 600
 // What a portal answered (a list from a position, a search, a series' seasons): kept
 // STALKER_VOD_KEEP_MS, the last STALKER_VOD_KEEP a portal, so a row or category shown again isn't
 // asked again (a portal may stop answering many quick asks); fresh=1 (Reload) lets it all go.
+// &keep=: the app's Stalker films and series setting, in minutes (0: not kept; up to 10).
 var STALKER_VOD_KEEP_MS = 10 * 60000, STALKER_VOD_KEEP = 40;
-function stalkerKept(s, key) { var k = s.vodKept && s.vodKept[key]; return k && Date.now() - k.at < STALKER_VOD_KEEP_MS ? k.v : null; }
+function stalkerKeepMs(q) { var m = /^\d{1,2}$/.test(q.keep || '') ? +q.keep : 10; return Math.min(m, 10) * 60000; }
+function stalkerKept(s, key, ms) { var k = s.vodKept && s.vodKept[key]; return k && Date.now() - k.at < Math.min(ms, STALKER_VOD_KEEP_MS) ? k.v : null; }
 function stalkerKeepVod(s, key, v) {
     if (!s.vodKept) { s.vodKept = Object.create(null); s.vodOrder = []; }
     if (!s.vodKept[key]) { s.vodOrder.push(key); while (s.vodOrder.length > STALKER_VOD_KEEP) { delete s.vodKept[s.vodOrder.shift()]; } }
@@ -3364,7 +3396,9 @@ function stalkerControl(req, res, path, query, leaving) {
         var type = q.type === 'series' ? 'series' : 'movie', what = String(q.do || '');
         if (q.fresh === '1') { s.vodCats = null; s.vodKept = null; s.vodOrder = null; }   // (Reload: all of it read again)
         var vkey = what === 'list' || what === 'seasons' ? [what, type, q.cat || '*', String(q.q || '').trim().slice(0, 120), parseInt(q.skip, 10) || 0, q.id || '', q.via || ''].join('|') : '';
-        var kept = vkey && stalkerKept(s, vkey);
+        var keepMs = stalkerKeepMs(q);
+        if (!keepMs) { vkey = ''; }   // (not kept: asked each time)
+        var kept = vkey && stalkerKept(s, vkey, keepMs);
         if (kept) { json(kept); return; }
         stalkerWith(s, portal, mac, ctl, function (ss, done) {
             if (what === 'cats') { stalkerVodCats(ss, type, ctl, function (err, list) { done(err, { cats: list }); }); return; }

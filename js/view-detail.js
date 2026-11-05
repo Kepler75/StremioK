@@ -257,7 +257,14 @@
         var listed = _d.mode === 'streams' || (_d.mode === 'info' && _d.type === 'series');   // (a source list, an episode list)
         var hero = U.el('div', 'detail-hero' + (listed ? ' hero-full' : ''));   // (a list: over the whole backdrop)
         var bg = meta.background || meta.poster;
-        if (bg) { U.deferBg(hero, U.cardImage(bg, 'hero'), true); }   // (sized for the page, first in the queue)
+        // (sized for the page, first in the queue; one that doesn't load: the next of its
+        // pictures, a YouTube video's 1280x720 ones first: U.heroImages)
+        var heroes = bg ? U.heroImages(bg) : [];
+        (function heroTry(i) {
+            if (i >= heroes.length) { return; }
+            hero.__bgFail = function () { heroTry(i + 1); };
+            U.deferBg(hero, heroes[i], true);
+        })(0);
         hero.appendChild(U.el('div', 'shade'));
         s.appendChild(hero);
         s.appendChild(buildTopMenu('detail'));   // the main menu, above the title
@@ -1276,6 +1283,13 @@
             var hide = spoilerFor(v);   // (Hide spoilers: an episode not watched yet)
             var thumb = U.el('div', 'ep-thumb' + (hide ? ' spoiler' : ''));
             // through the poster queue: a season's thumbnails don't all download at once
+            var ref = { num: v.episode, thumb: thumb, hasThumb: !!v.thumbnail, hideOv: hide === 'all', still: null };
+            // (the addon's picture doesn't load, now or earlier: TMDB's, with a key, once known; see below)
+            thumb.__bgFail = function () {
+                thumb.__bgFail = null;   // (once: TMDB's failing too is the end of it)
+                ref.hasThumb = false;
+                if (ref.still) { ref.hasThumb = true; U.deferBg(thumb, U.cardImage(ref.still, 'still')); }
+            };
             if (v.thumbnail) { U.deferBg(thumb, U.cardImage(v.thumbnail, 'still')); }
             var pr = !watched && Player.progressFor(_d.collection ? 'movie' : 'series', v.id);
             if (pr && pr.duration && pr.position > 0) {   // partly watched: progress stripe
@@ -1309,7 +1323,8 @@
             e.__onlongpress = function () { if (_d.collection) { collectionMenu(meta, v); } else { episodeMenu(meta, v); } };
             if (_d.target && v.id === _d.target) { _d._epFocus = e; }
             listScroll.appendChild(e);
-            epRefs.push({ num: v.episode, thumb: thumb, rating: rating, ov: ov, hasThumb: !!v.thumbnail, hideOv: hide === 'all' });
+            ref.rating = rating; ref.ov = ov;
+            epRefs.push(ref);
         });
         panel.appendChild(listScroll);
 
@@ -1336,6 +1351,7 @@
                     epRefs.forEach(function (r) {
                         var ep = map[r.num];
                         if (!ep) { return; }
+                        if (ep.still) { r.still = ep.still; }   // (kept: for the addon's picture, should it fail)
                         if (ep.still && !r.hasThumb) { r.hasThumb = true; U.deferBg(r.thumb, U.cardImage(ep.still, 'still')); }
                         // Fill the rating only if OMDb didn't provide one for this episode
                         // (OMDb's dataset is missing IMDb ratings for some episodes).
@@ -1605,19 +1621,30 @@
         }
         U.store.set(UNSUIT_KEY, all);
     }
-    // Hold OK on a source: Play from the start (a place to resume), Not suitable (or back), and
+    // Hold OK on a source: Play from the start (a place to resume), Play through StremioK's service
+    // (an HLS one), Not suitable (or back), and
     // with a USB drive plugged in, Download to it (js/downloads.js). With only Not suitable to
     // offer, it's asked at once.
+    // An HLS source (not YouTube, DRM or a USB file): Play through StremioK's service, this once
+    // (Settings › Playback › Seeking & buffering › HLS through StremioK's service, for all of them).
+    function serviceHlsOk(stream) {
+        if (!stream || stream._yt || stream._localFile || stream._drm || typeof YTPlay === 'undefined' || YTPlay.installMode() === 'browser') { return false; }
+        var url = '' + (stream.url || '');
+        return /^https?:\/\//i.test(url) && (/\.m3u8?(?:[?#]|$)/i.test(url) || Stremio.streamInfo(stream).container === 'hls');
+    }
     function sourceMenu(stream) {
         var canStart = !howHere() && savedPlace(_d.streamId);
         var canDownload = typeof Downloads !== 'undefined' && Downloads.available() && (Downloads.isFileLink ? Downloads.isFileLink(stream) : /^https?:\/\//i.test(stream.url || '')) && !stream._localFile && !stream._yt;
-        if (!canStart && !canDownload) { toggleUnsuitable(stream); return; }
+        var canService = serviceHlsOk(stream);
+        if (!canStart && !canDownload && !canService) { toggleUnsuitable(stream); return; }
         var unsuit = isUnsuitable(_d.id, stream), opts = [];
         if (canStart) { opts.push(['start', 'Play from the start']); }
+        if (canService) { opts.push(['service', 'Play through StremioK’s service']); }
         if (canDownload) { opts.push(['download', '⬇  Download to USB drive']); }
         opts.push(['suit', unsuit ? 'Put back among the sources' : 'Not suitable']);
         pickList(Stremio.streamName(stream), opts, null, function (k) {
             if (k === 'start') { startPlayback(stream, _d.streamId, _d.streamLabel || _d.meta.name, { fromStart: true }); }
+            else if (k === 'service') { startPlayback(stream, _d.streamId, _d.streamLabel || _d.meta.name, { viaService: true, fromStart: !!howHere() }); }
             else if (k === 'download') { downloadSource(stream); }
             else { toggleUnsuitable(stream); }
         });
@@ -2140,7 +2167,7 @@
         var ctx = { url: stream.url, type: _d.type, addonType: _d.addonType, id: videoId, name: label, parent: _d.id,
             poster: _d.meta.poster, background: _d.meta.background, streams: playableSources(), _headers: U.sanitizeHeaders(stream._headers) || undefined, zap: zap, zapTo: zap ? zapToChannel : null,
             localSubs: stream._localSubs, localFile: stream._localFile,
-            subExtra: fileHintsOf(stream), sourceSubs: sourceSubsOf(stream), formatInfo: Stremio.streamInfo(stream), fromStart: !!(how && how.fromStart) || undefined,
+            subExtra: fileHintsOf(stream), sourceSubs: sourceSubsOf(stream), formatInfo: Stremio.streamInfo(stream), fromStart: !!(how && how.fromStart) || undefined, viaService: !!(how && how.viaService) || undefined,
             titleIds: titleIdsOf(_d.meta, videoId), stream: stream, nextSource: nextSourceFor, downloadAs: typeof Downloads !== 'undefined' ? downloadTitle(videoId) : undefined,
             onStarted: learn.onStarted, onFailed: learn.onFailed, learnFor: learnFor };
         if (_d.type === 'series' && _d.meta.videos) {
