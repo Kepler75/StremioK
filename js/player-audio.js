@@ -38,7 +38,7 @@
     function settleMs() { return getAudioCfg().wait * 1000; }
     var _reseek = null;          // { at, mark: S.lastSeekAt when it was asked }
 
-    function resetAudio() { _audioIdx = null; _audioPending = false; _reseek = null; }
+    function resetAudio() { _audioIdx = null; _audioPending = false; _reseek = null; _held = null; }
     // Playback is starting. The track is picked only once it's running (play-time ticks):
     // selected before play(), the TV records the choice but keeps decoding the default
     // track, and then ignores re-selecting it.
@@ -47,6 +47,7 @@
     // TV's player. The menu still offers the others.)
     function audioOnStart() { _audioPending = !(S.ctx && S.ctx.yt); _audioSteadySince = 0; }
     function audioOnTick() {
+        if (_held && !busyWhy()) { selectAudio(_held.index, _held.message, _held.force); }   // (a switch held: made now it plays)
         if (_audioPending) { maybeApplyAudio(); }
         if (_reseek && Date.now() >= _reseek.at) {
             var r = _reseek; _reseek = null;
@@ -205,13 +206,21 @@
     // it switch for real (the manual workaround, in one press).
     function selectAudio(index, message, force) {
         if (P.useAV) {
+            var why = busyWhy();
+            if (why) { hold(index, message, force, why); return; }
             if (force) {
                 var tracks = getAudioTracks();
                 for (var k = 0; k < tracks.length; k++) {
                     if (tracks[k].index !== index) { setAudioTrack(tracks[k].index); break; }
                 }
             }
-            setAudioTrack(index);
+            var asked = Date.now();
+            U.log('player', 'Audio switch to track ' + index + (force ? ' (again)' : '') + '. The TV lists: ' + rawAudio() + '. Playing: ' + playingRaw());
+            if (!setAudioTrack(index)) { hold(index, message, false, 'refused'); return; }
+            _held = null;
+            setTimeout(function () {   // (what the TV says it plays once it's had time: a switch it took without following shows here)
+                if (S.active && _audioIdx === index && Date.now() - asked < 10000) { U.log('player', 'Audio switch to track ' + index + ': the TV now plays ' + playingRaw()); }
+            }, SWITCH_CHECK_MS);
             // A seek makes the player reload audio from the selected track instead of carrying
             // on with what it had buffered (movies/episodes; live can't seek): now, or once
             // SETTLE_MS have passed since the start / resume or a jump (see above).
@@ -241,9 +250,57 @@
         doAVSeek(back, 0);
     }
 
+    // true: the TV took it (asked as a number, else as text); false: it refused both.
     function setAudioTrack(index) {
-        try { avplay.setSelectTrack('AUDIO', index); }
-        catch (e) { try { avplay.setSelectTrack('AUDIO', '' + index); } catch (e2) {} }
+        try { avplay.setSelectTrack('AUDIO', index); return true; }
+        catch (e) {
+            try { avplay.setSelectTrack('AUDIO', '' + index); return true; }
+            catch (e2) { U.log('player', 'Audio track ' + index + ' refused by the TV: ' + trackError(e2) + ' (as a number: ' + trackError(e) + ')'); return false; }
+        }
+    }
+    // The TV refuses a switch while paused or while a jump is still going on (it says it plays
+    // meanwhile), PLAYER_ERROR_INVALID_OPERATION (2.3.0.2, issue 17: the menu ticked the track,
+    // the audio stayed). Such a switch is held (_held) and made at the first play-time report
+    // once it plays on, steadily; one it still refuses, held again, up to HOLD_TRIES times.
+    var _held = null;            // { index, message, force, tries }
+    var SEEK_BUSY_MS = 1500, HOLD_TRIES = 4;
+    function busyWhy() {
+        if (P.isPaused()) { return 'paused'; }
+        if (S.buffering || S.pendingSeek != null) { return 'buffering'; }
+        if (Date.now() - (S.lastSeekAt || 0) < SEEK_BUSY_MS) { return 'jumping'; }
+        return '';
+    }
+    function hold(index, message, force, why) {
+        var tries = _held && _held.index === index ? _held.tries + 1 : 0;
+        if (tries >= HOLD_TRIES) {
+            _held = null;
+            U.log('player', 'Audio switch to track ' + index + ': still refused after ' + HOLD_TRIES + ' tries, left');
+            U.toast('The TV didn’t switch the audio: choose it again', 4000);
+            return;
+        }
+        var first = !_held || _held.index !== index;
+        _held = { index: index, message: message, force: force, tries: tries };
+        _audioIdx = index;   // (the menu ticks it meanwhile)
+        if (first) { U.log('player', 'Audio switch to track ' + index + ' held (' + why + '): made once it plays on'); }
+        if (first && why === 'paused') { U.toast((message || 'Audio track changed') + ': when you carry on', 3000); }
+    }
+    // ----- Diagnostics: what the TV said of its audio tracks around a switch -----
+    var SWITCH_CHECK_MS = 2500;
+    function trackError(e) { return ('' + ((e && (e.name || e.code)) || '') + ' ' + ((e && e.message) || '')).replace(/\s+/g, ' ').trim().slice(0, 120) || 'no reason given'; }
+    function rawOf(t) { return t.index + ' ' + ('' + (t.extra_info == null ? '' : t.extra_info)).replace(/\s+/g, ' ').slice(0, 160); }
+    // its audio tracks as it lists them (getTotalTrackInfo): index, then what it says of each
+    function rawAudio() {
+        try {
+            var l = (avplay.getTotalTrackInfo() || []).filter(function (t) { return t && ('' + t.type).toUpperCase() === 'AUDIO'; }).map(rawOf);
+            return l.length ? l.join(' | ') : 'none';
+        } catch (e) { return '(unreadable: ' + trackError(e) + ')'; }
+    }
+    // the audio track it says is playing (getCurrentStreamInfo)
+    function playingRaw() {
+        try {
+            var now = (avplay.getCurrentStreamInfo() || []).filter(function (t) { return t && ('' + t.type).toUpperCase() === 'AUDIO'; });
+            return now.length ? rawOf(now[0]) : 'none reported';
+        } catch (e) { return '(unreadable: ' + trackError(e) + ')'; }
     }
 
     // Tracks sorted by language (preferred languages first) and named in full, so the

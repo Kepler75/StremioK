@@ -3,6 +3,12 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.3.1 — 2026-11-07
+- **An audio track chosen while paused, or during a jump,** now plays: the TV refuses a switch
+  then, and the menu ticked the track all the same. It's made once the video plays on (#17).
+- **Diagnostics › Logs on an audio switch:** the tracks the TV lists, the one asked for, whether
+  the TV refused it, and the one it played next.
+
 ## 2.3.0 — 2026-11-07
 - **Jellyfin, Emby and Plex** (Settings › Content › Media servers): your server's Movies and Shows
   libraries, *Continue watching* and *Next up* as Home rows, and its copy of a film or episode first

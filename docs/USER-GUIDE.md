@@ -576,7 +576,8 @@ moves up above it.
   waits a few seconds and reloads, for files where Quick names your language but you hear
   another (see [Troubleshooting](TROUBLESHOOTING.md#audio-and-subtitles)).
 - **Red** (or *Audio track* in the DOWN menu) lists the tracks by language, with channels and
-  codec. Choosing the ticked track again re-applies it if the TV didn't follow a switch.
+  codec. Choosing the ticked track again re-applies it if the TV didn't follow a switch. One
+  chosen while paused or jumping changes once the video plays on (the TV can't switch then).
 - Your choice is remembered per title; a series' next episode takes the one made last in that
   series.
 

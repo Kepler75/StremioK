@@ -113,7 +113,7 @@ sources. Try again later.
 | What you see | Why, and what to do |
 |--------------|---------------------|
 | The audio menu names your language, but you hear another | Some files need the audio reloaded for a switch to take effect. Set *Switching to it* to *Safe* (Settings › Playback › Audio). |
-| A switch didn't happen | Choose the ticked track again in the audio menu: it's applied again. |
+| A switch didn't happen | Chosen while paused, it changes when you carry on. Otherwise choose the ticked track again: it's applied again. Diagnostics › Logs shows the tracks the TV listed, the one asked for, and the one it played next. |
 | The 2017 TV freezes after switching audio and jumping | Its player can crash on a jump made right after another. *Safe, waits 10 seconds* is what it needed. |
 | Subtitles are early or late | *Timing* in the subtitle menu (or keys 1–3), or *Sync by ear*. A file made for another release can be seconds off. |
 | A built-in subtitle can't be made earlier | The TV's player hands each line over at its time, so StremioK can hold it back but not show it sooner. |
