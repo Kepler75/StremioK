@@ -672,11 +672,13 @@ var ViewParts = {};
             if (isLive()) {
                 App.openLive(t, meta.id, meta, rowChannels(c));
             } else {
-                App.openDetail(t, meta.id, meta);
+                App.openDetail(t, meta.id, meta, t === 'series' && meta._openEp ? meta._openEp : null);   // (Jellyfin's Next up: at that episode)
             }
         };
         // the remote's Play key: a movie's or channel's top source; a series has no one episode, so its page
+        // (one with an episode of its own, Jellyfin's Next up: that episode's top source)
         if (titleType(kind) === 'movie') { c.__onplay = function () { App.openDetail('movie', meta.id, meta, null, { playBest: true }); }; }
+        else if (titleType(kind) === 'series' && meta._openEp) { c.__onplay = function () { App.openDetail('series', meta.id, meta, meta._openEp, { playBest: true }); }; }
         else if (titleType(kind) === 'series') { c.__onplay = function () { c.__onselect(); }; }
         else if (fallbackType !== 'local' && isLive()) { c.__onplay = function () { App.openLive(titleType(kind), meta.id, meta, rowChannels(c), { playBest: true }); }; }   // (a channel)
         return c;

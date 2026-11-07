@@ -3,6 +3,18 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.3.0 — 2026-11-07
+- **Jellyfin, Emby and Plex** (Settings › Content › Media servers): your server's Movies and Shows
+  libraries, *Continue watching* and *Next up* as Home rows, and its copy of a film or episode first
+  on its title page (*On your … server*). Played as it is, with its subtitle files.
+- **Signing in:** Jellyfin with Quick Connect or a password, Emby with a password, Plex with a code
+  entered at plex.tv/link.
+- **In step with your server:** where you stop and what you finish go back to it, and a film or
+  episode carries on from where any of its apps left it. Its intro and credits markers bring Skip
+  Intro and Skip Credits.
+- **Chapters and seek pictures** for your server's files: their named chapters, as YouTube videos
+  have, and pictures above the marker as ◀ ▶ move it, where the server made them.
+
 ## 2.2.9 — 2026-11-05
 - **A Modern look** (Settings › Appearance › *Look*): the focused title's backdrop behind Home and
   its page, large logos, rounder posters, a centered menu, with any background. *Effects*: blur and

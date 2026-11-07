@@ -29,7 +29,9 @@ Kept on the TV, in StremioK's own storage:
   use it; *Clear saved copies* deletes it;
 - your channels' TV guides, up to 2 days old, each with its link (an Xtream one has your
   username and password in it);
-- with Trakt connected: your Trakt history and sign-in tokens.
+- with Trakt connected: your Trakt history and sign-in tokens;
+- your media servers' addresses and sign-ins (not your password), and while StremioK runs, which
+  of your titles each has.
 
 Nothing in Diagnostics leaves the TV. Keys, tokens and passwords are masked (•••) wherever a link
 is shown or appears in an error message, and in the logs.
@@ -42,6 +44,8 @@ is shown or appears in an error message, and in the logs.
 | Your search addons | Titles worked out from your USB drive's file names (not the files) | Only once you've said yes to matching |
 | TMDB, OMDb, MDBList | Title ids, with your own API key | With a key set, as you browse |
 | Trakt | What you play (where you stopped, watched), marks you make by hand, ratings | Only when connected |
+| Your Jellyfin, Emby or Plex server | Requests for its libraries and files, with its sign-in; what you play from it (where you stopped, finished), as its own apps report | Once you've added it |
+| Plex (`plex.tv`) | A request for the code you enter, then StremioK's sign-in, to list your servers and their addresses | When you add a Plex server |
 | AIOManager | Your API key, to read your addon list; StremioK shows in its *Connections* as a *Pull* app. Your addons are never sent | When you sync |
 | Your Stremio account | Read once to list your addons; StremioK signs out straight after. No password reaches the TV | When you import |
 | TheIntroDB, SkipDB, IntroDB, AniSkip, ARM | The title's ids, season, episode and length, to find skip times | As something plays |
@@ -61,7 +65,7 @@ on, what you play isn't recorded:
 
 - no progress or place to resume, nothing added to Continue Watching;
 - nothing marked watched at the credits (and no next episode queued);
-- nothing sent to Trakt;
+- nothing sent to Trakt, or to your media server;
 - no "played before", no remembered subtitle or audio choice;
 - a YouTube video's audio language isn't remembered, and Diagnostics doesn't name it ("a private
   playback"): a network error during it is logged with the server's name only, not the link.

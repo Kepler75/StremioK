@@ -19,6 +19,7 @@ How to use StremioK, task by task. Also:
 - [IPTV and radio](#iptv-and-radio)
 - [YouTube](#youtube)
 - [Your USB drive](#your-usb-drive)
+- [Your media server](#your-media-server)
 - [Trakt](#trakt)
 - [Other apps (where to watch)](#other-apps-where-to-watch)
 
@@ -795,6 +796,44 @@ drive*, or UP › *⬇ Download* while it plays.
   file deleted), *Retry*, or *Remove from the list*.
 - Done, it's at once a source on its title page ("💾 USB drive"), matched to the title it was
   downloaded for, with its subtitle file.
+
+## Your media server
+
+StremioK plays the films and episodes on a [Jellyfin](https://jellyfin.org) (10.9 or newer),
+[Emby](https://emby.media) (4.7 or newer) or [Plex](https://www.plex.tv) server.
+
+### Adding it
+
+Settings › Content › **Media servers**:
+
+- *Add a Jellyfin or Emby server*: its address, like `http://192.168.0.50:8096`. Jellyfin: sign
+  in with **Quick Connect** (the TV shows a code; enter it in Jellyfin on your phone or computer,
+  your profile › *Quick Connect*), or *User name and password*. Emby: your user name and password.
+  The password isn't kept, only the sign-in the server gives back.
+- *Add a Plex server*: the TV shows a code; enter it at [plex.tv/link](https://plex.tv/link) on
+  your phone or computer (the QR code opens it). Then pick the server, if your account has several.
+  Its address on your network is used when it answers there, else its internet one (never Plex's
+  slow relay).
+
+### What you get
+
+- **Home rows:** each Movies and Shows library, the newest first, and the server's *Continue
+  watching* and *Next up* (a show opens at that episode). Also in Discover and Search; Home feeds
+  orders or hides them.
+- **Its copy as a source:** first on the title page (**On your Jellyfin server**, **On your Emby
+  server**, **On your Plex server**), found by its IMDb or TMDB id. ▶ Play best picks it.
+- **Its cards:** one with an IMDb id opens the usual title page, with your addons' sources too;
+  any other, the server's own details.
+- **Played as it is** (not converted), so it must be a format the TV plays; with its subtitle
+  files, its named chapters ([as YouTube's](#while-a-youtube-video-plays)) and, where the server
+  made them (Jellyfin's *trickplay*, Plex's *video preview thumbnails*), pictures above the marker
+  as ◀ ▶ move it.
+- **In step:** where you stopped and what you finished go back to the server (not during
+  [private viewing](PRIVACY.md#private-viewing)), and a film or episode starts where you last
+  stopped in any of its apps. Its intro and credits markers bring Skip Intro and Skip Credits.
+
+OK on a server in Settings › Content › Media servers: *Reload* (its libraries read again) or
+*Sign out and remove* (for Plex, also remove StremioK from plex.tv's *Authorized devices*).
 
 ## Trakt
 

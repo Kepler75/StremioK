@@ -1506,6 +1506,8 @@
     if (typeof Stremio !== 'undefined' && Stremio.onIptvReady) { Stremio.onIptvReady(function () { refreshAddonRows('local:iptv'); }); }
     if (typeof XtVod !== 'undefined' && XtVod.onChange) { XtVod.onChange(function () { refreshAddonRows('local:xtvod'); }); }   // (an Xtream account's films and series, once its categories came)
     if (typeof StVod !== 'undefined' && StVod.onChange) { StVod.onChange(function () { refreshAddonRows('local:stvod'); }); }   // (a Stalker portal's, the same)
+    if (typeof Jellyfin !== 'undefined' && Jellyfin.onChange) { Jellyfin.onChange(function () { refreshAddonRows('local:jellyfin'); refreshAddonRows('local:emby'); }); }   // (a Jellyfin or Emby server's libraries)
+    if (typeof Plex !== 'undefined' && Plex.onChange) { Plex.onChange(function () { refreshAddonRows('local:plex'); }); }   // (a Plex server's)
     var PARTIAL_DELAY = 150;   // coalesces catalogs that arrive together into one redraw
     function loadHomeCatalogs() {
         if (_homeLoading) { return; }

@@ -36,6 +36,7 @@ video through Samsung's AVPlay API.
 - **YouTube:** live channels, trailers, and your own YouTube channels, playlists and searches,
   with SponsorBlock, DeArrow, chapters and captions.
 - **Local:** the videos on a USB drive, matched to their titles.
+- **Jellyfin, Emby and Plex:** your server's libraries on Home, its files as sources.
 - **Torrents**, through Stremio's streaming server or a TorrServer you run on your network.
 - **Made for the remote:** D-pad navigation throughout; ▶ Play on a movie, episode or channel plays
   its top source at once; hold OK where an item has more to

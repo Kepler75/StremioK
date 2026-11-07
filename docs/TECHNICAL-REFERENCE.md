@@ -17,6 +17,7 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
 - [Addons](#addons)
 - [Trakt](#trakt)
 - [USB drives](#usb-drives)
+- [Media servers](#media-servers)
 - [Storage](#storage)
 - [Home bar preview](#home-bar-preview)
 - [YouTube](#youtube)
@@ -618,6 +619,43 @@ them.
   do), up to 5 times. A download is matched to the title it was downloaded for (nothing guessed
   from its name, no indexing again). Downloads use their own up-to-date list of trusted
   certificates (the 2017 TV's own is too old for many servers).
+
+## Media servers
+
+- **Their API:** Jellyfin 10.9 or newer, Emby 4.7 or newer (`/System/Info/Public` says which).
+  Requests carry StremioK's `MediaBrowser …` line (its sign-in, a device id of its own) as
+  `Authorization` (Jellyfin) or `X-Emby-Authorization` (Emby, under `/emby`, its paths per user);
+  a link the player opens carries the sign-in as `ApiKey` or `api_key`. Quick Connect asks every 3
+  seconds, for 10 minutes.
+- **Which titles it has:** read when a title page first needs it (films and series, their ids),
+  again after 30 minutes or a *Reload*.
+- **Rows:** each Movies or Shows library (`CollectionType`), by when it was added, 100 at a time;
+  *Continue watching* (films) and *Next up* (a show's card, opening at that episode). A title with
+  an IMDb id is a card with it (`tt…`); any other `jfm.<server>.<item>` or `jfs.<server>.<series>`.
+- **Sources:** each version of the file (`MediaSources`), from
+  `/Videos/<item>/stream.<container>?static=true` (the file untouched); quality from the video's
+  size; subtitle files next to it (`IsExternal`) as SRT; chapters when one is named.
+- **Seek pictures:** Jellyfin's `Trickplay` set nearest 320 wide.
+- **Where it starts:** the server's place (`UserData`) when newer than StremioK's.
+- **Skip times:** Jellyfin's media segments (`/MediaSegments`, 10.10 and later, from a plugin
+  such as Intro Skipper), Emby's intro and credits markers, else chapters named so (*Recap*,
+  *End Credits*…); the usual services fill the rest.
+- **Reporting:** `/Sessions/Playing`, then `…/Progress` every 60 seconds and on pausing,
+  `…/Stopped` on leaving; watched at the credits, marked played.
+- **Plex sign-in:** a code from `clients.plex.tv/api/v2/pins`, asked after every 3 seconds for
+  10 minutes; then the account's servers (`/api/v2/resources`). Each server's connections are
+  tried (`/identity`), local ones first, relays never; the first that answers is kept, with that
+  server's own token. Requests carry `X-Plex-Token` and a device id of StremioK's own, asking for
+  JSON; links carry `X-Plex-Token`.
+- **Plex rows and ids:** `/library/sections` (movie and show libraries), newest first;
+  `/library/onDeck` split into films (*Continue watching*) and episodes (*Next up*). Ids from
+  `includeGuids` (`imdb://`, `tmdb://`); any other title `pxm.<server>.<item>` or
+  `pxs.<server>.<show>`.
+- **Plex sources:** each `Media` version's `Part` from its `key` (the file untouched); SRT and
+  VTT subtitle files (`/library/streams/<id>`); `includeMarkers` (intro, credits) and
+  `includeChapters`; seek pictures from a part with `indexes="sd"` (`/library/parts/<id>/indexes/sd/<ms>`,
+  one every 5 seconds); its place from `viewOffset` and `lastViewedAt`. Reported with
+  `/:/timeline` (playing, paused, stopped), watched with `/:/scrobble`.
 
 ## Storage
 

@@ -378,6 +378,7 @@
             ['YouTube', 'Your YouTube channels, playlists and searches; YouTube in Search', 'youtube'],
             ['Streaming apps', 'Your apps (Prime Video, Netflix, …) that open a title\'s "where to watch" sources', 'appshortcuts'],
             ['USB drive', 'The Local tab: what\'s on your drive, matched to titles; hidden files', 'usb'],
+            ['Media servers', 'Your Jellyfin or Emby server: its libraries on Home, its files as sources', 'mediaservers'],
             ['Import configuration file', 'Import addons, API keys & IPTV playlists', 'import'],
             ['Export configuration', 'Your addons, playlists, API keys and settings, to your phone', 'export']] },
         playback: { title: 'Playback', rows: [
@@ -439,6 +440,7 @@
         else if (_settingsSection === 'storage') { settingsStorage(wrap); }
         else if (_settingsSection === 'tvapps') { settingsTvApps(wrap); }
         else if (_settingsSection === 'usb') { settingsUsb(wrap); }
+        else if (_settingsSection === 'mediaservers') { settingsMediaServers(wrap); }
         else if (_settingsSection === 'private') { settingsPrivate(wrap); }
         else if (_settingsSection === 'appshortcuts') { settingsAppShortcuts(wrap); }
         else if (_settingsSection === 'import') { settingsImport(wrap); }
@@ -486,7 +488,7 @@
     var TIZENBREW_NOTE = '⚠ Installed with TizenBrew: other TizenBrew modules can read what StremioK saves, including API keys and addon links with their tokens. Only install modules you trust; the sideloaded app keeps its data to itself.';
     function settingsMenu(wrap) {
         wrap.appendChild(U.el('h2', null, 'Settings'));
-        wrap.appendChild(sectionRow('Content', 'Addons, API keys, IPTV playlists, streaming apps, importing a configuration file', 'content'));
+        wrap.appendChild(sectionRow('Content', 'Addons, API keys, IPTV playlists, media servers, streaming apps, importing a configuration file', 'content'));
         wrap.appendChild(sectionRow('Playback', 'Audio and subtitles, source ranking, feed sources, formats', 'playback'));
         wrap.appendChild(sectionRow('Appearance', 'Look, background, accent color, zoom, posters, spoilers', 'appearance'));
         wrap.appendChild(sectionRow('Home', 'The tab it opens on, the top menu, Home feeds, Search results', 'home'));
@@ -1606,6 +1608,175 @@
             }
         });
         onModalClose(cancelFlow);   // canceling the overlay stops polling
+    }
+
+    // ---- Media servers: your Jellyfin servers ----
+    function settingsMediaServers(wrap) {
+        wrap.appendChild(U.el('h2', null, 'Media servers'));
+        var have = typeof Jellyfin !== 'undefined';
+        var add = U.el('div', 'addon-item focusable cfg-row');
+        add.appendChild(U.el('div', 'a-name', '+ Add a Jellyfin or Emby server'));
+        add.appendChild(U.el('div', 'a-url', 'Its address on your network, then a user name and password, or Jellyfin’s Quick Connect'));
+        add.__onselect = function () { askJellyfinAddress(''); };
+        if (have) { wrap.appendChild(add); }
+        var hasPlex = typeof Plex !== 'undefined';
+        if (hasPlex) {
+            var addPx = U.el('div', 'addon-item focusable cfg-row');
+            addPx.appendChild(U.el('div', 'a-name', '+ Add a Plex server'));
+            addPx.appendChild(U.el('div', 'a-url', 'A code to enter at plex.tv/link, then which of your servers'));
+            addPx.__onselect = function () { plexLink(); };
+            wrap.appendChild(addPx);
+        }
+        var focus = null;
+        // (each server with the module it's from: Jellyfin's for Jellyfin and Emby, Plex's)
+        var all = (have ? Jellyfin.servers().map(function (s) { return { srv: s, mod: Jellyfin, kind: Jellyfin.kindName(s) }; }) : [])
+            .concat(hasPlex ? Plex.servers().map(function (s) { return { srv: s, mod: Plex, kind: 'Plex' }; }) : []);
+        all.forEach(function (x) {
+            var srv = x.srv, mod = x.mod;
+            var r = U.el('div', 'addon-item focusable cfg-row'), libs = mod.libraries(srv);
+            r.appendChild(U.el('div', 'a-name', srv.name + '   ·   ' + x.kind + ' ' + srv.version));
+            r.appendChild(U.el('div', 'a-url', srv.url + (srv.user ? '   ·   signed in as ' + srv.user : '') + (libs.length ? '   ·   ' + libs.map(function (l) { return l.name; }).join(', ') : '')));
+            r.__onselect = function () {
+                pickList(srv.name, [['reload', 'Reload'], ['remove', 'Sign out and remove']], null, function (v) {
+                    if (v === 'reload') {
+                        mod.reload(srv.id);
+                        markHomeDirty();
+                        U.toast('Reading “' + srv.name + '” again…');
+                        setTimeout(function () { if (_settingsSection === 'mediaservers') { renderSettings(); } }, 1500);
+                    } else if (v === 'remove') {
+                        confirm('Sign out of “' + srv.name + '” and remove it?', 'Remove', function () { mod.remove(srv.id); markHomeDirty(); renderSettings(); });
+                    }
+                });
+            };
+            if (_focusChild === 'jf:' + srv.id) { focus = r; }
+            wrap.appendChild(r);
+        });
+        wrap.appendChild(U.el('div', 'hint', 'Jellyfin 10.9 or newer, Emby 4.7 or newer, Plex. Their files play as they are (nothing converted), so the TV must play their format.'));
+        if (focus) { _focusChild = null; Focus.setScope(scr('settings'), focus); } else { focusSettings(); }
+    }
+    function askJellyfinAddress(value) {
+        App.openEntry({
+            title: 'Jellyfin or Emby server: address',
+            hint: 'Its address on your network, like http://192.168.0.50:8096. RETURN cancels.',
+            value: value || 'http://', placeholder: 'http://192.168.0.50:8096', phone: 'jellyfin',
+            validate: function (v) { return Jellyfin.addressProblem(v); },
+            onConfirm: function (v) {
+                App.back();
+                U.spinner(true, 'Asking the server…');
+                Jellyfin.probe(v).then(function (info) { U.spinner(false); if (info.kind === 'emby') { jellyfinPassword(info, ''); } else { jellyfinSignIn(info); } }, function (e) {
+                    U.spinner(false);
+                    U.toast(e.message, 6000);
+                    if (_settingsSection === 'mediaservers') { renderSettings(); }
+                });
+            }
+        });
+    }
+    function jellyfinDone(srv) {
+        markHomeDirty();
+        _settingsSection = 'mediaservers';
+        _focusChild = 'jf:' + srv.id;
+        renderSettings();
+        U.toast('✓ Signed in to “' + srv.name + '”' + (srv.user ? ' as ' + srv.user : ''));
+    }
+    // Plex: its code to enter at plex.tv/link (a QR of the page too), then which server.
+    function plexLink() {
+        var existing = document.querySelector('.modal-overlay');
+        if (existing) { existing.parentNode.removeChild(existing); }
+        var overlay = U.el('div', 'modal-overlay'), box = U.el('div', 'modal-box');
+        box.appendChild(U.el('div', 'modal-msg', 'Add a Plex server'));
+        var body = U.el('div', 'trakt-connect');
+        body.appendChild(U.el('div', 'tc-line', 'Asking Plex for a code…'));
+        box.appendChild(body);
+        var row = U.el('div', 'modal-row'), cancel = U.el('div', 'pill focusable modal-btn', 'Cancel');
+        cancel.__onselect = function () { closeModal(); };
+        row.appendChild(cancel);
+        box.appendChild(row);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+        showModal(overlay, cancel);
+        function addIt(res) {
+            U.spinner(true, 'Finding “' + res.name + '”…');
+            Plex.add(res).then(function (srv) { U.spinner(false); jellyfinDone(srv); }, function (e) { U.spinner(false); U.toast(e.message, 8000); });
+        }
+        var stop = Plex.link({
+            onCode: function (code, url) {
+                U.clear(body);
+                var qrSpot = U.el('div', 'tc-qr-spot');
+                body.appendChild(qrSpot);
+                var goTo = body.appendChild(U.el('div', 'tc-line', 'On your phone or computer, go to:'));
+                (typeof qrcode !== 'undefined' ? Promise.resolve() : U.loadScript('js/qrcode.js')).then(function () {
+                    var qr = U.qrCanvas(url, 8);
+                    if (!qr || !qrSpot.parentNode) { return; }
+                    qr.className = 'tc-qr';
+                    qrSpot.appendChild(U.el('div', 'tc-line', 'Scan with your phone:'));
+                    qrSpot.appendChild(qr);
+                    goTo.textContent = 'or go to';
+                }, function () {});
+                body.appendChild(U.el('div', 'tc-url', url.replace(/^https:\/\//, '')));
+                body.appendChild(U.el('div', 'tc-line', 'sign in, and enter this code:'));
+                body.appendChild(U.el('div', 'tc-code', code));
+                body.appendChild(U.el('div', 'tc-line small', 'Waiting for you to enter it…'));
+            },
+            onServers: function (list) {
+                if (isModalOpen()) { onModalClose(null); closeModal(); }
+                if (list.length === 1) { addIt(list[0]); return; }
+                pickList('Which Plex server?', list.map(function (x, i) { return ['' + i, x.name + (x.owned ? '' : '  (shared with you)')]; }), null, function (v) { addIt(list[+v]); });
+            },
+            onError: function (msg) { U.clear(body); body.appendChild(U.el('div', 'tc-line', msg)); }
+        });
+        onModalClose(stop);
+    }
+    // Signing in: Quick Connect's code, or a user name and password instead.
+    function jellyfinSignIn(info) {
+        var existing = document.querySelector('.modal-overlay');
+        if (existing) { existing.parentNode.removeChild(existing); }
+        var overlay = U.el('div', 'modal-overlay'), box = U.el('div', 'modal-box');
+        box.appendChild(U.el('div', 'modal-msg', 'Sign in to “' + info.name + '”'));
+        var body = U.el('div', 'trakt-connect');
+        body.appendChild(U.el('div', 'tc-line', 'Starting Quick Connect…'));
+        box.appendChild(body);
+        var row = U.el('div', 'modal-row');
+        var pw = U.el('div', 'pill focusable modal-btn', 'User name and password');
+        var cancel = U.el('div', 'pill focusable modal-btn', 'Cancel');
+        row.appendChild(pw); row.appendChild(cancel);
+        box.appendChild(row);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+        showModal(overlay, cancel);
+        var stop = Jellyfin.quickConnect(info, {
+            onCode: function (code) {
+                U.clear(body);
+                body.appendChild(U.el('div', 'tc-line', 'In Jellyfin on your phone or computer, open your profile › Quick Connect, and enter:'));
+                body.appendChild(U.el('div', 'tc-code', code));
+                body.appendChild(U.el('div', 'tc-line small', 'Waiting for you to enter it…'));
+            },
+            onSuccess: function (srv) { if (isModalOpen()) { onModalClose(null); closeModal(); } jellyfinDone(srv); },
+            onError: function (msg) { U.clear(body); body.appendChild(U.el('div', 'tc-line', msg)); }
+        });
+        onModalClose(stop);   // (closed: no more asking)
+        pw.__onselect = function () { onModalClose(null); stop(); closeModal(); jellyfinPassword(info, ''); };
+        cancel.__onselect = function () { closeModal(); };
+    }
+    function jellyfinPassword(info, user) {
+        App.openEntry({
+            title: Jellyfin.kindName(info) + ' “' + info.name + '”: user name', hint: 'Your ' + Jellyfin.kindName(info) + ' user name. RETURN cancels.', value: user || '', placeholder: 'user name',
+            validate: function (v) { return ('' + v).trim() ? null : 'Your user name'; },
+            onConfirm: function (u) {
+                App.back();
+                App.openEntry({
+                    title: Jellyfin.kindName(info) + ' “' + info.name + '”: password', hint: 'Its password (not kept: only the sign-in the server gives back). RETURN cancels.', value: '', placeholder: 'password', secret: true,
+                    validate: function () { return null; },
+                    onConfirm: function (p) {
+                        App.back();
+                        U.spinner(true, 'Signing in…');
+                        Jellyfin.signIn(info, ('' + u).trim(), p).then(function (srv) { U.spinner(false); jellyfinDone(srv); }, function (e) {
+                            U.spinner(false);
+                            U.toast(e.message, 6000);
+                        });
+                    }
+                });
+            }
+        });
     }
 
     function settingsSubtitles(wrap) {

@@ -21,7 +21,7 @@ var U = (function () {
        are read %-decoded (%70assword is password), and a #fragment is masked the same way
        (name=value pairs, or one token). Scheme, host, port and the rest of the path stay
        readable. */
-    var SECRET_PARAM = /^(pass(word)?|pwd|passwd|user(name)?|login|token|access_token|refresh_token|auth(orization)?|key|apikey|api_key|api-key|secret|client_secret|sig|signature|session|sid|hash|mac)$/i;
+    var SECRET_PARAM = /^(pass(word)?|pwd|passwd|user(name)?|login|token|access_token|refresh_token|auth(orization)?|key|apikey|api_key|api-key|secret|client_secret|sig|signature|session|sid|hash|mac|x-plex-token)$/i;
     function looksLikeToken(seg) {
         if (seg.length < 20 || !/^[A-Za-z0-9._~+=%-]+$/.test(seg)) { return false; }
         if (/%3A%2F%2F/i.test(seg)) { return false; }   // an encoded URL (a YouTube page for the service), not a token
@@ -601,6 +601,25 @@ var U = (function () {
             try { return JSON.parse(text); }
             catch (e) { var bad = new Error('Bad JSON from ' + redactUrl(url)); throw quiet ? bad : logged(bad, priv); }
         });
+    }
+
+    /* n random hex digits, for ids sent to servers (a device id, a playback session's): the TV's
+       secure random numbers (crypto.getRandomValues); without them (tests), a generator seeded
+       by the clock and a count, so two ids still differ. */
+    var _randSeed = 0;
+    function randomHex(n) {
+        var out = '', bytes = null, i;
+        try {
+            var c = typeof crypto !== 'undefined' ? crypto : (typeof window !== 'undefined' ? window.crypto : null);
+            if (c && c.getRandomValues) { bytes = new Uint8Array(Math.ceil(n / 2)); c.getRandomValues(bytes); }
+        } catch (e) { bytes = null; }
+        if (!bytes) {
+            bytes = [];
+            var x = ((Date.now() % 2147483647) ^ (++_randSeed * 2654435761)) >>> 0 || 1;
+            for (i = 0; i < Math.ceil(n / 2); i++) { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; x >>>= 0; bytes.push(x & 255); }
+        }
+        for (i = 0; i < bytes.length; i++) { out += (bytes[i] < 16 ? '0' : '') + bytes[i].toString(16); }
+        return out.slice(0, n);
     }
 
     /* A small most-recently-used cache: keeps the last `max` entries. The TV keeps the
@@ -1659,7 +1678,7 @@ var U = (function () {
 
     return {
         byId: byId, el: el, clear: clear, moveIn: moveIn, getJSON: getJSON, getText: getText,
-        postJSON: postJSON, redactUrl: redactUrl, problem: problem, problemDetail: problemDetail, listOf: listOf, lru: lru, cachedJSON: cachedJSON,
+        postJSON: postJSON, redactUrl: redactUrl, problem: problem, problemDetail: problemDetail, listOf: listOf, lru: lru, randomHex: randomHex, cachedJSON: cachedJSON,
         parseUrl: parseUrl, urlProblem: urlProblem, isPlaylistUrl: isPlaylistUrl, isManifestUrl: isManifestUrl,
         isPrivateHost: isPrivateHost, urlIsPrivate: urlIsPrivate, setLocalPolicy: setLocalPolicy, sanitizeHeaders: sanitizeHeaders, drawable: drawable,
         look: look, setLook: setLook, canBlur: canBlur, heroImages: heroImages, log: log, logEntries: logEntries, clearLog: clearLog, bigStore: bigStore, diskInfo: diskInfo,

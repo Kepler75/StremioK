@@ -12,7 +12,7 @@ In a list you order, ▲ / ▼ move an item one place and ⇈ / ⇊ move it to t
 
 - [Content](#content): [Addons](#addons), [AIOManager](#aiomanager),
   [Streaming server](#streaming-server), [Integrations](#integrations), [IPTV](#iptv), [YouTube](#youtube),
-  [Streaming apps](#streaming-apps), [USB drive](#usb-drive),
+  [Streaming apps](#streaming-apps), [USB drive](#usb-drive), [Media servers](#media-servers),
   [Import configuration file](#import-configuration-file), [Export configuration](#export-configuration)
 - [Playback](#playback): [Audio](#audio), [Subtitles](#subtitles), [Skipping](#skipping),
   [Seeking & buffering](#seeking--buffering), [Source ranking](#source-ranking),
@@ -115,6 +115,14 @@ to add (OK adds one; hidden system apps on request). On the TV only.
 | *Show hidden files* | **Off**, On | Lists files starting with "." and the system folders. |
 | *Clear the USB index* | | Title pages stop offering the drive's files; Local still browses it. |
 | *Forget matches* | | Every video is matched again from its name, yours too. |
+
+### Media servers
+
+| Setting | Choices | What it does |
+|---------|---------|--------------|
+| *Add a Jellyfin or Emby server* | | Its address, then a user name and password, or Jellyfin's Quick Connect (see the [user guide](USER-GUIDE.md#your-media-server)). |
+| *Add a Plex server* | | A code to enter at plex.tv/link, then which of your account's servers. |
+| Each server | *Reload*, *Sign out and remove* | Its name, version and who's signed in. *Reload* reads its libraries again. |
 
 ### Import configuration file
 

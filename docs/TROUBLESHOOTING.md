@@ -16,6 +16,7 @@ What to do when something doesn't work. For how things are meant to work, see th
 - [IPTV](#iptv)
 - [Trakt](#trakt)
 - [USB drive](#usb-drive)
+- [Media servers](#media-servers)
 - [Other apps](#other-apps)
 - [Home bar preview](#home-bar-preview)
 - [Storage](#storage)
@@ -180,6 +181,16 @@ sources. Try again later.
 | A download stopped when StremioK closed | Some TVs stop it. It picks up where it stopped when you start StremioK again. |
 | A big file from the drive stalls on every jump (2017 TV) | That TV's player can't read past 2 GB of a drive's file, so StremioK plays bigger ones via its service, where jumping works. |
 | Indexing, downloads or USB subtitles for streams are missing (TizenBrew) | They need the sideloaded app's service (its private token). Local still browses. |
+
+## Media servers
+
+| What you see | Why, and what to do |
+|--------------|---------------------|
+| *No answer* when adding it | A wrong address or port (Jellyfin and Emby use 8096). |
+| *Quick Connect is off* | Turn it on in Jellyfin (Dashboard › General), or use a password. |
+| A new film isn't offered | The server lacks its IMDb or TMDB id, or it's new: *Reload* the server. |
+| *No address of … answered* (Plex) | The server is off, or neither on your network nor reachable from the internet (its *Remote Access*). |
+| No pictures above the marker (Plex) | Turn on *Generate video preview thumbnails* for the library on the server. |
 
 ## Other apps
 

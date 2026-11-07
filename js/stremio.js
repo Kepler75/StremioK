@@ -294,7 +294,7 @@ var Stremio = (function () {
     var APP_FIELDS = {};
     ['_addon', '_addonPos', '_addonRank', '_also', '_cardImage', '_posterAlt', '_from', '_headers', '_keepStream', '_playlistId', '_reported', '_yt', '_file',
         '_group', '_local', '_localSubs', '_tmdbWhere', '_trakt', '_dupes', '_restoreKey', '_current', '_autoFocus', '_epFocus', '_focusNp', '_focusPill',
-        '_focusSeason', '_focusTrailer', '_earlier', '_localFile', '_torrent', '_pickFile', 'stale', 'ytPage'].forEach(function (k) { APP_FIELDS[k] = 1; });
+        '_focusSeason', '_focusTrailer', '_earlier', '_localFile', '_torrent', '_pickFile', '_jf', '_openEp', 'stale', 'ytPage'].forEach(function (k) { APP_FIELDS[k] = 1; });
     function fieldSet(list) { var o = {}; list.forEach(function (k) { o[k] = 1; }); return o; }
     var STR_FIELDS = fieldSet(['id', 'type', 'name', 'title', 'description', 'poster', 'background', 'logo', 'thumbnail', 'banner', 'url', 'externalUrl', 'ytId',
         'infoHash', 'releaseInfo', 'released', 'imdb_id', 'lang', 'filename', 'bingeGroup', 'posterShape', 'runtime']);
@@ -440,6 +440,8 @@ var Stremio = (function () {
             else if (iptvOn) { iptvJoin(addons, rev); }
             if (typeof XtVod !== 'undefined' && XtVod.isEnabled()) { addons.push(XtVod.synthAddon()); }   // (your Xtream accounts' films and series: after your addons)
             if (typeof StVod !== 'undefined' && StVod.isEnabled()) { addons.push(StVod.synthAddon()); }   // (your Stalker portals' films and series)
+            if (typeof Jellyfin !== 'undefined') { Jellyfin.synthAddons().forEach(function (a) { addons.push(a); }); }   // (your Jellyfin and Emby servers' libraries: one addon a kind)
+            if (typeof Plex !== 'undefined') { Plex.synthAddons().forEach(function (a) { addons.push(a); }); }   // (your Plex servers')
             if (hasYouTube()) { addons.push(YouTube.synthAddon()); }   // (after your addons: its rows last on Home)
             if (typeof Trakt !== 'undefined' && Trakt.isConnected()) { addons.push(Trakt.synthAddon()); }   // (your Watchlist and Up next)
             _loaded = addons;
@@ -526,6 +528,20 @@ var Stremio = (function () {
     if (typeof XtVod !== 'undefined' && XtVod.onVodChange) { XtVod.onVodChange(iptvRebuild); }
     if (typeof XtVod !== 'undefined' && XtVod.onChange) { XtVod.onChange(function () { sourcesChanged(); }); }   // (its list read: its copies, on titles asked before)
     if (typeof StVod !== 'undefined' && StVod.onChange) { StVod.onChange(function () { sourcesChanged(); }); }   // (a portal's films and series: its copies too)
+    // A Jellyfin or Emby server added, removed or its libraries read: the addons made again when
+    // one of their kinds joins or leaves them, else its copies asked again.
+    if (typeof Jellyfin !== 'undefined' && Jellyfin.onChange) {
+        Jellyfin.onChange(function () {
+            var has = _loaded ? _loaded.filter(function (a) { return /^local:(jellyfin|emby)$/.test(a.url); }).map(function (a) { return a.url; }).join() : null;
+            if (has === Jellyfin.kindsOn().map(function (k) { return 'local:' + k; }).join()) { sourcesChanged(); } else { configChanged(); }
+        });
+    }
+    if (typeof Plex !== 'undefined' && Plex.onChange) {   // (a Plex server: the same)
+        Plex.onChange(function () {
+            var has = _loaded ? _loaded.some(function (a) { return a.url === 'local:plex'; }) : null;
+            if (has === Plex.isEnabled()) { sourcesChanged(); } else { configChanged(); }
+        });
+    }
     function iptvReload(id) {
         configChanged();
         return _hasIptv ? IPTV.reload(id) : Promise.resolve(null);
@@ -1015,6 +1031,12 @@ var Stremio = (function () {
         if (/^sv[ms]\./.test(id) && typeof StVod !== 'undefined') {
             return StVod.meta(type, id).then(function (m) { if (!m) { throw new Error('Not found on the Stalker portal'); } return m; });
         }
+        if (/^jf[ms]\./.test(id) && typeof Jellyfin !== 'undefined') {
+            return Jellyfin.meta(type, id).then(function (m) { if (!m) { throw new Error('Not found on the ' + Jellyfin.nameOfId(id) + ' server'); } return m; });
+        }
+        if (/^px[ms]\./.test(id) && typeof Plex !== 'undefined') {
+            return Plex.meta(type, id).then(function (m) { if (!m) { throw new Error('Not found on the Plex server'); } return m; });
+        }
         if (/^iptv:/.test(id)) {
             return IPTV.meta(id).then(function (m) {
                 if (!m) { throw new Error('IPTV channel not found'); }
@@ -1087,6 +1109,12 @@ var Stremio = (function () {
         }
         if (/^sv[ms]\./.test(id) && typeof StVod !== 'undefined') {   // (a Stalker portal's own film or episode)
             return StVod.streams(type, id).then(function (l) { l.forEach(function (s) { s._addon = 'Stalker'; }); if (onUpdate) { onUpdate(l, 0); } return l; });
+        }
+        if (/^jf[ms]\./.test(id) && typeof Jellyfin !== 'undefined') {   // (a Jellyfin or Emby server's own film or episode)
+            return Jellyfin.streams(type, id).then(function (l) { var n = Jellyfin.nameOfId(id); l.forEach(function (s) { s._addon = n; }); if (onUpdate) { onUpdate(l, 0); } return l; });
+        }
+        if (/^px[ms]\./.test(id) && typeof Plex !== 'undefined') {   // (a Plex server's own film or episode)
+            return Plex.streams(type, id).then(function (l) { l.forEach(function (s) { s._addon = 'Plex'; }); if (onUpdate) { onUpdate(l, 0); } return l; });
         }
         var key = type + ':' + id, e = _streamCache[key];
         if (e && !force && (e.pending > 0 || Date.now() - e.at < STREAM_TTL)) {
@@ -1886,11 +1914,20 @@ var Stremio = (function () {
     // asked (optional): an array told how each source answered, for Diagnostics ("SkipDB:
     // nothing", "IntroDB: credits"); out.from names the source of each kind it has.
     // ids (optional): the title's own ids from its details ({ imdb, mal, season }), for anime.
-    function getIntroSegments(type, id, durationMs, asked, ids) {
+    // start: what the source's own server gave (Jellyfin's media segments), first; the services
+    // fill what it lacks.
+    function getIntroSegments(type, id, durationMs, asked, ids, start) {
         var q = introIdParts(type, id);
-        if (!q) { return Promise.resolve(null); }
-        if (q.anime) { return animeSegments(type, q.anime, durationMs, asked, ids); }
-        return segChain(q, durationMs, asked, null);
+        if (!q || (start && SEG_KINDS.every(function (k) { return start[k] && start[k].length; }))) { return Promise.resolve(start || null); }
+        if (q.anime) { return animeSegments(type, q.anime, durationMs, asked, ids).then(function (r) { return segMerge(start, r); }); }
+        return segChain(q, durationMs, asked, start || null);
+    }
+    function segMerge(a, b) {
+        if (!a || !b) { return a || b || null; }
+        var out = { intro: a.intro, recap: a.recap, credits: a.credits, preview: a.preview, from: {} };
+        Object.keys(a.from || {}).forEach(function (k) { out.from[k] = a.from[k]; });
+        SEG_KINDS.forEach(function (k) { if (!(out[k] && out[k].length) && b[k] && b[k].length) { out[k] = b[k]; out.from[k] = (b.from || {})[k] || ''; } });
+        return out;
     }
     // An anime: AniSkip first; what it doesn't give (on a Tizen 3 TV: everything, it can't be
     // reached), from the IMDb-based sources by the show's IMDb id, season and episode.

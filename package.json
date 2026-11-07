@@ -1,6 +1,6 @@
 {
   "name": "stremiok",
-  "version": "2.2.9",
+  "version": "2.3.0",
   "description": "StremioK streaming client for Tizen 3.0+ Samsung TVs (TizenBrew app module).",
   "packageType": "app",
   "appName": "StremioK",

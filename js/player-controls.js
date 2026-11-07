@@ -225,7 +225,7 @@
     function renderScrub() {
         var mark = U.byId('osd-scrub'), range = U.byId('osd-scrub-range'), tip = U.byId('osd-scrub-time');
         if (!mark || !range || !tip) { return; }
-        if (!_scrub || !(S.dur > 0)) { mark.className = 'hidden'; range.className = 'hidden'; return; }
+        if (!_scrub || !(S.dur > 0)) { mark.className = 'hidden'; range.className = 'hidden'; scrubPicture(null); return; }
         var pT = _scrub.target / S.dur * 100, pC = Math.min(100, S.cur / S.dur * 100);
         mark.className = pT < 8 ? 'edge-l' : (pT > 92 ? 'edge-r' : '');
         mark.style.left = pT + '%';
@@ -236,6 +236,34 @@
         var ci = chapterAt(_scrub.target), ch = ci >= 0 ? chapters()[ci].title : '';   // (the chapter it lands in)
         if (ch.length > 40) { ch = ch.slice(0, 39) + '…'; }
         tip.textContent = U.fmtTime(_scrub.target) + '   ' + (d < 0 ? '−' : '+') + U.fmtTime(Math.abs(d)) + (ch ? '   ·   ' + ch : '');
+        scrubPicture(_scrub.target);
+    }
+    // A Jellyfin file's seek picture above the marker (its trickplay: a tile of 10 × 10, the one
+    // under the marker shown by moving the tile behind a 320-wide window).
+    var _picTile = '', _picAhead = [];
+    function scrubPicture(sec) {
+        var pic = U.byId('osd-scrub-pic'), jf = S.ctx && S.ctx.stream && S.ctx.stream._jf;
+        var at = (sec != null && jf && jf.tp && typeof Jellyfin !== 'undefined' && Jellyfin.trickplayAt) ? Jellyfin.trickplayAt(jf.tp, sec) : null;
+        if (!pic) { return; }
+        if (!at) { pic.className = 'hidden'; return; }
+        var scale = 320 / at.w;
+        pic.className = '';
+        pic.style.width = '320px';
+        pic.style.height = Math.round(at.h * scale) + 'px';
+        if (_picTile !== at.url) { _picTile = at.url; pic.style.backgroundImage = 'url("' + at.url + '")'; }
+        // (the tiles either side read ahead: moving into one shows it at once, not black first)
+        var span = jf.tp.cols * jf.tp.rows * jf.tp.every / 1000;
+        [sec - span, sec + span].forEach(function (t) {
+            var near = t >= 0 ? Jellyfin.trickplayAt(jf.tp, t) : null;
+            if (!near || typeof Image === 'undefined' || _picAhead.some(function (im) { return im.__url === near.url; })) { return; }
+            var im = new Image();
+            im.__url = near.url;
+            im.src = near.url;
+            _picAhead.push(im);
+            if (_picAhead.length > 4) { _picAhead.shift(); }   // (kept: the last few, so they stay decoded)
+        });
+        pic.style.backgroundSize = Math.round(at.cols * at.w * scale) + 'px ' + Math.round(at.rows * at.h * scale) + 'px';
+        pic.style.backgroundPosition = '-' + Math.round(at.x * scale) + 'px -' + Math.round(at.y * scale) + 'px';
     }
 
     // ---------- in-player menu (stack of levels) ----------

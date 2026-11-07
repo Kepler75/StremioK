@@ -107,7 +107,11 @@ html, body {
 .detail-title { font-size: 54px; font-weight: bold; margin-bottom: 14px; }
 .detail-meta { font-size: 22px; color: #a7adba; margin-bottom: 18px; max-width: 1200px; }
 .detail-desc { font-size: 22px; line-height: 1.45; color: #cfd3dc; max-height: 200px; overflow: hidden; margin-bottom: 26px; max-width: 1000px; }
-.btn-row { margin-top: 10px; white-space: nowrap; }
+/* A row of buttons scrolls sideways when they don't all fit (Focus keeps the focused one in view,
+   as it does the season strip); the padding keeps a focus ring inside what it clips, and the
+   margins take it back, so nothing moves (above: the synopsis's 26px, which the old 10px margin
+   merged into) */
+.btn-row { margin: -6px -6px -6px -6px; padding: 6px; white-space: nowrap; overflow: hidden; }
 .pill { display: inline-block; padding: 14px 30px; margin-right: 16px; border-radius: 30px; background: #1a1f2b; font-size: 22px; border: 4px solid transparent; }
 /* selected season: gray with light text; focus must still win (higher specificity below) */
 .season-bar .pill.season-sel { background: #2a3346; color: #c7cbd4; }
@@ -146,7 +150,7 @@ html, body {
 .series-body { top: 110px; max-height: 388px; overflow: hidden; }
 .series-body .detail-desc { max-height: 128px; margin-bottom: 0; }   /* 4 lines */
 /* Resume / Play (padding keeps the focus ring inside the clipped text block) */
-.series-body .series-actions, .series-body .streams-actions { margin-top: 12px; padding: 4px; }
+.series-body .series-actions, .series-body .streams-actions { margin: 12px -4px 0 -4px; padding: 4px; }
 .series-panel { top: 456px; bottom: 30px; }
 /* A source list (a movie, an episode, a channel): no season row, so the list starts
    where a series has its seasons, under the same compact text block. */
@@ -204,6 +208,10 @@ html, body {
 #osd-scrub-time { position: absolute; bottom: 34px; left: 50%; -webkit-transform: translateX(-50%); transform: translateX(-50%); white-space: nowrap; font-size: 26px; font-weight: bold; color: #fff; background: rgba(20,25,36,0.96); border: 2px solid #6366f1; padding: 6px 14px; border-radius: 8px; }
 #osd-scrub.edge-l #osd-scrub-time { left: 0; -webkit-transform: none; transform: none; }
 #osd-scrub.edge-r #osd-scrub-time { left: auto; right: 0; -webkit-transform: none; transform: none; }
+/* a Jellyfin file's seek picture, above the time (its tile moved behind it: player-controls) */
+#osd-scrub-pic { position: absolute; bottom: 92px; left: 50%; -webkit-transform: translateX(-50%); transform: translateX(-50%); width: 320px; height: 180px; background-color: #000; background-repeat: no-repeat; border: 2px solid #6366f1; border-radius: 8px; }
+#osd-scrub.edge-l #osd-scrub-pic { left: 0; -webkit-transform: none; transform: none; }
+#osd-scrub.edge-r #osd-scrub-pic { left: auto; right: 0; -webkit-transform: none; transform: none; }
 #osd-times { display: flex; justify-content: space-between; margin-top: 10px; font-size: 20px; color: #cfd3dc; }
 #osd-times .osd-right { display: flex; align-items: center; }
 #osd-tags { font-size: 17px; color: #9aa2b1; margin-right: 18px; letter-spacing: 0.3px; }   /* (what's playing, in short) */

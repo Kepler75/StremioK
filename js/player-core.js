@@ -214,8 +214,13 @@ var PlayerParts = {};
     function hideOSD() { U.byId('player-osd').className = 'hidden'; liftSubs(0); }
     function osdHidden() { return U.byId('player-osd').className.indexOf('hidden') !== -1; }
 
-    // ---------- chapters (a YouTube video's, from the service: S.ytInfo.chapters) ----------
-    function chapters() { return (!S.isLive && S.ytInfo && S.ytInfo.chapters) || []; }
+    // ---------- chapters (a YouTube video's, from the service: S.ytInfo.chapters; a Jellyfin
+    // file's named ones: its source's _jf.chapters) ----------
+    function chapters() {
+        if (S.isLive) { return []; }
+        var jf = S.ctx && S.ctx.stream && S.ctx.stream._jf;
+        return (S.ytInfo && S.ytInfo.chapters) || (jf && Array.isArray(jf.chapters) ? jf.chapters : []);
+    }
     // The chapter playing at `sec`: its index, or -1 (no chapters, or before the first).
     function chapterAt(sec) {
         var list = chapters(), at = -1;
@@ -439,6 +444,14 @@ var PlayerParts = {};
         if (S.isLive) { vodCheck(ctx); }   // (one whose manifest says it's a film: not live after all)
         formatStart(ctx);
         S.ctx.resumeSec = (ctx.trailer || ctx.fromStart) ? 0 : (ctx.resumeSec || getResume(ctx.type, ctx.id));   // (Play from start: 0:00)
+        // (a Jellyfin source: where Jellyfin last had it, when that's later than StremioK's place)
+        if (!ctx.trailer && !ctx.fromStart && !ctx.switching && ctx.stream && ctx.stream._jf && typeof Jellyfin !== 'undefined' && Jellyfin.resumeFor) {
+            var jfAt = Jellyfin.resumeFor(ctx.stream._jf, P.progressFor ? P.progressFor(ctx.type, ctx.id) : null, S.ctx.resumeSec);
+            if (jfAt !== S.ctx.resumeSec) {
+                S.ctx.resumeSec = jfAt;
+                if (jfAt > 5) { U.toast('Carrying on from where ' + (Jellyfin.sourceKind ? Jellyfin.sourceKind(ctx.stream._jf) : 'Jellyfin') + ' had it: ' + U.fmtTime(jfAt), 3500); }
+            }
+        }
 
         // reset subtitle + audio + quality + on-screen controls state
         resetSubs();
@@ -529,7 +542,9 @@ var PlayerParts = {};
         if (!ctx || ctx.trailer || S.isLive || !(S.dur > 0) || _segmentsFor === ctx) { return; }
         _segmentsFor = ctx;
         var dur = S.dur, asked = [];
-        Stremio.getIntroSegments(ctx.type, ctx.id, Math.round(dur * 1000), asked, ctx.titleIds).then(function (seg) {
+        // (a Jellyfin source: its server's own media segments first, the services fill the rest)
+        var own = (ctx.stream && ctx.stream._jf && typeof Jellyfin !== 'undefined' && Jellyfin.segments) ? Jellyfin.segments(ctx.stream._jf, asked) : Promise.resolve(null);
+        own.then(function (start) { return Stremio.getIntroSegments(ctx.type, ctx.id, Math.round(dur * 1000), asked, ctx.titleIds, start); }).then(function (seg) {
             if (!S.active || S.ctx !== ctx) { return; }
             var notes = [];
             _segments = checkedSegments(seg, S.dur || dur, notes);
@@ -1020,8 +1035,15 @@ var PlayerParts = {};
         if (S.cur >= end - PREFETCH_LEAD) { _prefetchedNext = true; try { S.ctx.prefetchNext(); } catch (e) {} }
     }
 
+    // A Jellyfin server's file: what you play told to it (Jellyfin.onPlayer: progress, pause,
+    // stop, watched; never during private viewing).
+    function jfTell(ev) {
+        if (!S.ctx || !S.ctx.stream || !S.ctx.stream._jf || typeof Jellyfin === 'undefined' || !Jellyfin.onPlayer) { return; }
+        try { Jellyfin.onPlayer(ev, S.ctx, S.cur, S.dur, ev === 'pause' || (ev === 'progress' && isPaused())); } catch (e) {}
+    }
     function onProgress() {
         maybePrefetchNext();
+        jfTell('progress');
         // The bar is redrawn on every time update only while it's on screen (showOSD
         // brings it up to date when it appears); hidden, it would just be wasted layout work.
         if (!osdHidden() || scrubbing()) { renderOSD(); }
@@ -1122,6 +1144,7 @@ var PlayerParts = {};
     // way (stopped past 85%: a finished scrobble), so not as a separate "watched" too.
     function markFinished(quiet) {
         setWatched(S.ctx.type, S.ctx.id, true, quiet);   // (and to Trakt, when connected)
+        jfTell('watched');
         removeProgress(S.ctx.type, S.ctx.id);
         if (S.ctx.nextEpisode && !(S.ctx.nextEpisode.airs > Date.now())) {   // (not one that hasn't aired)
             var ne = S.ctx.nextEpisode;
@@ -1140,7 +1163,7 @@ var PlayerParts = {};
         return S.videoEl.paused;
     }
     function play_() { if (useAV) { try { avplay.play(); } catch (e) {} } else { S.videoEl.play(); } screenSaver(false); }
-    function pause_() { _pausedOnce = true; if (useAV) { try { avplay.pause(); } catch (e) {} } else { S.videoEl.pause(); } screenSaver(true); }
+    function pause_() { _pausedOnce = true; jfTell('pause'); if (useAV) { try { avplay.pause(); } catch (e) {} } else { S.videoEl.pause(); } screenSaver(true); }
 
     // The TV's screensaver stays off while a video plays and is allowed again when it's
     // paused or stopped. No-op where the Samsung appcommon API isn't available.
@@ -1549,6 +1572,7 @@ var PlayerParts = {};
         if (U.crumb) { U.crumb('player closed'); }
         if (P.sleepClear) { P.sleepClear(); }   // (the sleep timer: this playback's)
         saveProgress();
+        jfTell('stop');
         // Record partial progress to Trakt (unfinished VOD) so it shows in Continue Watching. Past
         // 85% (Trakt connected): finished, Trakt's way (it marks it watched), and here as at the credits.
         if (!S.isLive && !_creditsHandled && S.ctx && !S.ctx.trailer && !S.ctx.private && !isNotice() && S.cur > 60 && typeof Trakt !== 'undefined' && Trakt.onProgress) {
