@@ -309,7 +309,7 @@
     function startLoad() {
         leaveDiscover();
         _dvCancel = U.cancelToken ? U.cancelToken() : null;
-        _dv.items = []; _dv.seen = {}; _dv.done = false; _dv.error = false; _dv.loading = false; _dv.offset = 0; _dv.page = 0; _dv.stale = false;
+        _dv.items = []; _dv.seen = {}; _dv.hidden = 0; _dv.done = false; _dv.error = false; _dv.loading = false; _dv.offset = 0; _dv.page = 0; _dv.stale = false;
         _dv.gen++; _dv.focusFirst = true;
         drawGrid();
         loadMore();
@@ -472,6 +472,10 @@
         });
     }
     function gotItems(fresh) {
+        var all = fresh.length;
+        fresh = fresh.filter(function (m) { return !V.watchedHidden(m, _dv.cat && _dv.cat.type); });   // (Settings › Appearance › Watched titles: Hide)
+        _dv.hidden = (_dv.hidden || 0) + all - fresh.length;
+        if (all && !fresh.length && !_dv.items.length && !_dv.done) { var g = _dv.gen; setTimeout(function () { if (g === _dv.gen) { loadMore(); } }, 0); return; }   // (a first page all watched: the next one)
         var reachesEnd = (_dv.offset + _dv.cardEls.length === _dv.items.length);   // (else they join as you scroll down, extendDown)
         _dv.items = _dv.items.concat(fresh);
         if (reachesEnd) { appendCards(fresh); }
@@ -519,7 +523,7 @@
         if (_dv.value && genre) { extra.genre = _dv.value; }
         if (_dv.items.length || (cat.addon && cat.addon.__local)) {
             if (_dv.items.length && !pages(cat)) { _dv.done = true; updateCount(); return; }
-            extra.skip = _dv.items.length;
+            extra.skip = _dv.items.length + (_dv.hidden || 0);   // (the watched ones left out counted: Watched titles: Hide)
         }
         _dv.loading = true;
         updateCount();

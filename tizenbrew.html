@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>StremioK</title>
+    <script>
+    // TizenBrew's start page (package.json's appPath). TizenBrew reads each file from jsDelivr at
+    // an address with no version, which jsDelivr keeps per file for hours after a release: an
+    // old file, or a mix of two versions. This page names no other file, so nothing is fetched
+    // from there: it opens this version's own copy (npm/stremiok@<version>/index.html), whose
+    // files all come from that address. build.sh stamps the ?v= below.
+    (function () {
+        var v = '?v=2.3.2'.slice(3), l = location, rest = (l.search || '') + (l.hash || '');
+        var m = /^(\/module\/npm%2F[^\/%@]+)\//i.exec(l.pathname || '');
+        l.replace(m ? m[1] + '%40' + v + '/index.html' + rest : 'index.html' + rest);
+    })();
+    </script>
+</head>
+<body style="background:#000"></body>
+</html>

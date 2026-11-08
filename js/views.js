@@ -13,7 +13,7 @@ var Views = (function (V) {
         leaveScreen: function (name) { var f = { detail: V.leaveDetail, discover: V.leaveDiscover, search: V.leaveSearch }[name]; if (f) { f(); } }, backInLocal: V.backInLocal, setHomeTab: V.setHomeTab,
         renderLive: V.renderLive,
         renderSearch: V.renderSearch, searchFor: function (q) { V.searchFor(q); }, renderDiscover: V.renderDiscover, renderEntry: V.renderEntry, backInDetail: V.backInDetail,
-        homeDirty: V.homeDirty, refreshHomeIfStale: V.refreshHomeIfStale, alertNewEpisodes: V.alertNewEpisodes, previewTiles: V.previewTiles, withShowInfo: V.withShowInfo,
+        homeDirty: V.homeDirty, watchedChanged: V.watchedChanged, refreshHomeIfStale: V.refreshHomeIfStale, alertNewEpisodes: V.alertNewEpisodes, previewTiles: V.previewTiles, withShowInfo: V.withShowInfo,
         isModalOpen: V.isModalOpen, closeModal: V.closeModal, confirm: V.confirm, moveKey: V.moveKey, playKey: V.playKey, availableTabs: V.availableTabs,
         menuItems: V.menuItems, menuOrder: V.menuOrder, moveMenuItem: V.moveMenuItem
     };

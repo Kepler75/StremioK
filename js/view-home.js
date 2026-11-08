@@ -1680,6 +1680,10 @@
         var built = [];
         for (var i = from; i < to; i++) {
             var c = cats[i];
+            if (Stremio.getPrefs().watchedCards === 'hide' && !c.loading) {   // (Settings › Appearance › Watched titles: Hide)
+                c = copyCat(c, c.metas.filter(function (m) { return !V.watchedHidden(m, c.type); }));
+                if (!c.metas.length) { continue; }
+            }
             var row = buildRow(c.name, c.metas.slice(0, ROW_FIRST).map(function (m) { return posterCard(m, c.type); }));
             if (c.metas.length > ROW_FIRST) { lateCards(row, c); }
             if (c.loading) { row.className += ' row-loading'; row.appendChild(U.el('div', 'row-empty', 'Loading…')); }   // (its place kept: nothing to focus)

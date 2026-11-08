@@ -11,10 +11,15 @@
     var WATCHED_KEY = 'stremiok.watched';
     function watchedAll() { return U.store.get(WATCHED_KEY, {}) || {}; }
     // A mark made here: watched at (ms, > 0), or not watched at (−ms; false: an older "not
-    // watched", at 0). Trakt's history (when connected) is weighed against it by time: marked
-    // watched here: watched; marked not watched here: watched only if Trakt has it watched
-    // since (on another device); no mark here: as Trakt has it. null: neither knows it.
-    function traktAt(type, id) { return (typeof Trakt !== 'undefined' && Trakt.isConnected && Trakt.isConnected() && Trakt.watchedAt) ? Trakt.watchedAt(type, id) : 0; }
+    // watched", at 0). Trakt's history (when connected) and your media servers' marks are weighed
+    // against it by time: marked watched here: watched; marked not watched here: watched only if
+    // Trakt or a server has it watched since (on another device); no mark here: as they have it.
+    // null: none knows it.
+    function traktAt(type, id) {
+        var t = (typeof Trakt !== 'undefined' && Trakt.isConnected && Trakt.isConnected() && Trakt.watchedAt) ? Trakt.watchedAt(type, id) : 0;
+        var s = (typeof Jellyfin !== 'undefined' && Jellyfin.watchedAt) ? Jellyfin.watchedAt(type, id) : 0;   // (Jellyfin, Emby and Plex: js/jellyfin.js)
+        return Math.max(t || 0, s || 0);
+    }
     function watchedState(type, id) {
         var v = watchedAll()[type + ':' + id], t = traktAt(type, id);
         if (typeof v === 'number' && v > 0) { return true; }

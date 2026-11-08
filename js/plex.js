@@ -13,7 +13,9 @@
    - Played as the file is (a part's own link: nothing converted), its SRT / VTT files with it;
      what you play goes back to Plex (/:/timeline; watched: /:/scrobble), except during private
      viewing. Sources carry _jf (kind 'plex'), as a Jellyfin one does: place, chapters, markers,
-     seek pictures. */
+     seek pictures.
+   - Its watched marks (marksOf, kept with Jellyfin's and Emby's in js/jellyfin.js): films with a
+     viewCount, shows whose episodes are all watched, and each watched episode. */
 var Plex = (function () {
     'use strict';
 
@@ -32,11 +34,28 @@ var Plex = (function () {
     function mc(r) { return (r && r.MediaContainer) || {}; }   // (every Plex answer is in one)
 
     // ---- Your servers ----
-    function servers() {
+    // (every one kept, on or off; servers: the ones on, as js/jellyfin.js)
+    function allServers() {
         var l = U.store.get(KEY, []);
         return Array.isArray(l) ? l.filter(function (s) { return s && s.id && s.url && s.token && s.machineId; }) : [];
     }
+    function servers() { return allServers().filter(function (s) { return !s.off; }); }
     function server(id) { return servers().filter(function (s) { return s.id === id; })[0] || null; }
+    function anyServer(id) { return allServers().filter(function (s) { return s.id === id; })[0] || null; }
+    function setOn(id, on) {
+        if (!anyServer(id)) { return; }
+        U.store.set(KEY, allServers().map(function (s) {
+            if (s.id !== id) { return s; }
+            var t = {};
+            Object.keys(s).forEach(function (k) { if (k !== 'off') { t[k] = s[k]; } });
+            if (!on) { t.off = true; }
+            return t;
+        }));
+        forget(id);
+        fillCatalogs();
+        if (on) { delete _libsAsked[id]; refreshLibs(true, id); }
+        changed();
+    }
     function isEnabled() { return servers().length > 0; }
     function deviceId() {
         var d = U.store.get(DEV_KEY, '');
@@ -58,7 +77,7 @@ var Plex = (function () {
         if (token) { h['X-Plex-Token'] = token; }
         return h;
     }
-    function get(srv, path, max) { return U.getJSON(srv.url + path, 20000, max || 4 * 1048576, null, headers(srv.token)); }
+    function get(srv, path, max) { return U.getJSON(srv.url + path, (typeof Jellyfin !== 'undefined' && Jellyfin.waitMs) ? Jellyfin.waitMs() : 20000, max || 4 * 1048576, null, headers(srv.token)); }   // (Wait for a server)
     function tell(srv, path) { return U.getText(srv.url + path, 15000, 65536, null, true, headers(srv.token)); }
     function linkOf(srv, path) { return srv.url + path + (path.indexOf('?') === -1 ? '?' : '&') + 'X-Plex-Token=' + enc(srv.token); }
 
@@ -131,7 +150,7 @@ var Plex = (function () {
             }).then(null, function (e) { tried.push(list[i]); U.log('plex', '“' + res.name + '” didn’t answer at ' + list[i] + ' (' + U.problem(e) + ')'); return next(i + 1); });
         }
         return next(0).then(function (url) {
-            var all = servers(), old = all.filter(function (s) { return s.machineId === res.machineId; })[0];
+            var all = allServers(), old = all.filter(function (s) { return s.machineId === res.machineId; })[0];
             var srv = { id: old ? old.id : 'p' + rand(8), kind: 'plex', url: url, machineId: res.machineId, name: res.name, version: res.version,
                 user: res.user, owned: res.owned, token: res.token, at: Date.now() };
             all = all.filter(function (s) { return s !== old; });
@@ -143,8 +162,8 @@ var Plex = (function () {
         });
     }
     function remove(id) {
-        if (!server(id)) { return; }
-        U.store.set(KEY, servers().filter(function (s) { return s.id !== id; }));
+        if (!anyServer(id)) { return; }
+        U.store.set(KEY, allServers().filter(function (s) { return s.id !== id; }));
         var libs = libsAll();
         delete libs[id];
         U.store.set(LIBS_KEY, libs);
@@ -182,7 +201,7 @@ var Plex = (function () {
                 });
                 if (!server(srv.id)) { return; }
                 var all = libsAll(), keep = {}, before = JSON.stringify(all[srv.id] && all[srv.id].list);
-                servers().forEach(function (s) { if (all[s.id]) { keep[s.id] = all[s.id]; } });
+                allServers().forEach(function (s) { if (all[s.id]) { keep[s.id] = all[s.id]; } });
                 keep[srv.id] = { at: Date.now(), list: list };
                 _libs = keep;
                 U.store.set(LIBS_KEY, keep);
@@ -370,24 +389,54 @@ var Plex = (function () {
                 return U.listOf(mc(r).Metadata, 100000).map(function (it) { return { t: lib.type, it: it }; });
             });
         })).then(function (lists) {
-            var map = { __ids: {} };
+            var map = { __ids: {}, __tm: {}, __played: [] };   // (__played: its watched films and shows)
             function add(k, v) { (map[k] = map[k] || []).push(v); }
             flat(lists).forEach(function (e) {
-                var it = e.it, tt = imdbOf(it), tm = tmdbOf(it);
+                var it = e.it, tt = imdbOf(it), tm = tmdbOf(it), rk = '' + it.ratingKey;
                 if (it.ratingKey == null) { return; }
-                if (tt) { add(e.t + '|' + tt, '' + it.ratingKey); map.__ids['' + it.ratingKey] = tt; }
-                if (tm) { add(e.t + '|tmdb:' + tm, '' + it.ratingKey); }
+                if (tt) { add(e.t + '|' + tt, rk); map.__ids[rk] = tt; }
+                if (tm) { add(e.t + '|tmdb:' + tm, rk); map.__tm[rk] = tm; }
+                var played = e.t === 'movie' ? +it.viewCount > 0 : +it.leafCount > 0 && +it.viewedLeafCount >= +it.leafCount;
+                if (played) { map.__played.push({ t: e.t, ids: titleIds(map, (e.t === 'movie' ? 'pxm.' : 'pxs.') + srv.id + '.', rk), at: (+it.lastViewedAt || 0) * 1000 }); }
             });
             if (_index[srv.id] && _index[srv.id].p === p) { _index[srv.id] = { at: Date.now(), map: map }; }
             return map;
         }, function (e) {
             U.log('plex', '“' + srv.name + '”: its titles couldn’t be read (' + U.problem(e) + ')');
-            var old = _index[srv.id], map = (old && old.map) || { __ids: {} };
+            var old = _index[srv.id], map = (old && old.map) || { __ids: {}, __tm: {}, __played: [], __err: true };
             if (old && old.p === p) { _index[srv.id] = { at: Date.now() - INDEX_FRESH_MS + INDEX_RETRY_MS, map: map }; }
             return map;
         });
         _index[srv.id] = { at: x ? x.at : 0, map: x ? x.map : null, p: p };
         return x && x.map ? Promise.resolve(x.map) : p;
+    }
+    function indexFresh(srv) { var p = index(srv), x = _index[srv.id]; return x && x.p ? x.p : p; }
+    function titleIds(map, own, rk) {
+        var l = [own + rk];
+        if (map.__ids[rk]) { l.unshift(map.__ids[rk]); }
+        if (map.__tm[rk]) { l.push('tmdb:' + map.__tm[rk]); }
+        return l;
+    }
+    // ---- Watched marks ----
+    // Its watched films and shows (its list of titles), and the watched episodes of each Shows
+    // library (unwatched=0; a server that won't filter: all of them, the watched ones kept).
+    function watchedEpisodes(srv, lib) {
+        var path = '/library/sections/' + enc(lib.id) + '/all?type=4';
+        return get(srv, path + '&unwatched=0', 16 * 1048576).then(null, function () { return get(srv, path, 16 * 1048576); }).then(function (r) {
+            return U.listOf(mc(r).Metadata, 100000, function (e) { return +e.viewCount > 0 && e.grandparentRatingKey != null && e.parentIndex >= 0 && e.index >= 0; });
+        });
+    }
+    function marksOf(srv) {
+        var shows = libsOf(srv).filter(function (l) { return l.type === 'series'; });
+        if (!libsOf(srv).length) { return Promise.reject(new Error('its libraries aren’t read yet')); }   // (not kept as "none": asked again)
+        return Promise.all([indexFresh(srv)].concat(shows.map(function (lib) { return watchedEpisodes(srv, lib); }))).then(function (r) {
+            var map = r[0], list = map.__played.slice(), sh = share();
+            if (map.__err || !sh || !sh.marksFrom) { throw new Error('its titles couldn’t be read'); }
+            flat(r.slice(1)).forEach(function (e) {
+                list.push({ t: 'series', ids: titleIds(map, 'pxs.' + srv.id + '.', '' + e.grandparentRatingKey), s: +e.parentIndex, e: +e.index, at: (+e.lastViewedAt || 0) * 1000 });
+            });
+            return sh.marksFrom(list);
+        });
     }
     function copies(type, id) {
         var key = '', season = null, episode = null;
@@ -523,8 +572,8 @@ var Plex = (function () {
     }
 
     return {
-        servers: servers, server: server, isEnabled: isEnabled, onChange: onChange, link: link, add: add, remove: remove, reload: reload,
+        servers: servers, allServers: allServers, server: server, setOn: setOn, isEnabled: isEnabled, onChange: onChange, link: link, add: add, remove: remove, reload: reload,
         libraries: libsOf, synthAddon: synthAddon, synthAddons: synthAddons, catalog: catalog, meta: meta, streams: streams, isPlexId: isPlexId,
-        onPlayer: onPlayer, candidates: candidates
+        onPlayer: onPlayer, candidates: candidates, marksOf: marksOf
     };
 })();

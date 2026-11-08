@@ -100,7 +100,7 @@ sources. Try again later.
 | What you see | Why, and what to do |
 |--------------|---------------------|
 | Nothing plays; the screen stays black | A source that hasn't started playing after 45 seconds gives way to the next one; with none left, StremioK says it didn't start. Try another source. |
-| It stalls | A stalled stream reloads at the same position; if it keeps stalling, you're back on the source list. Try another source, or *Buffer: More* or *Most* (Settings › Playback › Seeking & buffering) on a slow connection. |
+| It stalls | A stalled stream reloads at the same position; if it keeps stalling, you're back on the source list. Try another source or *Buffer: More* or *Most* (Settings › Playback › Seeking & buffering) on a slow connection. |
 | An HLS quality won't start | It steps down a quality, then falls back to *Auto*. |
 | An HLS source stays on "Opening stream…" while direct ones play | Its host may want a Referer (or User-Agent, Cookie) on every piece, which the TV's player can't always send. Hold OK on it › *Play through StremioK's service*; for all such sources, *HLS through StremioK's service* (Settings › Playback › Seeking & buffering). |
 | A live channel keeps reconnecting | Its connection drops, or its server stops the stream; StremioK opens it again ("Connection lost — reconnecting…"). How often is up to *Reconnect live channels* (Settings › Playback › Seeking & buffering). |
@@ -113,7 +113,7 @@ sources. Try again later.
 | What you see | Why, and what to do |
 |--------------|---------------------|
 | The audio menu names your language, but you hear another | Some files need the audio reloaded for a switch to take effect. Set *Switching to it* to *Safe* (Settings › Playback › Audio). |
-| A switch didn't happen | Chosen while paused, it changes when you carry on. Otherwise choose the ticked track again: it's applied again. Diagnostics › Logs shows the tracks the TV listed, the one asked for, and the one it played next. |
+| A switch didn't happen | Chosen while paused, it changes when you carry on. Otherwise choose the ticked track again. Diagnostics › Logs shows the tracks the TV listed, the one asked for and the one played. |
 | The 2017 TV freezes after switching audio and jumping | Its player can crash on a jump made right after another. *Safe, waits 10 seconds* is what it needed. |
 | Subtitles are early or late | *Timing* in the subtitle menu (or keys 1–3), or *Sync by ear*. A file made for another release can be seconds off. |
 | A built-in subtitle can't be made earlier | The TV's player hands each line over at its time, so StremioK can hold it back but not show it sooner. |
@@ -143,14 +143,14 @@ sources. Try again later.
 
 | What you see | Why, and what to do |
 |--------------|---------------------|
-| Browsing is slow, the spinner shows often | Usually *Titles in a Home row* set high: *Unlimited* asks each addon for up to 200 pages a row, every 15 minutes, and IPTV groups hold all their channels. Use 30 or 50 (Settings › Home). With a Stalker portal, keep *Stalker films and series* at 10 minutes: *Off* asks it for each row again. |
+| Browsing is slow, the spinner shows often | Usually *Titles in a Home row* set high: *Unlimited* asks each addon for up to 200 pages a row, every 15 minutes. Use 30 or 50 (Settings › Home). With a Stalker portal, keep *Stalker films and series* at 10 minutes: *Off* asks it for each row again. |
 | Watching shows a title's name, no poster | No poster was saved, or its link stopped loading, and no other is known (no IMDb id). Open the title from a row showing its poster and play 10 seconds: Watching keeps it. |
 
 ## IPTV
 
 | What you see | Why, and what to do |
 |--------------|---------------------|
-| A channel's sound stutters | Some servers cut a channel's sound into pieces the TV's player stutters on. StremioK detects it and restarts the channel through its service ("Fixing this channel's sound…"); not for encrypted streams, and not in a desktop browser. |
+| A channel's sound stutters | Some servers cut a channel's sound into pieces the TV's player stutters on. StremioK restarts the channel through its service ("Fixing this channel's sound…"); not for encrypted streams, and not in a desktop browser. |
 | A big playlist is missing channels | A playlist keeps its first 30,000 channels (up to 20 MB); its status line says when some were left out. |
 | A Stalker portal is missing channels or genres | Only its first 100 pages may have been read: see *Stalker channels* in [Settings](SETTINGS.md). |
 | A playlist didn't refresh | The saved copy stays, and the playlist says why. *Reload* tries again. |
@@ -186,11 +186,13 @@ sources. Try again later.
 
 | What you see | Why, and what to do |
 |--------------|---------------------|
-| *No answer* when adding it | A wrong address or port (Jellyfin and Emby use 8096). |
+| *No answer* when adding it | A wrong address or port (Jellyfin and Emby: 8096). |
+| *Timed out after 20 s* | A slow server: Settings › Content › Media servers › *Wait for a server*. |
 | *Quick Connect is off* | Turn it on in Jellyfin (Dashboard › General), or use a password. |
 | A new film isn't offered | The server lacks its IMDb or TMDB id, or it's new: *Reload* the server. |
 | *No address of … answered* (Plex) | The server is off, or neither on your network nor reachable from the internet (its *Remote Access*). |
-| No pictures above the marker (Plex) | Turn on *Generate video preview thumbnails* for the library on the server. |
+| No pictures above the marker | Turn on the library's *trickplay* (Jellyfin), thumbnail extraction (Emby) or *Generate video preview thumbnails* (Plex). |
+| Played on the server, not ticked | Marks are read every 30 minutes; one unwatched here since stays so. |
 
 ## Other apps
 

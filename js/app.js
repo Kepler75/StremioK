@@ -270,6 +270,27 @@ var App = (function () {
         if (typeof Trakt !== 'undefined' && Trakt.isConnected()) {
             Trakt.refreshCaches().then(function () { if (_current === 'home') { Views.renderHome(); } });
         }
+        serverMarks();
+    }
+    // Your media servers' watched marks: read at launch, when a server is added, reloaded or
+    // removed, on coming back to the foreground and every MARKS_EVERY (each one again once it's
+    // 30 minutes old, js/jellyfin.js); when they changed, the cards on screen ticked again (Hide:
+    // Home redrawn, if it's there).
+    var MARKS_EVERY = 10 * 60000, _marksHooked = false;
+    function serverMarks() {
+        if (typeof Jellyfin === 'undefined' || !Jellyfin.refreshMarks) { return; }
+        if (!_marksHooked) {
+            _marksHooked = true;
+            Jellyfin.onChange(serverMarks);
+            if (typeof Plex !== 'undefined' && Plex.onChange) { Plex.onChange(serverMarks); }
+            document.addEventListener('visibilitychange', function () { if (!document.hidden) { serverMarks(); } }, false);
+            setInterval(serverMarks, MARKS_EVERY);
+        }
+        Jellyfin.refreshMarks().then(function (changed) {
+            if (!changed || !Views.watchedChanged) { return; }
+            Views.watchedChanged();
+            if (Stremio.getPrefs().watchedCards === 'hide' && _current === 'home' && !Player.isActive() && !Views.isModalOpen()) { Views.renderHome(); }
+        });
     }
 
     // On a cold launch the stylesheet fetch can race/fail, leaving the app unstyled.

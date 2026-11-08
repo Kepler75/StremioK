@@ -234,6 +234,10 @@
             get: function () { return { posterRatings: Stremio.getPrefs().posterRatings ? 'on' : 'off' }; },
             set: function (cfg) { Stremio.setPref('posterRatings', cfg.posterRatings === 'on'); markHomeDirty(); }
         }));
+        wrap.appendChild(subPickRow('Watched titles', [['show', 'Show'], ['dim', 'Dim'], ['hide', 'Hide']], 'watchedCards', {
+            get: function () { return { watchedCards: Stremio.getPrefs().watchedCards }; },
+            set: function (cfg) { Stremio.setPref('watchedCards', cfg.watchedCards); markHomeDirty(); }   // (Home and Discover drawn again with it)
+        }));
         wrap.appendChild(subPickRow('Hide spoilers', [['off', 'Off'], ['pictures', 'Pictures'], ['all', 'Pictures and synopses']], 'spoilers', {
             get: function () { return { spoilers: Stremio.getPrefs().spoilers }; },
             set: function (cfg) { Stremio.setPref('spoilers', cfg.spoilers); }
@@ -1629,16 +1633,24 @@
         }
         var focus = null;
         // (each server with the module it's from: Jellyfin's for Jellyfin and Emby, Plex's)
-        var all = (have ? Jellyfin.servers().map(function (s) { return { srv: s, mod: Jellyfin, kind: Jellyfin.kindName(s) }; }) : [])
-            .concat(hasPlex ? Plex.servers().map(function (s) { return { srv: s, mod: Plex, kind: 'Plex' }; }) : []);
+        var all = (have ? Jellyfin.allServers().map(function (s) { return { srv: s, mod: Jellyfin, kind: Jellyfin.kindName(s) }; }) : [])
+            .concat(hasPlex ? Plex.allServers().map(function (s) { return { srv: s, mod: Plex, kind: 'Plex' }; }) : []);
         all.forEach(function (x) {
             var srv = x.srv, mod = x.mod;
             var r = U.el('div', 'addon-item focusable cfg-row'), libs = mod.libraries(srv);
-            r.appendChild(U.el('div', 'a-name', srv.name + '   ·   ' + x.kind + ' ' + srv.version));
-            r.appendChild(U.el('div', 'a-url', srv.url + (srv.user ? '   ·   signed in as ' + srv.user : '') + (libs.length ? '   ·   ' + libs.map(function (l) { return l.name; }).join(', ') : '')));
+            r.appendChild(U.el('div', 'a-name', srv.name + '   ·   ' + x.kind + ' ' + srv.version + (srv.off ? '   ·   Off' : '')));
+            r.appendChild(U.el('div', 'a-url', srv.url + (srv.user ? '   ·   signed in as ' + srv.user : '') + (srv.off ? '   ·   its rows, sources and watched marks set aside' : libs.length ? '   ·   ' + libs.map(function (l) { return l.name; }).join(', ') : '')));
             r.__onselect = function () {
-                pickList(srv.name, [['reload', 'Reload'], ['remove', 'Sign out and remove']], null, function (v) {
-                    if (v === 'reload') {
+                var opts = srv.off ? [['on', 'Turn on']] : [['off', 'Turn off'], ['reload', 'Reload']];
+                pickList(srv.name, opts.concat([['remove', 'Sign out and remove']]), null, function (v) {
+                    if (v === 'on' || v === 'off') {
+                        mod.setOn(srv.id, v === 'on');
+                        markHomeDirty();
+                        U.toast('“' + srv.name + '” ' + (v === 'on' ? 'on' : 'off'));
+                        _focusChild = 'jf:' + srv.id;
+                        renderSettings();
+                        if (v === 'on') { setTimeout(function () { if (_settingsSection === 'mediaservers') { _focusChild = 'jf:' + srv.id; renderSettings(); } }, 1500); }   // (its libraries, once read)
+                    } else if (v === 'reload') {
                         mod.reload(srv.id);
                         markHomeDirty();
                         U.toast('Reading “' + srv.name + '” again…');
@@ -1651,6 +1663,12 @@
             if (_focusChild === 'jf:' + srv.id) { focus = r; }
             wrap.appendChild(r);
         });
+        if (all.length) {
+            wrap.appendChild(subPickRow('Wait for a server', SERVER_WAITS, 'serverWait', {
+                get: function () { return { serverWait: '' + Stremio.getPrefs().serverWait }; },
+                set: function (cfg) { Stremio.setPref('serverWait', +cfg.serverWait || 0); }
+            }));
+        }
         wrap.appendChild(U.el('div', 'hint', 'Jellyfin 10.9 or newer, Emby 4.7 or newer, Plex. Their files play as they are (nothing converted), so the TV must play their format.'));
         if (focus) { _focusChild = null; Focus.setScope(scr('settings'), focus); } else { focusSettings(); }
     }
@@ -1819,6 +1837,7 @@
     var SKIP_CHOICES = [['0', 'Ask (a Skip button)'], ['5', 'After 5 seconds'], ['10', 'After 10 seconds'], ['15', 'After 15 seconds'], ['30', 'After 30 seconds']];
     // Settings › Addons: how long an addon's answer is waited for (an addon that sleeps when
     // unused fails the first time while it wakes up).
+    var SERVER_WAITS = [['0', 'Normal (20 s)'], ['45', '45 seconds'], ['90', '90 seconds'], ['180', '180 seconds']];   // (a media server's answer)
     var ADDON_WAITS = [['0', 'Normal (12 s; sources 15, search 25)'], ['20', '20 seconds'], ['30', '30 seconds'], ['45', '45 seconds'], ['60', '60 seconds']];
     var NEXT_CHOICES = [['0', 'Ask'], ['5', 'After 5 seconds'], ['10', 'After 10 seconds'], ['15', 'After 15 seconds'], ['30', 'After 30 seconds']];
     // Seeking & buffering: how far LEFT / RIGHT jump; a bigger buffer for slow connections; how
@@ -2027,6 +2046,7 @@
         var m;
         if (key === 'stremiok.homecache') { return { name: 'Home’s saved rows' }; }
         if (key === 'stremiok.trakt.watched') { return { name: 'Trakt watched history' }; }
+        if (key === 'stremiok.media.watched') { return { name: 'Media servers’ watched marks' }; }
         if ((m = key.match(/^stremiok\.iptv\.cache\.(.+)$/))) {
             var p = (typeof IPTV !== 'undefined' ? IPTV.getPlaylists() : []).filter(function (x) { return x.id === m[1]; })[0];
             return p ? { name: 'IPTV playlist copy: ' + (p.name || (('' + p.url).match(/^[a-z]+:\/\/(?:[^\/@]*@)?([^\/?#:]+)/i) || [])[1] || 'a playlist') }

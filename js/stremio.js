@@ -169,6 +169,7 @@ var Stremio = (function () {
             formatsAuto: p.formatsAuto !== false,   // Settings > Formats: mark "Not working" on its own
             allowLocal: p.allowLocal === true,      // Settings > Addons: home-network links from internet addons
             addonWait: ADDON_WAITS.indexOf(p.addonWait) !== -1 ? p.addonWait : 0,   // Settings > Addons: seconds to wait for an addon (0: Normal)
+            serverWait: [45, 90, 180].indexOf(p.serverWait) !== -1 ? p.serverWait : 0,   // Settings > Media servers: seconds to wait for one's answer (0: Normal, 20)
             autoSkip: [5, 10, 15, 30].indexOf(p.autoSkip) !== -1 ? p.autoSkip : 0,   // Settings > Skipping: intros / recaps after a countdown (0: ask)
             autoNext: [5, 10, 15, 30].indexOf(p.autoNext) !== -1 ? p.autoNext : 0,   // Settings > Skipping: the next episode at the credits after a countdown (0: ask)
             spoilers: p.spoilers === 'pictures' || p.spoilers === 'all' ? p.spoilers : 'off',   // Settings > Appearance: unwatched episodes' stills (and synopses) hidden
@@ -177,6 +178,7 @@ var Stremio = (function () {
             nextOnFail: p.nextOnFail !== false,          // Settings > Source ranking: a source that doesn't start gives way to the next
             sizeLimits: { movie: sizeLimits(p.sizeLimits, 'movie'), series: sizeLimits(p.sizeLimits, 'series') },   // Settings > Source ranking (GB; 0: none)
             posterRatings: p.posterRatings === true,   // Settings > Appearance: IMDb rating on cards
+            watchedCards: p.watchedCards === 'dim' || p.watchedCards === 'hide' ? p.watchedCards : 'show',   // Settings > Appearance: watched titles' cards ticked, dimmed too, or left out of rows
             homePreview: p.homePreview !== false,      // Settings > Home: Continue Watching on the TV's home bar (js/hubpreview.js)
             homePreviewOrder: p.homePreviewOrder === 'watching' ? 'watching' : 'recent',   // ...its tiles: the latest first, or as in Watching
             hiddenTabs: wordList(p.hiddenTabs, 20, 20),   // Settings > Home > Menu: tabs hidden

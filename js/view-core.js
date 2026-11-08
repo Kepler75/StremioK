@@ -645,7 +645,8 @@ var ViewParts = {};
         c.appendChild(U.el('div', 'cap', meta.name || meta.title || ''));
         c.__meta = meta;   // shown above the rows on Home while focused
         var kind = meta.type || fallbackType;
-        if ((kind === 'movie' || kind === 'series') && meta.id && Player.isWatched(kind, meta.id)) { c.appendChild(U.el('div', 'card-watched', '✓')); }
+        c.__kind = kind;
+        if ((kind === 'movie' || kind === 'series') && meta.id && Player.isWatched(kind, meta.id)) { markCard(c, true); }
         var rating = parseFloat(meta.imdbRating);   // (Ratings on posters: the catalog's own, nothing downloaded)
         if (rating > 0 && rating <= 10 && Stremio.getPrefs().posterRatings) { c.appendChild(U.el('div', 'card-rating', '★ ' + rating.toFixed(1))); }   // (a series: marked watched whole, see setTitleWatched / the title page)
         if (kind === 'movie' || kind === 'series') { c.__onlongpress = function () { posterActions(meta, kind, c); }; }
@@ -871,12 +872,34 @@ var ViewParts = {};
     function watchedTicks(id, on) {
         var cards = document.querySelectorAll('.card');
         for (var i = 0; i < cards.length; i++) {
-            if (cards[i].getAttribute('data-id') !== id) { continue; }
-            var badge = cards[i].querySelector('.card-watched');
-            if (on && !badge) { cards[i].appendChild(U.el('div', 'card-watched', '✓')); }
-            if (!on && badge) { cards[i].removeChild(badge); }
+            if (cards[i].getAttribute('data-id') === id) { markCard(cards[i], on); }
         }
     }
+    // A card watched or not: its ✓, and dimmed too with Settings › Appearance › Watched titles: Dim.
+    function markCard(card, on) {
+        var badge = card.querySelector('.card-watched'), dim = on && Stremio.getPrefs().watchedCards === 'dim';
+        if (on && !badge) { card.appendChild(U.el('div', 'card-watched', '✓')); }
+        if (!on && badge) { card.removeChild(badge); }
+        var cls = ('' + card.className).replace(/\s*\bwatched-dim\b/g, '');
+        card.className = dim ? cls + ' watched-dim' : cls;
+    }
+    // Marks that came from elsewhere (your media servers): every movie or series card on screen
+    // as it now is; Home's other tabs rebuilt when next opened.
+    function watchedChanged() {
+        var cards = document.querySelectorAll('.card');
+        for (var i = 0; i < cards.length; i++) {
+            var m = cards[i].__meta, k = cards[i].__kind;
+            if (m && m.id && (k === 'movie' || k === 'series')) { markCard(cards[i], Player.isWatched(k, m.id)); }
+        }
+        markHomeDirty();
+    }
+    V.watchedChanged = watchedChanged;
+    // Left out of Home's and Discover's rows (Settings › Appearance › Watched titles: Hide).
+    function watchedHidden(meta, type) {
+        var k = (meta && meta.type) || type;
+        return Stremio.getPrefs().watchedCards === 'hide' && !!meta && !!meta.id && (k === 'movie' || k === 'series') && Player.isWatched(k, meta.id);
+    }
+    V.watchedHidden = watchedHidden;
 
     // ----- Add to Continue Watching -----
     // Lists a title in Continue Watching without playing it:

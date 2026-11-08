@@ -284,6 +284,8 @@ html, body {
 /* --- Watched mark on posters --- */
 .card .card-rating { position: absolute; top: 8px; left: 8px; z-index: 2; padding: 3px 9px; border-radius: 12px; background: rgba(0,0,0,0.72); color: #ffd257; font-size: 17px; font-weight: bold; }
 .card .card-watched { position: absolute; top: 8px; right: 8px; z-index: 2; width: 34px; height: 34px; line-height: 34px; text-align: center; border-radius: 17px; background: rgba(99,102,241,0.95); color: #fff; font-size: 20px; font-weight: bold; }
+.card.watched-dim .poster, .card.watched-dim .fallback { opacity: 0.4; }   /* Settings › Appearance › Watched titles: Dim (focused: clearer) */
+.card.watched-dim.focused .poster, .card.watched-dim.focused .fallback { opacity: 0.85; }
 
 /* --- Contextual quick-action bar (UP) --- */
 #player-bar { position: absolute; left: 0; right: 0; bottom: 250px; z-index: 22; text-align: center; white-space: nowrap; }   /* (up to ten buttons: one line, compact) */

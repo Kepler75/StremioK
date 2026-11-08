@@ -84,7 +84,7 @@ Each says whether its guide was read. See [IPTV and radio](USER-GUIDE.md#iptv-an
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Auto-refresh* | **Off**, Every hour, Every 3 hours, Every 6 hours, Every 12 hours | All playlists and their TV guides downloaded again, as *Reload* does. |
-| *Stalker channels* | **First 100 pages**, Whole portal | How much of a portal's channel list is read (100 pages: about 1,400). *Whole portal* (up to 30,000): minutes each *Reload*, and a portal may block a MAC that asks so much. *Channel groups* read only those. |
+| *Stalker channels* | **First 100 pages**, Whole portal | How much of a portal's channel list is read (100 pages: about 1,400). *Whole portal* (up to 30,000): minutes each *Reload*; a portal may block such a MAC. *Channel groups*: only those. |
 | *Stalker films and series* | **Kept 10 minutes**, Kept 5 minutes, Off | How long a portal's row, category or search is kept, so showing it again doesn't ask it. Off: asked each time. |
 
 ### YouTube
@@ -122,7 +122,8 @@ to add (OK adds one; hidden system apps on request). On the TV only.
 |---------|---------|--------------|
 | *Add a Jellyfin or Emby server* | | Its address, then a user name and password, or Jellyfin's Quick Connect (see the [user guide](USER-GUIDE.md#your-media-server)). |
 | *Add a Plex server* | | A code to enter at plex.tv/link, then which of your account's servers. |
-| Each server | *Reload*, *Sign out and remove* | Its name, version and who's signed in. *Reload* reads its libraries again. |
+| Each server | *Turn off* / *on*, *Reload*, *Sign out and remove* | See the [user guide](USER-GUIDE.md#what-you-get). |
+| *Wait for a server* | **Normal** (20 s), 45, 90, 180 seconds | Longer for a slow one (a Raspberry Pi). |
 
 ### Import configuration file
 
@@ -181,7 +182,7 @@ settings replace yours (StremioK restarts).
 |---------|---------|--------------|
 | *Seek step* | 5, **10**, 15, 30 seconds | How far LEFT / RIGHT jump. FF / REW jump three steps; holding a direction speeds up. |
 | *Reconnect live channels* | Off, **A few times**, Keep trying | A channel that drops (lost, frozen or ended) opens again at the live edge: 3 times in 5 minutes, or with no limit, up to a minute apart (BACK stops it). Off: the player closes. |
-| *Buffer* | **Normal (the TV's own)**, More, Most | What the TV's player loads before starting and after running dry (More: 8 and 10 seconds; Most: 15 and 20): slower to start, dry less often. A 2017 TV adds a few seconds. |
+| *Buffer* | **Normal (the TV's own)**, More, Most | What the TV's player loads before starting and after running dry (More: 8 and 10 seconds; Most: 15 and 20): slower to start, dry less often. |
 | *HLS through StremioK's service* | **Off**, Sources that need headers, All HLS sources | The service fetches it with the source's User-Agent, Referer and Cookie (the TV's player can't always send them): a step more to start. Hold OK on a source: once. |
 
 ### Source ranking
@@ -263,9 +264,10 @@ them.
 | *Effects* | **Auto (by the TV)**, Light, Full | Modern's blur, fades and motion. Auto: on from Tizen 6 (2021 TVs), off on older ones, where they'd slow it. |
 | *Background* | Black, **Dark**, Light Gray, White | The light ones have dark text; the player keeps its dark controls. |
 | *Accent color* | **Indigo**, and nine others | |
-| *Zoom* | **100%**, 110%, 120%, 130%, 140% | Everything bigger, to read from further away; fewer cards fit a row. Subtitles keep theirs. |
+| *Zoom* | **100%**, 110%, 120%, 130%, 140% | Everything bigger; fewer cards fit a row. Subtitles keep theirs. |
 | *Poster orientation* | **Portrait**, Landscape | |
-| *Ratings on posters* | **Off**, On | A title's IMDb rating on its card (★ 7.8), when the catalog gives it. Nothing extra is downloaded. |
+| *Ratings on posters* | **Off**, On | A title's IMDb rating on its card (★ 7.8), when the catalog gives it. |
+| *Watched titles* | **Show**, Dim, Hide | Ticked (✓), dimmed too, or left out of Home's and Discover's rows (not Continue Watching). |
 | *Hide spoilers* | **Off**, Pictures, Pictures and synopses | Blurs the stills of episodes you haven't watched (and hides their synopses). |
 
 ## Home
@@ -273,7 +275,7 @@ them.
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Start on* | **Watching** (Continue Watching), any Home tab | The tab StremioK opens on (the Guide once its guide is read; Watching for a hidden tab). |
-| *Titles in a Home row* | **30**, 50, 100, 200, Unlimited | How many titles a Home row holds (catalogs, IPTV groups). More load slower, *Unlimited* much slower (an addon may refuse so many requests; an older TV slows). ★ Favorites shows all. |
+| *Titles in a Home row* | **30**, 50, 100, 200, Unlimited | How many titles a Home row holds (catalogs, IPTV groups). More load slower, *Unlimited* much slower (an addon may refuse so many requests). ★ Favorites shows all. |
 | *Home bar preview* | **Most recent first**, As in Watching, Off | Continue Watching on the TV's home bar (StremioK on it: Apps › StremioK › *Add to Home*): up to 8 playable tiles. Sideloaded app, Tizen 4 and later. |
 | *Menu ›* | ⇈ ▲ ▼ ⇊, OK to show or hide | The top menu's order between Watching (first) and Settings (last), and which Home tabs show. Discover and Search always show. |
 | *Home feeds ›* | ▲ / ▼, OK to show or hide | The order of the Home rows, and which show. |
@@ -296,7 +298,7 @@ with its last steps. *Startup* shows how long this launch and the one before too
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Use the TV's database* | **On**, Off | The database holds StremioK's big copies (Home's saved rows, IPTV playlists, USB indexes, your Trakt history). Off: in the settings storage (about 5 MB), the database deleted. |
+| *Use the TV's database* | **On**, Off | The database holds StremioK's big copies (Home's saved rows, playlists, USB indexes, watched histories). Off: in the settings storage (about 5 MB), the database deleted. |
 | *TV storage* | | What StremioK keeps, item by item, with sizes (its saved TV guides too), and the TV's free disk space. |
 | *Tidy up the TV's database* | | Gives back the space of old versions the TV hasn't cleared out. |
 | *Clear saved copies* | | Gives up the copies that can be made again (Home's saved rows, IPTV playlist copies, saved TV guides and Xtream lists, the USB index). |

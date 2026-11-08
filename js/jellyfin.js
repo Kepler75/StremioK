@@ -4,8 +4,8 @@
      and version, who's signed in and the sign-in it gave back (never the password).
    - Emby speaks the same API family (Jellyfin started as its fork): its paths under /emby, per
      user (/Users/<id>/Items…), its sign-in line as X-Emby-Authorization, api_key in links; no
-     Quick Connect, trickplay or media segments, but intro and credits markers in its chapters
-     (KINDS: what differs).
+     Quick Connect or media segments, but intro and credits markers in its chapters, and its seek
+     pictures in a BIF file, not trickplay (KINDS: what differs).
    - As local addons like Xtream's, one per kind ("Jellyfin", "Emby"): a catalog per Movies or
      Shows library (Home rows, Discover, Search); a title the server knows the IMDb id of is a
      card with that id (the usual title page, your addons' sources too), any other
@@ -15,7 +15,10 @@
      of films and series with their ids, read when first needed and again after INDEX_FRESH_MS.
    - Played as the file is (/Videos/<item>/stream.<container>?static=true: nothing converted),
      its subtitle files with it; what you play is reported back (Jellyfin's sessions: where you
-     are, stopped, played), except during private viewing. Jellyfin 10.9 or newer, Emby 4.7. */
+     are, stopped, played), except during private viewing. Jellyfin 10.9 or newer, Emby 4.7.
+   - Watched marks: what each server (Plex's too) has played, by the ids its titles go by here,
+     read at launch and after MARKS_FRESH_MS; Player weighs them against its own by time
+     (player-store), as Trakt's. */
 var Jellyfin = (function () {
     'use strict';
 
@@ -47,11 +50,30 @@ var Jellyfin = (function () {
     function uid(srv) { return enc(srv.userId); }
 
     // ---- Your servers ----
-    function servers(kind) {
+    // (every one kept, on or off: Settings' list; servers: the ones on, all that's used)
+    function allServers(kind) {
         var l = U.store.get(KEY, []);
         return Array.isArray(l) ? l.filter(function (s) { return s && s.id && s.url && s.token && s.userId && (!kind || kindOf(s) === kind); }) : [];
     }
+    function servers(kind) { return allServers(kind).filter(function (s) { return !s.off; }); }
     function server(id) { return servers().filter(function (s) { return s.id === id; })[0] || null; }
+    function anyServer(id) { return allServers().filter(function (s) { return s.id === id; })[0] || null; }
+    // Turned off: its rows, sources and watched marks set aside, nothing asked of it, its sign-in
+    // kept; on again: its libraries read again.
+    function setOn(id, on) {
+        if (!anyServer(id)) { return; }
+        U.store.set(KEY, allServers().map(function (s) {
+            if (s.id !== id) { return s; }
+            var t = {};
+            Object.keys(s).forEach(function (k) { if (k !== 'off') { t[k] = s[k]; } });
+            if (!on) { t.off = true; }
+            return t;
+        }));
+        forget(id);
+        fillAll();
+        if (on) { delete _libsAsked[id]; _libsP[id] = refreshLibs(true, id); }
+        changed();
+    }
     function isEnabled(kind) { return servers(kind).length > 0; }
     function kindsOn() { return Object.keys(KINDS).filter(function (k) { return isEnabled(k); }); }
     function deviceId() {
@@ -78,7 +100,10 @@ var Jellyfin = (function () {
         if (json) { h['Content-Type'] = 'application/json'; }
         return h;
     }
-    function get(srv, path, max) { return U.getJSON(api(srv) + path, 20000, max || 4 * 1048576, null, headers(srv, srv.token)); }
+    // How long to wait for its answer: Settings › Media servers › Wait for a server (Normal: 20 s;
+    // Plex's too).
+    function waitMs() { var w = typeof Stremio !== 'undefined' && Stremio.getPrefs ? +Stremio.getPrefs().serverWait : 0; return w > 0 ? w * 1000 : 20000; }
+    function get(srv, path, max) { return U.getJSON(api(srv) + path, waitMs(), max || 4 * 1048576, null, headers(srv, srv.token)); }
     function post(srv, path, body) { return U.getText(api(srv) + path, 15000, 65536, null, true, headers(srv, srv.token, true), body == null ? '' : JSON.stringify(body)); }
 
     // An address as typed (192.168.0.50, http://nas:8096/web/…, …/emby/web/…): with http:// and
@@ -113,7 +138,7 @@ var Jellyfin = (function () {
     // Signed in: kept (the same server and user again: in its place, its id kept).
     function added(info, r) {
         if (!r || !r.AccessToken || !r.User || !r.User.Id) { throw new Error(kindName(info) + ' didn’t sign in.'); }
-        var list = servers(), old = list.filter(function (s) { return s.serverId === info.serverId && s.userId === '' + r.User.Id; })[0];
+        var list = allServers(), old = list.filter(function (s) { return s.serverId === info.serverId && s.userId === '' + r.User.Id; })[0];
         var srv = { id: old ? old.id : 's' + rand(8), url: info.url, kind: kindOf(info), serverId: info.serverId, name: info.name, version: info.version,
             user: ('' + (r.User.Name || '')).slice(0, 60), userId: '' + r.User.Id, token: '' + r.AccessToken, at: Date.now() };
         list = list.filter(function (s) { return s !== old; });
@@ -177,10 +202,10 @@ var Jellyfin = (function () {
     }
     // Sign out and remove: its sign-in ended on the server too (if it answers).
     function remove(id) {
-        var srv = server(id);
+        var srv = anyServer(id);
         if (!srv) { return; }
         post(srv, '/Sessions/Logout', null).then(null, function () {});
-        U.store.set(KEY, servers().filter(function (s) { return s.id !== id; }));
+        U.store.set(KEY, allServers().filter(function (s) { return s.id !== id; }));
         var libs = libsAll();
         delete libs[id];
         U.store.set(LIBS_KEY, libs);
@@ -220,7 +245,7 @@ var Jellyfin = (function () {
                 });
                 if (!server(srv.id)) { return; }   // (removed meanwhile)
                 var all = libsAll(), keep = {}, before = JSON.stringify(all[srv.id] && all[srv.id].list);
-                servers().forEach(function (s) { if (all[s.id]) { keep[s.id] = all[s.id]; } });
+                allServers().forEach(function (s) { if (all[s.id]) { keep[s.id] = all[s.id]; } });
                 keep[srv.id] = { at: Date.now(), list: list };
                 _libs = keep;
                 U.store.set(LIBS_KEY, keep);
@@ -386,25 +411,35 @@ var Jellyfin = (function () {
         var x = _index[srv.id];
         if (x && x.map && (x.p || Date.now() - x.at < INDEX_FRESH_MS)) { return Promise.resolve(x.map); }
         if (x && x.p) { return x.p; }
-        var p = get(srv, K(srv).items(uid(srv)) + 'recursive=true&includeItemTypes=Movie,Series&fields=ProviderIds&enableImages=false&enableUserData=false&enableTotalRecordCount=false', 16 * 1048576).then(function (r) {
-            var map = { __ids: {} };   // (__ids: an item's IMDb id, for Next up's cards)
+        var p = get(srv, K(srv).items(uid(srv)) + 'recursive=true&includeItemTypes=Movie,Series&fields=ProviderIds&enableImages=false&enableUserData=true&enableTotalRecordCount=false', 16 * 1048576).then(function (r) {
+            var map = { __ids: {}, __tm: {}, __played: [] };   // (__ids, __tm: an item's IMDb, TMDB id, for Next up's cards and watched marks; __played: its played films and shows)
             function add(k, v) { (map[k] = map[k] || []).push(v); }
             U.listOf(r && r.Items, 100000).forEach(function (it) {
                 var t = it.Type === 'Movie' ? 'movie' : it.Type === 'Series' ? 'series' : '', tt = imdbOf(it), tm = tmdbOf(it);
                 if (!t || !it.Id) { return; }
                 if (tt) { add(t + '|' + tt, '' + it.Id); map.__ids['' + it.Id] = tt; }
-                if (tm) { add(t + '|tmdb:' + tm, '' + it.Id); }
+                if (tm) { add(t + '|tmdb:' + tm, '' + it.Id); map.__tm['' + it.Id] = tm; }
+                if (it.UserData && it.UserData.Played) { map.__played.push({ t: t, ids: titleIds(map, (t === 'movie' ? 'jfm.' : 'jfs.') + srv.id + '.', '' + it.Id), at: Date.parse(it.UserData.LastPlayedDate || '') || 1 }); }
             });
             if (_index[srv.id] && _index[srv.id].p === p) { _index[srv.id] = { at: Date.now(), map: map }; }
             return map;
         }, function (e) {
             U.log('jellyfin', '“' + srv.name + '” (' + kindName(srv) + '): its titles couldn’t be read (' + U.problem(e) + ')');
-            var old = _index[srv.id], map = (old && old.map) || { __ids: {} };
+            var old = _index[srv.id], map = (old && old.map) || { __ids: {}, __tm: {}, __played: [], __err: true };   // (__err: never read)
             if (old && old.p === p) { _index[srv.id] = { at: Date.now() - INDEX_FRESH_MS + INDEX_RETRY_MS, map: map }; }   // (asked again in a minute)
             return map;
         });
         _index[srv.id] = { at: x ? x.at : 0, map: x ? x.map : null, p: p };
         return x && x.map ? Promise.resolve(x.map) : p;
+    }
+    // The list as it is now: one being read again waited for (index answers with the old one).
+    function indexFresh(srv) { var p = index(srv), x = _index[srv.id]; return x && x.p ? x.p : p; }
+    // The ids a server's title goes by here: its IMDb and TMDB ones, and its own (own: its prefix).
+    function titleIds(map, own, id) {
+        var l = [own + id];
+        if (map.__ids[id]) { l.unshift(map.__ids[id]); }
+        if (map.__tm && map.__tm[id]) { l.push('tmdb:' + map.__tm[id]); }
+        return l;
     }
     function copies(type, id, kind) {
         var key = '', season = null, episode = null;
@@ -422,6 +457,96 @@ var Jellyfin = (function () {
             }).then(flat, none);
         })).then(flat);
     }
+
+    // ---- Watched marks (Jellyfin, Emby; Plex's from js/plex.js) ----
+    // { 'movie:<id>': when, 'series:<id>': when (the whole show), 'series:<show>:<s>:<e>': when }
+    // from [{ t, ids, at, s?, e? }].
+    var MARKS_MAX = 50000;
+    function marksFrom(list) {
+        var out = {}, n = 0;
+        (list || []).forEach(function (x) {
+            (x.ids || []).forEach(function (id) {
+                var k = x.t + ':' + id + (x.s != null ? ':' + x.s + ':' + x.e : '');
+                if (out[k] == null) { if (n >= MARKS_MAX) { return; } n++; }
+                out[k] = Math.max(out[k] || 0, x.at > 0 ? x.at : 1);
+            });
+        });
+        return out;
+    }
+    // Its played films and shows (its list of titles) and episodes.
+    function jfMarks(srv) {
+        return Promise.all([indexFresh(srv), get(srv, K(srv).items(uid(srv)) + 'recursive=true&includeItemTypes=Episode&isPlayed=true&enableImages=false&enableTotalRecordCount=false', 16 * 1048576)]).then(function (r) {
+            var map = r[0], list = map.__played.slice();
+            if (map.__err) { throw new Error('its titles couldn’t be read'); }
+            U.listOf(r[1] && r[1].Items, 100000, function (e) { return e.SeriesId && e.ParentIndexNumber >= 0 && e.IndexNumber >= 0 && (!e.UserData || e.UserData.Played !== false); }).forEach(function (e) {
+                list.push({ t: 'series', ids: titleIds(map, 'jfs.' + srv.id + '.', '' + e.SeriesId), s: +e.ParentIndexNumber, e: +e.IndexNumber, at: Date.parse((e.UserData && e.UserData.LastPlayedDate) || '') || 1 });
+            });
+            return marksFrom(list);
+        });
+    }
+    // Every server's, kept in the TV's database (U.store when it won't take them), read into
+    // memory at launch (watchedAt is synchronous; until then, none).
+    var MARKS_KEY = 'stremiok.media.watched', MARKS_FRESH_MS = 30 * 60000;
+    var _marks = null, _all = {}, _marksP = null, _marksSaved = null;
+    function merge() {
+        var all = {};
+        Object.keys(_marks || {}).forEach(function (id) {
+            var m = (_marks[id] && _marks[id].m) || {};
+            Object.keys(m).forEach(function (k) { if (!(all[k] >= m[k])) { all[k] = m[k]; } });
+        });
+        _all = all;
+    }
+    var _marksRead = (U.bigStore ? U.bigStore.get(MARKS_KEY) : Promise.resolve(null)).then(function (m) {
+        if (!m || typeof m !== 'object') { m = U.store.get(MARKS_KEY, null, true); }
+        if (m && typeof m === 'object' && !_marks) { _marks = m; _marksSaved = JSON.stringify(m); merge(); }
+    }, function () {});
+    function saveMarks() {
+        var text = JSON.stringify(_marks);
+        if (text === _marksSaved) { return; }
+        _marksSaved = text;
+        if (!U.bigStore) { U.store.set(MARKS_KEY, _marks); return; }
+        U.bigStore.set(MARKS_KEY, _marks).then(function (ok) {
+            if (ok) { return; }
+            U.bigStore.remove(MARKS_KEY, true);
+            U.store.set(MARKS_KEY, _marks);
+        });
+    }
+    function markSources() {
+        var l = servers().map(function (s) { return { id: s.id, name: s.name, read: function () { return jfMarks(s); } }; });
+        if (typeof Plex !== 'undefined' && Plex.servers && Plex.marksOf) {
+            Plex.servers().forEach(function (s) { l.push({ id: s.id, name: s.name, read: function () { return Plex.marksOf(s); } }); });
+        }
+        return l;
+    }
+    // Read again where older than MARKS_FRESH_MS (force: all), a removed server's dropped; a
+    // promise of whether they changed.
+    function refreshMarks(force) {
+        if (_marksP) { return _marksP; }
+        _marksP = _marksRead.then(function () {
+            var was = _marks || {}, list = markSources(), next = {}, changed = false;
+            if (!list.length && !Object.keys(was).length) { return false; }   // (no servers, none kept: nothing saved)
+            Object.keys(was).forEach(function (id) { if (!list.some(function (x) { return x.id === id; })) { changed = true; } });
+            return Promise.all(list.map(function (x) {
+                var old = was[x.id];
+                if (old && !force && Date.now() - old.at < MARKS_FRESH_MS) { next[x.id] = old; return null; }
+                return x.read().then(function (m) {
+                    if (!old || JSON.stringify(m) !== JSON.stringify(old.m)) { changed = true; }
+                    next[x.id] = { at: Date.now(), m: m };
+                }, function (e) {
+                    if (old) { next[x.id] = old; }
+                    U.log('jellyfin', '“' + x.name + '”: its watched marks couldn’t be read (' + U.problem(e) + ')');
+                });
+            })).then(function () {
+                _marks = next;
+                merge();
+                saveMarks();
+                return changed;
+            });
+        }).then(function (ch) { _marksP = null; return ch; }, function () { _marksP = null; return false; });
+        return _marksP;
+    }
+    // When a server has it played (ms; 0: not, or not known): the latest of them.
+    function watchedAt(type, id) { return _all[type + ':' + id] || 0; }
 
     // ---- Sources ----
     var EXT = { mkv: 'mkv', matroska: 'mkv', webm: 'webm', mp4: 'mp4', mov: 'mp4', m4v: 'mp4', avi: 'avi', mpegts: 'ts', ts: 'ts', m2ts: 'm2ts', mpeg: 'mpg', mpg: 'mpg', flv: 'flv', wmv: 'wmv', asf: 'wmv', ogg: 'ogv' };
@@ -444,7 +569,7 @@ var Jellyfin = (function () {
             behaviorHints: { filename: file, videoSize: size || undefined, bingeGroup: 'stremiok-jellyfin-' + srv.id },
             _jf: placeOf({ srv: srv.id, kind: kindOf(srv), item: '' + it.Id, ms: '' + ms.Id }, it.UserData)
         };
-        var ch = chapterSegments(it), mk = markerSegments(it), named = namedChapters(it), tp = trickplayOf(srv, it, ms);
+        var ch = chapterSegments(it), mk = markerSegments(it), named = namedChapters(it), tp = trickplayOf(srv, it, ms) || bifOf(srv, it, ms, v);
         if (ch) { st._jf.ch = ch; }
         if (mk) { st._jf.mk = mk; }
         if (named) { st._jf.chapters = named; }
@@ -529,10 +654,74 @@ var Jellyfin = (function () {
         return { w: +best.Width, h: +best.Height, cols: +best.TileWidth, rows: +best.TileHeight, n: +best.ThumbnailCount, every: +best.Interval,
             base: api(srv) + '/Videos/' + enc(it.Id) + '/Trickplay/' + (+best.Width) + '/', q: '.jpg?mediaSourceId=' + enc(ms.Id) + '&' + K(srv).key + '=' + enc(srv.token) };
     }
+    // Emby's seek pictures: its BIF file (the Roku format: the JPEGs and when each is), 320 wide,
+    // read at the first ◀ ▶ (bifAt). Emby makes them where the library's thumbnail extraction is on.
+    function bifOf(srv, it, ms, v) {
+        if (kindOf(srv) !== 'emby' || !(+it.RunTimeTicks > 0)) { return null; }
+        var w = +(v && v.Width) || 0, h = +(v && v.Height) || 0;
+        return { bif: api(srv) + '/Videos/' + enc(it.Id) + '/index.bif?width=320&mediaSourceId=' + enc(ms.Id) + '&' + K(srv).key + '=' + enc(srv.token),
+            w: 320, h: w > 0 && h > 0 ? Math.round(320 * h / w) : 180, cols: 1, rows: 1, every: 10000, n: 1 };
+    }
+    // The file being played's (one at a time): { url, p } while it's read, then { url, frames:
+    // [{ t (ms), a, b (where its JPEG is) }], bytes, pics: the latest pictures' links }, or
+    // { url, failed }.
+    var BIF_MAX = 40 * 1048576, BIF_PICS = 12, BIF_MAGIC = [0x89, 0x42, 0x49, 0x46, 0x0d, 0x0a, 0x1a, 0x0a], _bif = null;
+    function parseBif(b) {
+        for (var i = 0; i < 8; i++) { if (b[i] !== BIF_MAGIC[i]) { return null; } }
+        function u32(o) { return (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0; }
+        var n = u32(12), every = u32(16) || 1000, out = [];
+        for (var k = 0; k < n && 79 + k * 8 < b.length; k++) {
+            var t = u32(64 + k * 8), a = u32(68 + k * 8), z = u32(76 + k * 8);
+            if (t === 0xffffffff) { break; }
+            if (z > a && z <= b.length) { out.push({ t: t * every, a: a, b: z }); }
+        }
+        return out;
+    }
+    function dropBif() {
+        if (_bif && _bif.pics) { Object.keys(_bif.pics).forEach(function (k) { try { URL.revokeObjectURL(_bif.pics[k]); } catch (e) {} }); }
+        _bif = null;
+    }
+    function loadBif(tp) {
+        dropBif();
+        var b = { url: tp.bif };
+        _bif = b;
+        b.p = U.getBytes(tp.bif, 30000, BIF_MAX, true).then(function (bytes) {
+            var frames = parseBif(bytes);
+            if (_bif !== b) { return; }
+            if (!frames || !frames.length) { throw new Error('not a BIF file'); }
+            b.frames = frames; b.bytes = bytes; b.pics = {}; b.order = [];
+            if (frames.length > 1) { tp.every = Math.max(1000, Math.round((frames[frames.length - 1].t - frames[0].t) / (frames.length - 1))); }
+            tp.n = frames.length;
+        }).then(null, function (e) {
+            if (_bif !== b) { return; }
+            b.failed = true;
+            U.log('jellyfin', 'Emby has no seek pictures for this file (' + (/HTTP 404/.test(e && e.message) ? 'none made: the library’s thumbnail extraction' : U.problem(e)) + ')');
+        });
+    }
+    function bifPic(i) {
+        var b = _bif, f = b.frames[i];
+        if (b.pics[i]) { return b.pics[i]; }
+        var url = null;
+        try { url = URL.createObjectURL(new Blob([b.bytes.subarray(f.a, f.b)], { type: 'image/jpeg' })); } catch (e) { return null; }
+        b.pics[i] = url;
+        b.order.push(i);
+        if (b.order.length > BIF_PICS) { var old = b.order.shift(); try { URL.revokeObjectURL(b.pics[old]); } catch (e2) {} delete b.pics[old]; }
+        return url;
+    }
+    function bifAt(tp, sec) {
+        if (!_bif || _bif.url !== tp.bif) { loadBif(tp); return null; }
+        var f = _bif.frames;
+        if (!f) { return null; }
+        var ms = sec * 1000, lo = 0, hi = f.length - 1;
+        while (lo < hi) { var mid = (lo + hi + 1) >> 1; if (f[mid].t <= ms) { lo = mid; } else { hi = mid - 1; } }
+        var url = bifPic(lo);
+        return url ? { url: url, x: 0, y: 0, w: tp.w, h: tp.h, cols: 1, rows: 1 } : null;
+    }
     // The seek picture for a moment (seconds): its tile's link and where in it, or null.
-    // (tp.one: a picture a link, base + its moment in ms, as Plex's are)
+    // (tp.one: a picture a link, base + its moment in ms, as Plex's are; tp.bif: Emby's file)
     function trickplayAt(tp, sec) {
         if (!tp || !(sec >= 0)) { return null; }
+        if (tp.bif) { return bifAt(tp, sec); }
         var i = Math.min(tp.n - 1, Math.floor(sec * 1000 / tp.every)), per = tp.cols * tp.rows, at = i % per;
         if (tp.one) { return { url: tp.base + (i * tp.every) + tp.q, x: 0, y: 0, w: tp.w, h: tp.h, cols: 1, rows: 1 }; }
         return { url: tp.base + Math.floor(i / per) + tp.q, x: (at % tp.cols) * tp.w, y: Math.floor(at / tp.cols) * tp.h, w: tp.w, h: tp.h, cols: tp.cols, rows: tp.rows };
@@ -622,6 +811,7 @@ var Jellyfin = (function () {
             if (srv) { post(srv, K(srv).played(uid(srv), enc(jf.item)), null).then(null, function (e) { U.log('jellyfin', '“' + srv.name + '”: not marked played (' + U.problem(e) + ')'); }); }
             return;
         }
+        if (ev === 'stop') { dropBif(); }   // (Emby's seek pictures: given up with the playback)
         if (_play && (!srv || _play.ctx !== ctx || _play.item !== jf.item || _play.ms !== jf.ms)) { stopNow(); }   // (another playback, or another source)
         if (!srv || ev === 'stop') { if (ev === 'stop') { stopNow(cur); } return; }
         if (!_play) { _play = { ctx: ctx, srv: srv.id, item: jf.item, ms: jf.ms, sid: rand(32), started: false, sent: 0, paused: false, cur: 0 }; }
@@ -633,10 +823,10 @@ var Jellyfin = (function () {
     }
 
     return {
-        servers: servers, server: server, isEnabled: isEnabled, onChange: onChange, normAddress: normAddress, addressProblem: addressProblem, probe: probe,
+        servers: servers, allServers: allServers, server: server, setOn: setOn, isEnabled: isEnabled, onChange: onChange, normAddress: normAddress, addressProblem: addressProblem, probe: probe,
         signIn: signIn, quickConnect: quickConnect, remove: remove, reload: reload, libraries: libsOf, synthAddon: synthAddon, synthAddons: synthAddons, kindsOn: kindsOn,
         kindName: kindName, nameOfId: nameOfId, catalog: catalog, meta: meta, streams: streams, isJellyfinId: isJellyfinId, onPlayer: onPlayer, resumeFor: resumeFor,
-        segments: segments, trickplayAt: trickplayAt, sourceKind: sourceKind,
-        shared: { chapterSegments: chapterSegments, namedChapters: namedChapters }   // (Plex's chapters read the same way)
+        segments: segments, trickplayAt: trickplayAt, waitMs: waitMs, sourceKind: sourceKind, refreshMarks: refreshMarks, watchedAt: watchedAt,
+        shared: { chapterSegments: chapterSegments, namedChapters: namedChapters, marksFrom: marksFrom }   // (Plex's chapters and watched marks read the same way)
     };
 })();

@@ -3,6 +3,21 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.3.2 — 2026-11-07
+- **TizenBrew runs one version at a time:** a TV could keep an old version, or a mix of two, for
+  hours after a release (2.3.0 with 2.3.1 listed, #17). TizenBrew now opens a start page that
+  loads one version's own copy.
+- **Your media server's watched marks:** what Jellyfin, Emby or Plex has played is ticked here
+  too, a show once all of it is; read at launch and every 30 minutes. A mark made here since wins.
+- **Watched titles** (Settings › Appearance): their cards ticked (Show), dimmed too (Dim), or left
+  out of Home's and Discover's rows (Hide).
+- **Emby's seek pictures** above the marker as ◀ ▶ move it, where the library's thumbnail
+  extraction made them.
+- **A media server turned off and on** (Settings › Content › Media servers, OK on it): off, its
+  rows, sources and watched marks are set aside, still signed in; *Turn on* brings them back.
+- **Wait for a server** (Settings › Content › Media servers): 45, 90 or 180 seconds instead of 20,
+  for a slow one whose rows or Discover pages timed out.
+
 ## 2.3.1 — 2026-11-07
 - **An audio track chosen while paused, or during a jump,** now plays: the TV refuses a switch
   then, and the menu ticked the track all the same. It's made once the video plays on (#17).

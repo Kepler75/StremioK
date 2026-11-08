@@ -490,7 +490,8 @@ var U = (function () {
     // the YouTube service's while it starts; the caller says so if it matters).
     // headers (optional): { name: value } sent with it.
     // body (optional): sent as a POST (text), else it's a GET.
-    function getText(url, timeoutMs, maxBytes, cancel, quiet, headers, body) {
+    // (bytes: the answer as a Uint8Array, not text: getBytes)
+    function getText(url, timeoutMs, maxBytes, cancel, quiet, headers, body, bytes) {
         var priv = privateNow();   // (asked during a private playback: logged as one, however late it fails)
         function logged(err) { return quiet ? err : noteNetwork(err, priv); }
         maxBytes = maxBytes || TEXT_MAX;
@@ -510,12 +511,13 @@ var U = (function () {
             }
             try {
                 xhr.open(body == null ? 'GET' : 'POST', url, true);
+                if (bytes) { xhr.responseType = 'arraybuffer'; }
                 if (headers) { Object.keys(headers).forEach(function (h) { xhr.setRequestHeader(h, headers[h]); }); }
             } catch (e) { reject(e); return; }
             xhr.timeout = timeoutMs || 15000;
             if (maxBytes) {
                 xhr.onprogress = function (ev) {
-                    var got = (ev && ev.loaded) || ('' + (xhr.responseText || '')).length;
+                    var got = (ev && ev.loaded) || (bytes ? 0 : ('' + (xhr.responseText || '')).length);
                     if (!done && got > maxBytes) {
                         done = true;
                         try { xhr.abort(); } catch (e2) {}
@@ -526,7 +528,7 @@ var U = (function () {
             xhr.onreadystatechange = function () {
                 if (xhr.readyState !== 4 || done) { return; }
                 done = true;
-                var body = xhr.responseText;
+                var body = bytes ? (xhr.response ? new Uint8Array(xhr.response) : null) : xhr.responseText;
                 if (body && body.length > maxBytes) { reject(logged(new Error('Too large (over ' + mb(maxBytes) + '): ' + redactUrl(url)))); return; }   // (no progress events)
                 var landed = xhr.responseURL;   // where the redirects (if any) ended
                 if (landed && landed !== url && urlIsPrivate(landed) && !urlIsPrivate(url) && !_localOk()) {
@@ -541,7 +543,7 @@ var U = (function () {
                 if (xhr.status >= 200 && xhr.status < 300) { resolve(body); }
                 else {
                     var err = new Error('HTTP ' + xhr.status + ' for ' + redactUrl(url));
-                    var said = serverMessage(body);
+                    var said = bytes ? '' : serverMessage(body);
                     if (said) { err.serverMessage = said; err.message += ': ' + said; }
                     reject(logged(err));
                 }
@@ -551,6 +553,9 @@ var U = (function () {
             try { if (body == null) { xhr.send(); } else { xhr.send('' + body); } } catch (e3) { reject(e3); }
         });
     }
+
+    // A file's bytes (a Uint8Array), up to maxBytes: Emby's seek pictures (js/jellyfin.js).
+    function getBytes(url, timeoutMs, maxBytes, quiet) { return getText(url, timeoutMs || 30000, maxBytes, null, quiet, null, null, true); }
 
     // No answer at all: the connection refused or dropped, blocked, a certificate the TV doesn't
     // trust (its browser says only "status 0").
@@ -704,7 +709,7 @@ var U = (function () {
         var LEFTOVER_SHARE = 0.5, _busy = null, _refusalTidy = false;
         // Use the TV's database (Settings › Diagnostics › Storage; on unless turned off):
         // off, the big copies are kept in the settings storage (BIG_KEY: the ones that go here).
-        var USE_KEY = 'stremiok.bigdb', BIG_KEY = /^stremiok\.(homecache|local\.index|iptv\.cache\.|trakt\.watched)/;
+        var USE_KEY = 'stremiok.bigdb', BIG_KEY = /^stremiok\.(homecache|local\.index|iptv\.cache\.|trakt\.watched|media\.watched)/;
         function enabled() { return store.get(USE_KEY, true) !== false; }
         function lsBigKeys() {
             var out = [];
@@ -1677,7 +1682,7 @@ var U = (function () {
     }
 
     return {
-        byId: byId, el: el, clear: clear, moveIn: moveIn, getJSON: getJSON, getText: getText,
+        byId: byId, el: el, clear: clear, moveIn: moveIn, getJSON: getJSON, getText: getText, getBytes: getBytes,
         postJSON: postJSON, redactUrl: redactUrl, problem: problem, problemDetail: problemDetail, listOf: listOf, lru: lru, randomHex: randomHex, cachedJSON: cachedJSON,
         parseUrl: parseUrl, urlProblem: urlProblem, isPlaylistUrl: isPlaylistUrl, isManifestUrl: isManifestUrl,
         isPrivateHost: isPrivateHost, urlIsPrivate: urlIsPrivate, setLocalPolicy: setLocalPolicy, sanitizeHeaders: sanitizeHeaders, drawable: drawable,

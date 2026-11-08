@@ -95,7 +95,9 @@ The docs and scripts stay out of the package.
 
 - **TizenBrew:** TizenBrew serves its modules from npm rather than installing them on the TV,
   so a newer published version of `stremiok` reaches you through TizenBrew (see TizenBrew's own
-  documentation for how and when it refreshes a module).
+  documentation for how and when it refreshes a module). TizenBrew can list a new version some
+  hours before it reaches the TV: if the version at the bottom right of Settings is older than
+  TizenBrew's, close StremioK and open it again later.
 - **Apps2Samsung:** install the newer release's `.wgt` the same way.
 - **Tizen Studio:** build and install again from the newer code.
 

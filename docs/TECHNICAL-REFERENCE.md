@@ -635,7 +635,8 @@ them.
 - **Sources:** each version of the file (`MediaSources`), from
   `/Videos/<item>/stream.<container>?static=true` (the file untouched); quality from the video's
   size; subtitle files next to it (`IsExternal`) as SRT; chapters when one is named.
-- **Seek pictures:** Jellyfin's `Trickplay` set nearest 320 wide.
+- **Seek pictures:** Jellyfin's `Trickplay` set nearest 320 wide; Emby's `/Videos/<item>/index.bif`
+  (BIF: its JPEGs and their times), read at the first ◀ ▶.
 - **Where it starts:** the server's place (`UserData`) when newer than StremioK's.
 - **Skip times:** Jellyfin's media segments (`/MediaSegments`, 10.10 and later, from a plugin
   such as Intro Skipper), Emby's intro and credits markers, else chapters named so (*Recap*,
@@ -656,6 +657,10 @@ them.
   `includeChapters`; seek pictures from a part with `indexes="sd"` (`/library/parts/<id>/indexes/sd/<ms>`,
   one every 5 seconds); its place from `viewOffset` and `lastViewedAt`. Reported with
   `/:/timeline` (playing, paused, stopped), watched with `/:/scrobble`.
+- **Watched marks:** films, shows and episodes played (`isPlayed=true`; Plex: `viewCount`, episodes
+  by `type=4&unwatched=0`, a show once `viewedLeafCount` reaches `leafCount`), by IMDb and TMDB id
+  and the server's own; read at launch and after 30 minutes. Kept in the TV's database, weighed
+  against StremioK's by time, as Trakt's are.
 
 ## Storage
 

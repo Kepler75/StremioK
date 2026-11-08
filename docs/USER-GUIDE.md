@@ -174,7 +174,8 @@ rating*).
 
 A watched mark (from here, a title page or the player) ticks **every** card of that title on
 screen (✓). A series is ticked once every episode out so far is watched, marked whole or
-episode by episode; a new episode coming out takes the tick away.
+episode by episode; a new episode coming out takes the tick away. Settings › Appearance ›
+[*Watched titles*](SETTINGS.md#appearance) dims them, or hides them from rows.
 
 ### Typing, or sending from your phone
 
@@ -827,14 +828,17 @@ Settings › Content › **Media servers**:
   any other, the server's own details.
 - **Played as it is** (not converted), so it must be a format the TV plays; with its subtitle
   files, its named chapters ([as YouTube's](#while-a-youtube-video-plays)) and, where the server
-  made them (Jellyfin's *trickplay*, Plex's *video preview thumbnails*), pictures above the marker
-  as ◀ ▶ move it.
+  made them (Jellyfin's *trickplay*, Emby's and Plex's preview thumbnails), pictures above the
+  marker as ◀ ▶ move it.
 - **In step:** where you stopped and what you finished go back to the server (not during
   [private viewing](PRIVACY.md#private-viewing)), and a film or episode starts where you last
   stopped in any of its apps. Its intro and credits markers bring Skip Intro and Skip Credits.
+- **Its watched marks:** what the server has played is ticked here too (a show once all of it
+  is), read at launch and every 30 minutes. A mark made here since wins.
 
-OK on a server in Settings › Content › Media servers: *Reload* (its libraries read again) or
-*Sign out and remove* (for Plex, also remove StremioK from plex.tv's *Authorized devices*).
+OK on a server in Settings › Content › Media servers: *Turn off* (its rows, sources and marks set
+aside, still signed in; *Turn on* brings them back), *Reload* (its libraries read again) or *Sign
+out and remove* (for Plex, also remove StremioK from plex.tv's *Authorized devices*).
 
 ## Trakt
 

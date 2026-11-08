@@ -24,7 +24,7 @@ python3 -m http.server 8080
 
 ### As a TizenBrew module
 `package.json` is already set up as a TizenBrew application module (`packageType: "app"`,
-`appPath: "index.html"`, the service as its `serviceFile`), and its `files` list keeps the
+`appPath: "tizenbrew.html"`, the service as its `serviceFile`), and its `files` list keeps the
 docs out of the published module. To try changes under TizenBrew, serve this folder
 locally, use a wrapper package, or use the
 [`@tizenbrew-kit/cli`](https://github.com/thichcode/tizenbrew-kit) development server.
@@ -96,7 +96,9 @@ match the source.
 
 ### The version
 `package.json`'s. `config.xml` (the widget's `version`) and `index.html` (every `?v=` on the
-scripts and the stylesheet, which drops the TV's cached copies) carry the same one.
+scripts and the stylesheet, which drops the TV's cached copies) carry the same one. Under
+TizenBrew, its start page (`tizenbrew.html`, which carries the version too) opens that version's
+own copy (`npm/stremiok@<version>/index.html`), so a TV never runs two versions' files together.
 
 ### Limits on what's downloaded
 Everything that arrives from an addon, a playlist or an API is size-limited and checked before
