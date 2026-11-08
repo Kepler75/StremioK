@@ -295,7 +295,7 @@
         return art;
     }
 
-    // ----- Local: a USB drive's folders and videos (see LocalMedia) -----
+    // ----- Local: a USB drive's (or a network folder's) folders and videos (see LocalMedia) -----
     // One folder at a time, as a grid: its folders, then its videos (posters once matched to a
     // title). OK on a folder opens it, BACK goes up (then to the top menu as on any tab); OK on
     // a video plays it (a matched one through its title's page); long-press: match it by hand.
@@ -306,12 +306,12 @@
         return null;
     }
     function localTitle(d) {
-        var name = LocalMedia.knownDrives().length > 1 ? 'USB · ' + d.label.replace(/^removable_/, '') : 'USB drive';
+        var name = d.dav ? '🌐  ' + d.label : LocalMedia.knownDrives().length > 1 ? 'USB · ' + d.label.replace(/^removable_/, '') : 'USB drive';
         return [name].concat(_local.rel ? _local.rel.split('/') : []).join('  ›  ');
     }
     function localRows(rows) {
         if (!LocalMedia.isRead()) {   // (read when the tab opens, not at launch)
-            rows.appendChild(U.el('div', 'row-empty', 'Reading USB drives…'));
+            rows.appendChild(U.el('div', 'row-empty', 'Reading your drives and folders…'));
             LocalMedia.ensure().then(redrawLocal);
             return;
         }
@@ -321,12 +321,12 @@
         if (!localDrive()) { _local.root = ds.length === 1 ? ds[0].root : null; _local.rel = ''; _local.listing = null; _local.key = ''; }
         var d = localDrive();
         if (!d) {   // several drives: one card each
-            rows.appendChild(buildGrid('USB drives', ds.map(function (x) {
-                var c = posterCard({ id: 'drive:' + x.root, name: '💾  ' + x.label.replace(/^removable_/, '') }, 'local');
+            rows.appendChild(buildGrid(ds.some(function (x) { return x.dav; }) ? 'Drives and network folders' : 'USB drives', ds.map(function (x) {
+                var c = posterCard({ id: 'drive:' + x.root, name: (x.dav ? '🌐  ' + x.label : '💾  ' + x.label.replace(/^removable_/, '')) }, 'local');
                 c.className += ' local-folder';
                 c.__onselect = function () { _local.root = x.root; _local.rel = ''; _local.listing = null; _local.key = ''; _local.focusRel = '__first'; renderHome(); };
                 c.__onlongpress = null;
-                c.__meta = { name: x.label, description: x.root };
+                c.__meta = { name: x.label, description: x.dav ? 'Network folder   ·   ' + x.dav.url : x.root };
                 return c;
             })));
             return;
@@ -384,26 +384,27 @@
     // drive stays as it was indexed before, if it was); while matching, the listing and the
     // matches so far stay.
     function confirmStopIndexing(d, st, after) {
-        confirm(st.phase === 'matching' ? 'Stop matching this drive’s videos? The listing and what’s been matched so far are kept; the rest can be matched later (Continue matching).'
-            : 'Stop indexing this drive? It hasn’t been listed yet, so nothing new is kept: it stays as it was indexed before (if it was).',
+        var what = d.dav ? 'folder' : 'drive';
+        confirm(st.phase === 'matching' ? 'Stop matching this ' + what + '’s videos? The listing and what’s been matched so far are kept; the rest can be matched later (Continue matching).'
+            : 'Stop indexing this ' + what + '? It hasn’t been listed yet, so nothing new is kept: it stays as it was indexed before (if it was).',
             'Stop', function () { LocalMedia.stopScan(d); after(); }, { noLabel: 'Keep going', plain: true });
     }
     V.confirmStopIndexing = confirmStopIndexing;
     // The drive's index (so title pages know what's on it): read only when asked.
     function indexCard(d) {
-        var st = LocalMedia.status(d), busy = st.state === 'scanning';
-        var busyName = st.phase === 'matching' ? '⏳  Matching ' + st.done + ' / ' + st.total : '⏳  Listing the drive…';
-        var c = posterCard({ id: 'index:' + d.root, name: busy ? busyName : st.state === 'none' ? '🔍  Index this drive' : st.left ? '🔍  Continue matching (' + st.left + ' left)' : '🔍  Index again' }, 'local');
+        var st = LocalMedia.status(d), busy = st.state === 'scanning', what = d.dav ? 'folder' : 'drive';
+        var busyName = st.phase === 'matching' ? '⏳  Matching ' + st.done + ' / ' + st.total : '⏳  Listing the ' + what + '…';
+        var c = posterCard({ id: 'index:' + d.root, name: busy ? busyName : st.state === 'none' ? '🔍  Index this ' + what : st.left ? '🔍  Continue matching (' + st.left + ' left)' : '🔍  Index again' }, 'local');
         c.className += ' local-folder';
         c.__onlongpress = null;
-        c.__meta = { name: 'Index this drive', description: (st.state === 'none' ? 'Not indexed yet. ' : st.state === 'failed' ? 'Indexing failed: ' + st.error + '. ' :
+        c.__meta = { name: 'Index this ' + what, description: (st.state === 'none' ? 'Not indexed yet. ' : st.state === 'failed' ? 'Indexing failed: ' + st.error + '. ' :
             busy ? 'Indexing… (OK: stop) ' : st.videos + ' videos, ' + st.matched + ' matched to titles, indexed ' + U.dayLabel(st.at) + '. ') +
-            (LocalMedia.matchingAllowed() ? 'Indexing lists the drive’s videos and matches them to titles, so their title pages offer them (“On your USB drive”).'
-                : 'Indexing lists the drive’s videos (matching them to titles is off: Settings › Content › USB drive).') };
+            (LocalMedia.matchingAllowed() ? 'Indexing lists the ' + what + '’s videos and matches them to titles, so their title pages offer them (“On your ' + (d.dav ? 'network folder' : 'USB drive') + '”).'
+                : 'Indexing lists the ' + what + '’s videos (matching them to titles is off: Settings › Content › USB drive).') };
         c.__onselect = function () {
             if (busy) { confirmStopIndexing(d, st, function () { renderHome(); }); return; }
             if (st.left) {
-                pickList('Index this drive', [['more', 'Continue matching (' + st.left + ' titles left)'], ['again', 'Index again (list the drive afresh)']], 'more', function (k) {
+                pickList('Index this ' + what, [['more', 'Continue matching (' + st.left + ' titles left)'], ['again', 'Index again (list the ' + what + ' afresh)']], 'more', function (k) {
                     _local.focusRel = 'index:' + d.root;
                     if (k === 'more') { LocalMedia.continueMatching(d); } else { LocalMedia.scan(d); }
                     renderHome();
@@ -411,7 +412,7 @@
                 return;
             }
             _local.focusRel = 'index:' + d.root;
-            LocalMedia.scan(d).then(function () { var s2 = LocalMedia.status(d); U.toast(s2.state === 'failed' ? 'Indexing failed' : 'Indexed: ' + s2.videos + ' videos, ' + s2.matched + ' matched', 4000); });
+            LocalMedia.scan(d).then(function () { var s2 = LocalMedia.status(d); U.toast(s2.state === 'failed' ? 'Indexing failed' + (s2.error ? ': ' + s2.error : '') : 'Indexed: ' + s2.videos + ' videos, ' + s2.matched + ' matched', 5000); });
             renderHome();
         };
         return c;
@@ -677,7 +678,7 @@
         var c = posterCard({ id: e.id, name: e.name || ('' + e.id).split('/').pop() }, 'local');
         c.className += ' local-video';
         c.__cwKey = showKey(e);
-        c.__meta = { name: e.name, description: (e.position ? 'Resume at ' + U.fmtTime(e.position) + (e.duration ? '  of  ' + U.fmtTime(e.duration) : '') : 'Added, not started yet') + '   ·   on your USB drive' };
+        c.__meta = { name: e.name, description: (e.position ? 'Resume at ' + U.fmtTime(e.position) + (e.duration ? '  of  ' + U.fmtTime(e.duration) : '') : 'Added, not started yet') + (/^local:\d+:@dav:/.test(e.id) ? '   ·   in your network folder' : '   ·   on your USB drive') };
         c.__onselect = function () { LocalMedia.resumePlain(e, function () { renderHome(); }); };
         c.__onlongpress = function () { continueActions(e, null, null, null, c); };
         if (e.duration) { var p = U.el('div', 'prog'); p.style.width = Math.min(100, (e.position / e.duration * 100)) + '%'; c.appendChild(p); }

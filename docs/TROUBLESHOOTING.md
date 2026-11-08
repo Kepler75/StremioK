@@ -16,6 +16,7 @@ What to do when something doesn't work. For how things are meant to work, see th
 - [IPTV](#iptv)
 - [Trakt](#trakt)
 - [USB drive](#usb-drive)
+- [Network folders](#network-folders)
 - [Media servers](#media-servers)
 - [Other apps](#other-apps)
 - [Home bar preview](#home-bar-preview)
@@ -112,6 +113,7 @@ sources. Try again later.
 
 | What you see | Why, and what to do |
 |--------------|---------------------|
+| Another audio track does nothing (TizenBrew) | It can't switch: see the [installation guide](INSTALL.md#tizenbrew-has-no-tv-player). |
 | The audio menu names your language, but you hear another | Some files need the audio reloaded for a switch to take effect. Set *Switching to it* to *Safe* (Settings › Playback › Audio). |
 | A switch didn't happen | Chosen while paused, it changes when you carry on. Otherwise choose the ticked track again. Diagnostics › Logs shows the tracks the TV listed, the one asked for and the one played. |
 | The 2017 TV freezes after switching audio and jumping | Its player can crash on a jump made right after another. *Safe, waits 10 seconds* is what it needed. |
@@ -150,7 +152,7 @@ sources. Try again later.
 
 | What you see | Why, and what to do |
 |--------------|---------------------|
-| A channel's sound stutters | Some servers cut a channel's sound into pieces the TV's player stutters on. StremioK restarts the channel through its service ("Fixing this channel's sound…"); not for encrypted streams, and not in a desktop browser. |
+| A channel's sound stutters | Some servers cut a channel's sound into pieces the TV's player stutters on. StremioK restarts the channel through its service ("Fixing this channel's sound…"), or choose it yourself: Red › *Sound*. |
 | A big playlist is missing channels | A playlist keeps its first 30,000 channels (up to 20 MB); its status line says when some were left out. |
 | A Stalker portal is missing channels or genres | Only its first 100 pages may have been read: see *Stalker channels* in [Settings](SETTINGS.md). |
 | A playlist didn't refresh | The saved copy stays, and the playlist says why. *Reload* tries again. |
@@ -181,6 +183,15 @@ sources. Try again later.
 | A download stopped when StremioK closed | Some TVs stop it. It picks up where it stopped when you start StremioK again. |
 | A big file from the drive stalls on every jump (2017 TV) | That TV's player can't read past 2 GB of a drive's file, so StremioK plays bigger ones via its service, where jumping works. |
 | Indexing, downloads or USB subtitles for streams are missing (TizenBrew) | They need the sideloaded app's service (its private token). Local still browses. |
+
+## Network folders
+
+| What you see | Why, and what to do |
+|--------------|---------------------|
+| *Couldn't reach it* | A wrong address or port, or its server off. |
+| *Refused the user name or password* | Wrong ones, or that user has no access. |
+| *Not a WebDAV folder* | That address is a web page, not its WebDAV address. |
+| *Trust this certificate* again | Its certificate changed: trust only a new one you made. |
 
 ## Media servers
 

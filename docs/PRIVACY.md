@@ -30,8 +30,8 @@ Kept on the TV, in StremioK's own storage:
 - your channels' TV guides, up to 2 days old, each with its link (an Xtream one has your
   username and password in it);
 - with Trakt connected: your Trakt history and sign-in tokens;
-- your media servers' addresses and sign-ins (not your password), and while StremioK runs, which
-  of your titles each has.
+- your media servers' and network folders' addresses and sign-ins (a folder's password, not a
+  server's), and while StremioK runs, each server's titles.
 
 Nothing in Diagnostics leaves the TV. Keys, tokens and passwords are masked (•••) wherever a link
 is shown or appears in an error message, and in the logs.
@@ -44,7 +44,7 @@ is shown or appears in an error message, and in the logs.
 | Your search addons | Titles worked out from your USB drive's file names (not the files) | Only once you've said yes to matching |
 | TMDB, OMDb, MDBList | Title ids, with your own API key | With a key set, as you browse |
 | Trakt | What you play (where you stopped, watched), marks you make by hand, ratings | Only when connected |
-| Your Jellyfin, Emby or Plex server | Requests for its libraries and files, with its sign-in; what you play from it (where you stopped, finished), as its own apps report | Once you've added it |
+| Your Jellyfin, Emby or Plex server; your network folders | Requests for its libraries and files, with its sign-in; what you play from it (where you stopped, finished), as its own apps report | Once you've added it |
 | Plex (`plex.tv`) | A request for the code you enter, then StremioK's sign-in, to list your servers and their addresses | When you add a Plex server |
 | AIOManager | Your API key, to read your addon list; StremioK shows in its *Connections* as a *Pull* app. Your addons are never sent | When you sync |
 | Your Stremio account | Read once to list your addons; StremioK signs out straight after. No password reaches the TV | When you import |
@@ -134,7 +134,7 @@ only USB drives (`/opt/media/…`), never a path elsewhere. Details in the
 
 TizenBrew serves every module from the same address, so they all share one storage. Another
 TizenBrew module you install can read what StremioK keeps (API keys, addon links with their
-tokens, playlist links with any username and password, the stream links of what you're watching
+tokens, playlist links with any username and password, network folders' sign-ins, the stream links of what you're watching
 with their request headers, which can carry debrid tokens, remembered subtitle links, the
 sources you've played, Trakt's sign-in tokens) and reach StremioK's service. Only install
 modules you trust, or use the sideloaded app, which keeps its data to itself.

@@ -63,6 +63,9 @@
  *                       are; ASS / SSA as SRT; Windows-1252 and UTF-16 files converted)
  *   /fshash?path=<file> -> JSON { size, hash }: a video's OpenSubtitles hash (its size and the
  *                       first and last 64 KB), so subtitle addons can find ones made for it
+ *   /dav/list?u=<folder>&p=<path>, /dav/walk?u=, /dav/sub?u=&p= (+ X-Dav-Auth, X-Dav-Cert) ->
+ *                       a network folder's (WebDAV) listing, every video and subtitle file under
+ *                       it, a subtitle file as UTF-8 (see davControl); the token or the header
  *   /ytinfo?u=<page> -> JSON { audio: [{ lang, name, original }], links: [{ kind, id, title,
  *                       teaser, startMs, endMs }], details, chapters: [{ t, title }] }: the
  *                       audio languages, the end screen and cards, the video, its chapters
@@ -1789,7 +1792,7 @@ function handle(req, res) {
         if (!isFs) {
             res.setHeader('Access-Control-Allow-Origin', '*');
             res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', 'X-StremioK, X-AIOM-Key, *');   // (named: older engines don't take *)
+            res.setHeader('Access-Control-Allow-Headers', 'X-StremioK, X-AIOM-Key, X-Dav-Auth, X-Dav-Cert, *');   // (named: older engines don't take *)
         }
         res.setHeader('Cache-Control', 'no-store');
         res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -1805,12 +1808,12 @@ function handle(req, res) {
         var drmPost = req.method === 'POST' && path === '/drm/license';   // (a Widevine license request: see drmControl)
         var givePost = req.method === 'POST' && path === '/entry/give';   // (a configuration file for the phone: see entryControl)
         if (req.method !== 'GET' && !epgPost && !drmPost && !givePost) { send(res, 405, 'text/plain', 'GET only'); return; }   // (before any work)
-        if (req.url.length > (/^\/epg\//.test(path) ? 32768 : /^\/(fsdl\/add|live\/(open|master))$/.test(path) ? 8192 : 2048)) { send(res, 414, 'text/plain', 'request too long'); return; }   // (a download's link can be long; a guide's channels, a bitset)
+        if (req.url.length > (/^\/epg\//.test(path) ? 32768 : /^\/(fsdl\/add|live\/(open|master)|dav\/(list|walk|sub))$/.test(path) ? 8192 : 2048)) { send(res, 414, 'text/plain', 'request too long'); return; }   // (a download's link can be long; a guide's channels, a bitset)
         // (StremioK gave up on it — a screen left, the player closed: what it still waits for is
         // dropped; 'close' before the response finished means that on every Node)
         var leaving = [];
         function leaveAll() { var l = leaving; leaving = []; l.forEach(function (f) { try { f(); } catch (e) {} }); }
-        if (!isFs) {
+        if (!isFs && path !== '/dav/walk' && !/^\/live\/[0-9a-f]{32}\/t$/.test(path)) {   // (a folder's walk, a raw channel's stream: their own limits)
             var deadline = setTimeout(function () { if (!res.headersSent) { send(res, 504, 'text/plain', 'took too long'); } leaveAll(); }, REQ_MS);
             res.on('finish', function () { clearTimeout(deadline); });
             res.on('close', function () { clearTimeout(deadline); if (!res.finished) { leaveAll(); } });
@@ -1843,6 +1846,7 @@ function handle(req, res) {
             return;
         }
         if (/^\/epg\//.test(path)) { epgControl(req, res, path, parts[1]); return; }   // (a playlist's TV guide: see epgControl)
+        if (/^\/dav\//.test(path)) { davControl(req, res, path, parts[1], leaving); return; }   // (a network folder: see davControl)
         if (path === '/aiom/addons') { aiomControl(req, res, parts[1], leaving); return; }
         if (path === '/xtvod/list' || path === '/xtvod/find') { xtvControl(req, res, path, parts[1]); return; }   // (an Xtream account's films and series: see xtvControl)
         if (path === '/stalker/list' || path === '/stalker/link' || path === '/stalker/genres' || path === '/stalker/vod' || path === '/stalker/play') { stalkerControl(req, res, path, parts[1], leaving); return; }   // (a Stalker portal: see stalkerControl)   // (AIOManager's addons: see aiomControl)   // (a live channel's sound repacked: see liveControl)   // (the phone's one-time page: see below)
@@ -1978,7 +1982,11 @@ function handle(req, res) {
 // whole ADTS frames per packet, each packet with its first frame's own time), everything else
 // as it was. &force=1: the relay without the look (StremioK already knows the channel); &fix=0
 // with it: the sound as it is. &cc=: the relay with closed captions too (see ccSegment).
+// A raw MPEG-TS channel (one endless stream, no playlist: an Xtream account's default) is looked
+// at the same way, its first LIVE_RAW_PROBE bytes (raw: true); its relay, /live/<id>/t, is the
+// stream as it comes, its sound repacked on the way (liveStream); &raw=1 asks for that one.
 var HLS_MASTER_MAX = 524288;   // (an HLS quality list: /live/master)
+var LIVE_RAW_PROBE = 1048576, LIVE_RAW_CHUNK = 65536;
 var LIVE_MAX = 4, LIVE_IDLE_MS = 5 * 60 * 1000, LIVE_LINKS = 400, LIVE_LIST_MAX = 1048576, LIVE_SEG_MAX = 32 * 1048576, LIVE_PROBE = 1536 * 1024, LIVE_MS = 20000;
 var ADTS_RATES = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
 var _live = Object.create(null);   // (no prototype: whatever key it's asked for, nothing shared is reached)
@@ -2516,6 +2524,79 @@ function liveRange(v, last, url) {
     return { range: 'bytes=' + off + '-' + (off + len - 1), end: off + len, url: url };
 }
 function liveBase(s) { return 'http://localhost:' + PORT + '/live/' + s.id + '/'; }
+function liveEntry(s) { return liveBase(s) + (s.raw ? 't' : 'm?n=' + s.top); }   // (the link the player opens)
+// Where an MPEG-TS stream's packets start (three in a row), or -1.
+function tsSync(b) {
+    for (var i = 0; i < 188 && i + 376 < b.length; i++) { if (b[i] === 0x47 && b[i + 188] === 0x47 && b[i + 376] === 0x47) { return i; } }
+    return -1;
+}
+// A raw channel's relay (/live/<id>/t): the stream fetched with its headers and passed on as it
+// comes, in whole TS packets, its sound repacked chunk by chunk (liveFix: each chunk the next one,
+// what's left of a frame going on in the next). One at a time per relay (the player opening it
+// again: the old one stops); the TV's player reading slowly holds the server back (no piling up).
+function liveStream(s, req, res) {
+    if (s.stop) { s.stop(); }
+    var r = null, gone = false, seq = 0, carry = null, started = false, hops = 0, synced = false;
+    s.a = liveAudio();
+    function stop() { gone = true; try { if (r) { r.abort(); } } catch (e) {} if (s.stop === stop) { s.stop = null; } }
+    s.stop = stop;
+    res.on('close', stop);
+    function fail(code, why) { if (gone) { return; } if (!started) { send(res, code, 'text/plain', 'failed: ' + why); } else { try { res.end(); } catch (e) {} } stop(); }
+    var timer = setTimeout(function () { if (!started) { fail(504, 'timed out'); } }, LIVE_MS);
+    // A chunk's whole packets out, its sound repacked (what's after its last whole packet kept for
+    // the next): false when the player has enough for now.
+    function pass(b) {
+        var whole = b.length - b.length % 188, out = b.slice(0, whole);
+        carry = whole < b.length ? b.slice(whole) : null;
+        if (!whole) { return true; }
+        if (s.fix) { try { out = liveFix(s, out, seq); } catch (e) { log('live (raw): ' + (e && e.message)); s.a = liveAudio(); } }
+        seq++;
+        return res.write(out);
+    }
+    function get(url) {
+        var pu;
+        try { pu = urllib.parse(url); } catch (e) { fail(400, 'bad link'); return; }
+        if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !dlHostOk(pu.hostname)) { fail(400, 'a link it can\'t follow'); return; }
+        var h = { 'User-Agent': s.ua || TV_UA };
+        if (s.ref) { h.Referer = s.ref; }
+        if (s.cookie) { h.Cookie = s.cookie; }
+        var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, headers: h };
+        if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
+        try {
+            r = (pu.protocol === 'https:' ? https : http).get(opts, function (resp) {
+                if (gone) { resp.resume(); return; }
+                var sc = resp.statusCode;
+                if (sc >= 300 && sc < 400 && resp.headers.location && hops < 5) { resp.resume(); hops++; get(urllib.resolve(url, resp.headers.location)); return; }
+                if (sc !== 200) { resp.resume(); clearTimeout(timer); fail(sc >= 400 && sc < 600 ? sc : 502, 'HTTP ' + sc); return; }
+                clearTimeout(timer);
+                started = true;
+                res.writeHead(200, { 'Content-Type': 'video/mp2t', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+                resp.on('data', function (c) {
+                    if (gone) { return; }
+                    s.last = Date.now();
+                    var b = carry ? Buffer.concat([carry, c]) : c;
+                    if (!synced) {   // (the stream's first bytes: from its first packet)
+                        var at = tsSync(b);
+                        if (at < 0) { carry = b.length > 1024 ? b.slice(-376) : b; return; }
+                        b = b.slice(at); synced = true;
+                    }
+                    if (b.length < LIVE_RAW_CHUNK && !(seq === 0 && b.length >= 188 * 3)) { carry = b; return; }   // (whole chunks: fewer, larger pieces to repack)
+                    if (!pass(b)) { resp.pause(); res.once('drain', function () { if (!gone) { resp.resume(); } }); }
+                });
+                resp.on('end', function () {   // (what's held back goes too)
+                    if (gone) { return; }
+                    if (carry && synced) { pass(carry); }
+                    try { res.end(); } catch (e) {}
+                    stop();
+                });
+                resp.on('error', function () { fail(502, 'the stream broke off'); });
+            });
+            r.on('error', function (e) { fail(502, (e && (e.code || e.message)) || 'unknown'); });
+            guardSelf(r, function () { fail(400, 'a link to the TV itself'); });
+        } catch (e) { fail(502, (e && e.message) || 'unknown'); }
+    }
+    get(s.raw);
+}
 function liveRewrite(s, text, base) {
     var master = /#EXT-X-STREAM-INF/.test(text), direct = !master && /#EXT-X-KEY:METHOD=(?!NONE)|#EXT-X-MAP/.test(text);
     var sq = /#EXT-X-MEDIA-SEQUENCE:\s*(\d+)/.exec(text), seq = sq ? +sq[1] : 0, pre = liveBase(s);
@@ -2551,17 +2632,20 @@ function liveSession(u, who, opts) {
     var ids = Object.keys(_live);
     if (ids.length >= LIVE_MAX) {   // (the one asked for longest ago goes)
         ids.sort(function (x, y) { return _live[x].last - _live[y].last; });
+        if (_live[ids[0]].stop) { _live[ids[0]].stop(); }   // (a raw stream it was relaying: stopped)
         delete _live[ids[0]];
     }
+    var raw = !!opts.raw && !opts.film;
     var s = { id: crypto.randomBytes(16).toString('hex'), ua: who.ua, ref: who.ref, cookie: who.cookie || '', links: {}, at: {}, next: 0, last: Date.now(), a: liveAudio(),
-        fix: opts.fix !== false && !opts.film, cc: opts.cc && opts.cc.length && !opts.film ? opts.cc : null, film: !!opts.film, c: ccState(), got: Object.create(null) };
+        fix: opts.fix !== false && !opts.film, cc: opts.cc && opts.cc.length && !opts.film && !raw ? opts.cc : null, film: !!opts.film, c: ccState(), got: Object.create(null),
+        raw: raw ? u : null };
     _live[s.id] = s;
     s.top = liveLink(s, u, 'm');
     return s;
 }
 function livePurge() {
     var now = Date.now();
-    Object.keys(_live).forEach(function (id) { if (now - _live[id].last > (_live[id].film ? LIVE_FILM_IDLE_MS : LIVE_IDLE_MS)) { delete _live[id]; } });   // (a film may be paused a while)
+    Object.keys(_live).forEach(function (id) { if (now - _live[id].last > (_live[id].film ? LIVE_FILM_IDLE_MS : LIVE_IDLE_MS)) { if (_live[id].stop) { _live[id].stop(); } delete _live[id]; } });   // (a film may be paused a while)
 }
 // The look: the playlist (a master's first variant), then the start of the segment a player
 // starts with (the third from the end); with captions in that start, the whole segment (up to
@@ -2569,10 +2653,14 @@ function livePurge() {
 function liveProbe(u, who, cb, leaving) {
     var depth = 0;
     function list(url) {
-        leaving.push(liveGet(url, who, LIVE_LIST_MAX, function (err, body, at) {
+        leaving.push(liveGet(url, who, depth ? LIVE_LIST_MAX : LIVE_RAW_PROBE, function (err, body, at) {
             if (err) { cb(err); return; }
             var text = body.toString('utf8');
-            if (!/^\s*#EXTM3U/.test(text)) { cb(null, { fix: false, sure: true, why: 'not an HLS playlist' }); return; }
+            if (!/^\s*#EXTM3U/.test(text)) {
+                var at0 = depth ? -1 : tsSync(body);   // (a raw MPEG-TS stream, not a playlist: its first MB looked at)
+                if (at0 >= 0) { var vr = liveCut(body.slice(at0)); vr.raw = true; vr.cc = []; vr.ccSure = true; cb(null, vr); return; }
+                cb(null, { fix: false, sure: true, why: 'not an HLS playlist' }); return;
+            }
             var uris = text.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(function (l) { return l && l.charAt(0) !== '#'; });
             if (/#EXT-X-STREAM-INF/.test(text)) {
                 if (!uris.length || ++depth > 2) { cb(null, { fix: false, sure: true, why: 'no variant' }); return; }
@@ -2593,7 +2681,7 @@ function liveProbe(u, who, cb, leaving) {
                     cb(null, v);
                 }, true));
             }, true));
-        }));
+        }, !depth));   // (the first link: what it gives up to LIVE_RAW_PROBE, a raw stream never ending)
     }
     list(u);
 }
@@ -2622,19 +2710,27 @@ function liveControl(req, res, path, query, leaving) {
         if (!/^https?:\/\/[^\s]+$/i.test(u) || u.length > 2000) { send(res, 400, 'text/plain', 'bad link'); return; }
         var cc = ccAsked(q.cc);
         if (q.force === '1') {
-            var sf = liveSession(u, who, { fix: q.fix !== '0', cc: cc, film: q.film === '1' });
-            send(res, 200, 'application/json', JSON.stringify({ fix: true, sure: true, why: 'asked for', url: liveBase(sf) + 'm?n=' + sf.top }));
+            var sf = liveSession(u, who, { fix: q.fix !== '0', cc: cc, film: q.film === '1', raw: q.raw === '1' });
+            send(res, 200, 'application/json', JSON.stringify({ fix: true, sure: true, why: 'asked for', url: liveEntry(sf) }));
             return;
         }
         liveProbe(u, who, function (err, v) {
             if (err) { send(res, 200, 'application/json', JSON.stringify({ fix: false, sure: false, why: 'couldn\'t check: ' + (err.message || 'unknown') })); return; }
-            if (v.fix) { var s = liveSession(u, who, { fix: true, cc: cc }); v.url = liveBase(s) + 'm?n=' + s.top; }
+            if (v.fix) { var s = liveSession(u, who, { fix: true, cc: cc, raw: v.raw }); v.url = liveEntry(s); }
             send(res, 200, 'application/json', JSON.stringify(v));
         }, leaving);
         return;
     }
     // (m: a playlist; p: the top one under its made-up quality list; s: a segment; c: a caption
     // track's playlist; v: a segment's captions)
+    var rt = /^\/live\/([0-9a-f]{32})\/t$/.exec(path);
+    if (rt) {   // (a raw stream's relay: see liveStream)
+        var rs = _live[rt[1]];
+        if (!rs || !rs.raw) { send(res, 404, 'text/plain', 'not found'); return; }
+        rs.last = Date.now();
+        liveStream(rs, req, res);
+        return;
+    }
     var m = /^\/live\/([0-9a-f]{32})\/(m|p|s|c|v)$/.exec(path), s = m && _live[m[1]], link = s && /^\d+$/.test(q.n || '') ? s.links[+q.n] : null;
     if (!link || link.kind !== m[2]) { send(res, 404, 'text/plain', 'not found'); return; }
     s.last = Date.now();
@@ -2737,6 +2833,251 @@ function aiomControl(req, res, query, leaving) {
         send(res, 200, 'application/json', JSON.stringify({ addons: out }));
         hydraReq('POST', base + '/hydra/register', key, { name: 'StremioK' }, noop);   // (its Connections card: best effort)
     }));
+}
+
+// ---- Network folders (WebDAV: /dav/list, /dav/walk, /dav/sub) ----
+// A folder a NAS or computer shares over WebDAV, for the Local tab. Each request names the
+// folder's address (?u=, no sign-in in it) and a path under it (&p=), and carries its sign-in
+// (X-Dav-Auth: base64 "user:password", sent on as Basic) and a certificate the user trusted
+// (X-Dav-Cert: its base64 DER) in headers, never in a link: nothing is kept here. Requests go
+// to that server only, below that address (redirects: the same server, still below it), never
+// to the TV itself. An https certificate no known authority signed is sent back (why:
+// 'untrusted') for the app to ask about; trusted, it's the only one accepted for that folder
+// (its name not checked: that certificate or nothing). What the user can fix is answered 200
+// { why, message } (the app reads it); a malformed request, 400.
+var DAV_MS = 20000, DAV_LIST_MAX = 2 * 1048576, DAV_ENTRIES = 2000;
+var DAV_WALK_DIRS = 2000, DAV_WALK_FILES = 20000, DAV_WALK_DEPTH = 12, DAV_WALK_PAR = 4, DAV_WALK_MS = 90000;
+var DAV_PROPS = '<?xml version="1.0" encoding="utf-8"?><D:propfind xmlns:D="DAV:"><D:prop><D:resourcetype/><D:getcontentlength/></D:prop></D:propfind>';
+var _davWalking = null;
+function davQ(query) {
+    var q = {};
+    String(query || '').split('&').forEach(function (kv) { var i = kv.indexOf('='); if (i > 0) { try { q[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1).replace(/\+/g, ' ')); } catch (e) {} } });
+    return q;
+}
+function davWhy(why, message) { return Object.assign(new Error(message), { why: why }); }
+// The folder a request names: { base (its address, ending in /), pu, auth, cert } or null.
+function davFolder(req, q) {
+    var u = String(q.u || '').trim(), pu;
+    if (!/^https?:\/\/[^\s]+$/i.test(u) || u.length > 1000) { return null; }
+    try { pu = urllib.parse(u); } catch (e) { return null; }
+    if (!pu.hostname || pu.auth || pu.search || pu.hash || !dlHostOk(pu.hostname)) { return null; }
+    var base = pu.protocol + '//' + pu.host + String(pu.pathname || '/').replace(/\/*$/, '/');
+    var a = String((req.headers && req.headers['x-dav-auth']) || ''), c = String((req.headers && req.headers['x-dav-cert']) || '');
+    if (a && !/^[A-Za-z0-9+\/=]{4,1400}$/.test(a)) { return null; }
+    if (c && !/^[A-Za-z0-9+\/=]{200,5000}$/.test(c)) { return null; }
+    var pem = c ? '-----BEGIN CERTIFICATE-----\n' + c.replace(/(.{64})/g, '$1\n').replace(/\n$/, '') + '\n-----END CERTIFICATE-----\n' : '';
+    return { base: base, pu: urllib.parse(base), auth: a ? 'Basic ' + a : '', cert: pem };
+}
+// A path under the folder (each part %-escaped; '', '.' and '..' refused), or null.
+function davUrl(f, rel, dir) {
+    rel = String(rel || '').replace(/^\/+|\/+$/g, '');
+    if (!rel) { return f.base; }
+    if (rel.length > 1024 || rel.indexOf('\0') !== -1) { return null; }
+    var segs = rel.split('/');
+    if (segs.some(function (s) { return !s || s === '.' || s === '..'; })) { return null; }
+    return f.base + segs.map(encodeURIComponent).join('/') + (dir ? '/' : '');
+}
+function davUnder(f, pu) { return sameServerRedirect(f.pu, pu) && String(pu.pathname || '').indexOf(String(f.pu.pathname || '/')) === 0; }
+function davCertProblem(e) { return /CERT|SELF_SIGNED|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER|Hostname\/IP|altnames|ERR_TLS/i.test(String((e && e.code) || '') + ' ' + String((e && e.message) || '')); }
+// One request to the folder's server (with its redirects): one deadline for the whole chain; the
+// abort it returns stops it. cb(err, status, body (a 2xx's), final address).
+function davReq(f, method, url, headers, body, max, cb) {
+    cb = once(cb);
+    var ctl = { r: null, done: false };
+    var timer = setTimeout(function () { finish(davWhy('unreachable', 'no answer in ' + (DAV_MS / 1000) + ' s')); }, DAV_MS);
+    function finish(err, sc, buf, at) { if (ctl.done) { return; } ctl.done = true; clearTimeout(timer); try { if (ctl.r) { ctl.r.abort(); } } catch (e) {} cb(err, sc, buf, at); }
+    function go(u, hops) {
+        var pu;
+        try { pu = urllib.parse(u); } catch (e) { finish(upError('bad address', 400)); return; }
+        if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !dlHostOk(pu.hostname)) { finish(upError('an address it can\'t reach', 400)); return; }
+        var h = { 'User-Agent': 'StremioK', 'Accept': '*/*' }, data = body ? toBuffer(body) : null;
+        Object.keys(headers || {}).forEach(function (k) { h[k] = headers[k]; });
+        if (f.auth) { h.Authorization = f.auth; }
+        if (data) { h['Content-Length'] = data.length; }
+        var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, method: method, headers: h };
+        if (pu.protocol === 'https:') {
+            if (f.cert) { opts.ca = [f.cert]; opts.checkServerIdentity = function () { return undefined; }; opts.agent = false; }
+            else if (caList().length) { opts.ca = caList(); }
+        }
+        var chunks = [], size = 0;
+        try {
+            var r = ctl.r = (pu.protocol === 'https:' ? https : http).request(opts, function (resp) {
+                if (ctl.done || ctl.r !== r) { resp.resume(); return; }
+                var sc = resp.statusCode;
+                if (sc >= 300 && sc < 400 && sc !== 304 && resp.headers.location && hops < 4) {
+                    resp.resume();
+                    var np = null;
+                    try { np = urllib.parse(urllib.resolve(u, String(resp.headers.location))); } catch (e) { np = null; }
+                    if (!np || !davUnder(f, np)) { finish(davWhy('elsewhere', 'it sent StremioK to another address: not followed (the sign-in stays with it)')); return; }
+                    go(urllib.format(np), hops + 1);
+                    return;
+                }
+                if (sc < 200 || sc >= 300) { resp.resume(); finish(null, sc, null, u); return; }
+                resp.on('data', function (c) { if (ctl.done) { return; } chunks.push(c); size += c.length; if (size > max) { finish(davWhy('toolarge', 'its answer is over ' + Math.round(max / 1048576) + ' MB')); } });
+                resp.on('end', function () { finish(null, sc, Buffer.concat(chunks, size), u); });
+                resp.on('error', function (e) { finish(e); });
+            });
+            r.on('error', function (e) { if (ctl.r === r) { finish(e); } });
+            guardSelf(r, function () { finish(upError('an address it can\'t reach', 400)); });
+            if (data) { r.write(data); }
+            r.end();
+        } catch (e) { finish(e); }
+    }
+    go(url, 0);
+    return function () { if (!ctl.done) { ctl.done = true; clearTimeout(timer); try { if (ctl.r) { ctl.r.abort(); } } catch (e) {} } };
+}
+// The certificate an https folder shows (not trusted): { cert (base64 DER), fp (SHA-256), name,
+// until }, or null. Only the handshake: nothing is sent. Checking is off for this one connection
+// on purpose (a certificate that fails it can't be read otherwise: Node gives none after the
+// failure); it's only shown to you to trust or not, and every request is checked (davReq: the
+// bundled authorities, or the one certificate you trusted).
+function davCertOf(f, cb) {
+    cb = once(cb);
+    var pu = f.pu, sock = null, timer = setTimeout(function () { done(null); }, 10000);
+    function done(r) { clearTimeout(timer); try { if (sock) { sock.destroy(); } } catch (e) {} cb(r); }
+    try {
+        var o = { host: pu.hostname, port: +(pu.port || 443), rejectUnauthorized: false };
+        if (!/^[\d.]+$/.test(pu.hostname) && String(pu.hostname).indexOf(':') === -1) { o.servername = pu.hostname; }
+        sock = tls.connect(o, function () {
+            if (isSelfAddr(sock.remoteAddress)) { done(null); return; }
+            var c = null;
+            try { c = sock.getPeerCertificate(); } catch (e) { c = null; }
+            if (!c || !c.raw) { done(null); return; }
+            var fp = crypto.createHash('sha256').update(c.raw).digest('hex').toUpperCase().replace(/(..)(?!$)/g, '$1:');
+            done({ cert: c.raw.toString('base64'), fp: fp, name: String((c.subject && c.subject.CN) || '').slice(0, 200), until: String(c.valid_to || '').slice(0, 60) });
+        });
+        sock.on('error', function () { done(null); });
+    } catch (e) { done(null); }
+}
+// What went wrong, as the app shows it: { why, message[, cert, fp, name, until] }.
+function davProblem(f, err, cb) {
+    if (err && err.why) { cb({ why: err.why, message: err.message }); return; }
+    if (f.pu.protocol === 'https:' && davCertProblem(err)) {
+        davCertOf(f, function (c) {
+            var p = { why: 'untrusted', message: 'its certificate isn\'t from a known authority (' + String((err && (err.code || err.message)) || '') + ')' };
+            if (c) { p.cert = c.cert; p.fp = c.fp; p.name = c.name; p.until = c.until; }
+            cb(p);
+        });
+        return;
+    }
+    var code = String((err && (err.code || err.message)) || 'unknown');
+    cb({ why: /ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ENETUNREACH|ETIMEDOUT|ECONNRESET|EAI_AGAIN/.test(code) ? 'unreachable' : 'failed', message: 'couldn\'t reach it (' + code + ')' });
+}
+function xmlText(s) {
+    return String(s).replace(/&#x([0-9a-f]+);/gi, function (m, h) { return String.fromCharCode(parseInt(h, 16)); }).replace(/&#(\d+);/g, function (m, d) { return String.fromCharCode(+d); })
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, '\'').replace(/&amp;/g, '&');
+}
+function davNorm(p) { return String(p || '').replace(/\/+$/, ''); }
+// A PROPFIND answer's entries directly in the folder (dirPath: its path, decoded): [{ name, dir,
+// size }], the folder itself left out. Any namespace prefix (D:, d:, lp1:, none).
+function davEntries(xml, dirPath) {
+    var out = [], self = davNorm(dirPath), seen = {};
+    var parts = String(xml).split(/<(?:[\w.-]+:)?response(?:\s[^>]*)?>/i).slice(1);
+    for (var i = 0; i < parts.length && out.length < DAV_ENTRIES; i++) {
+        var x = parts[i], hm = /<(?:[\w.-]+:)?href(?:\s[^>]*)?>([^<]*)</i.exec(x);
+        if (!hm) { continue; }
+        var href = xmlText(hm[1]).trim(), p;
+        try { p = /^https?:\/\//i.test(href) ? String(urllib.parse(href).pathname || '/') : href.split('?')[0]; } catch (e) { continue; }
+        try { p = decodeURIComponent(p); } catch (e) {}
+        var n = davNorm(p), name;
+        if (n === self) { continue; }
+        if (n.indexOf(self + '/') === 0) { name = n.slice(self.length + 1); if (name.indexOf('/') !== -1) { continue; } }
+        else { name = n.split('/').pop(); }
+        if (!name || name.length > 255 || name.indexOf('\0') !== -1 || name === '.' || name === '..' || seen[name]) { continue; }
+        seen[name] = 1;
+        var dir = /<(?:[\w.-]+:)?collection\s*\/?>/i.test(x);
+        var sm = /<(?:[\w.-]+:)?getcontentlength(?:\s[^>]*)?>\s*(\d+)\s*</i.exec(x);
+        out.push({ name: name, dir: dir, size: dir ? 0 : (sm ? +sm[1] : 0) });
+    }
+    return out;
+}
+// A folder's listing (one level): cb(err, { entries }).
+function davList(f, rel, cb) {
+    cb = once(cb);
+    var url = davUrl(f, rel, true);
+    if (!url) { cb(upError('not a path in the folder', 400)); return noop; }
+    return davReq(f, 'PROPFIND', url, { Depth: '1', 'Content-Type': 'application/xml; charset=utf-8' }, DAV_PROPS, DAV_LIST_MAX, function (err, sc, buf, at) {
+        if (err) { cb(err); return; }
+        if (sc === 401 || sc === 403) { cb(davWhy('auth', 'it refused the user name or password (HTTP ' + sc + ')')); return; }
+        if (sc === 404) { cb(davWhy('missing', 'no such folder there (HTTP 404)')); return; }
+        var text = buf ? buf.toString('utf8') : '';
+        if (sc !== 207 || !/multistatus/i.test(text)) { cb(davWhy('notdav', 'not a WebDAV folder (HTTP ' + sc + ')')); return; }
+        var dirPath = '/';
+        try { dirPath = String(urllib.parse(at).pathname || '/'); dirPath = decodeURIComponent(dirPath); } catch (e) {}
+        cb(null, { entries: davEntries(text, dirPath) });
+    });
+}
+// Every video and subtitle file under the folder (the index): cb(err, { files: [{ p, size }],
+// dirs, truncated }). Bounded (DAV_WALK_*); a subfolder it can't read is left out (truncated).
+function davWalk(f, st, cb) {
+    cb = once(cb);
+    var files = [], queue = [{ rel: '', depth: 0 }], active = 0, dirs = 0, truncated = false, started = Date.now();
+    function end() { if (!active && !queue.length) { cb(null, { files: files, dirs: dirs, truncated: truncated }); } }
+    function pump() {
+        while (!st.cancelled && active < DAV_WALK_PAR && queue.length) {
+            if (dirs >= DAV_WALK_DIRS || files.length >= DAV_WALK_FILES || Date.now() - started > DAV_WALK_MS) { truncated = true; queue = []; break; }
+            var d = queue.shift();
+            dirs++; active++;
+            st.aborts.push(davList(f, d.rel, (function (d) {
+                return function (err, r) {
+                    active--;
+                    if (st.cancelled) { return; }
+                    if (err) {
+                        if (!d.rel) { st.cancelled = true; cb(err); return; }   // (the folder itself)
+                        truncated = true;
+                    } else {
+                        r.entries.forEach(function (e) {
+                            if (HIDDEN_NAME.test(e.name)) { return; }
+                            var p = d.rel ? d.rel + '/' + e.name : e.name;
+                            if (e.dir) { if (d.depth < DAV_WALK_DEPTH) { queue.push({ rel: p, depth: d.depth + 1 }); } else { truncated = true; } }
+                            else if ((VIDEO_EXT.test(e.name) || SUB_EXT.test(e.name)) && files.length < DAV_WALK_FILES) { files.push({ p: p, size: e.size || 0 }); }
+                        });
+                    }
+                    pump();
+                };
+            })(d)));
+        }
+        end();
+    }
+    pump();
+}
+// A subtitle file in the folder, as UTF-8 text (as /fssub: ASS / SSA as SRT).
+function davSub(f, rel, cb) {
+    cb = once(cb);
+    var url = davUrl(f, rel, false);
+    if (!url || !SUB_EXT.test(String(rel))) { cb(upError('not a subtitle file in the folder', 400)); return noop; }
+    return davReq(f, 'GET', url, null, null, FS_SUB_MAX, function (err, sc, buf) {
+        if (err) { cb(err); return; }
+        if (sc !== 200 || !buf) { cb(upError('HTTP ' + sc, 502)); return; }
+        var text = decodeText(buf);
+        cb(null, /\.(ass|ssa)$/i.test(String(rel)) ? assToSrt(text) : text);
+    });
+}
+function davControl(req, res, path, query, leaving) {
+    if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
+    var q = davQ(query), f = davFolder(req, q);
+    if (!f) { send(res, 400, 'text/plain', 'bad folder'); return; }
+    function answer(err, r) {
+        if (!err) { send(res, 200, 'application/json', JSON.stringify(r)); return; }
+        if (err.status === 400) { send(res, 400, 'text/plain', err.message); return; }
+        davProblem(f, err, function (p) { send(res, 200, 'application/json', JSON.stringify(p)); });
+    }
+    if (path === '/dav/list') { leaving.push(davList(f, q.p, answer)); return; }
+    if (path === '/dav/sub') {
+        leaving.push(davSub(f, q.p, function (err, text) {
+            if (err) { send(res, err.status === 400 ? 400 : 502, 'text/plain', 'failed: ' + (err.message || 'unknown')); return; }
+            send(res, 200, 'text/plain; charset=utf-8', text);
+        }));
+        return;
+    }
+    if (path === '/dav/walk') {
+        if (_davWalking) { send(res, 200, 'application/json', JSON.stringify({ why: 'busy', message: 'another folder is being indexed' })); return; }
+        var st = _davWalking = { cancelled: false, aborts: [] };
+        leaving.push(function () { st.cancelled = true; st.aborts.forEach(function (a) { try { a(); } catch (e) {} }); if (_davWalking === st) { _davWalking = null; } });
+        davWalk(f, st, function (err, r) { if (_davWalking === st) { _davWalking = null; } answer(err, r); });
+        return;
+    }
+    send(res, 404, 'text/plain', 'not found');
 }
 
 // ---- Xtream films and series (/xtvod/list, /xtvod/find) ----
@@ -3915,7 +4256,7 @@ var CONFIG_MAX = 262144, GIVE_MAX = 262144;
 var ENTRY_OPEN_MAX = 2, ENTRY_OPENS = 12, ENTRY_CONNECTIONS = 8, ENTRY_VISIT_MS = 20000, ENTRY_QUIET_MS = 10000;
 var ENTRY_TITLES = { link: 'Play a link on StremioK', addon: 'Add an addon to StremioK', playlist: 'Add an IPTV playlist to StremioK', config: 'Import a configuration file into StremioK', give: 'Your StremioK configuration',
     search: 'Search on StremioK', youtube: 'Add a YouTube catalog to StremioK', aiom: 'Your AIOManager address for StremioK', aiomkey: 'Your AIOManager API key for StremioK',
-    server: 'Your streaming server’s address for StremioK', mac: 'Your Stalker portal’s MAC address for StremioK' };
+    server: 'Your streaming server’s address for StremioK', mac: 'Your Stalker portal’s MAC address for StremioK', webdav: 'Your network folder’s address for StremioK' };
 var ENTRY_TEXT = { search: 'Words to search for', youtube: 'A channel, a playlist link, or words to search YouTube for', aiomkey: 'Your account API key', mac: 'Its MAC address (00:1A:79:…)' };   // (plain text, not a link)
 var _entries = Object.create(null), _entryServer = null, _entrySockets = [], _entryOpened = [];
 function lanAddress() {

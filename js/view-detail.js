@@ -219,7 +219,7 @@
     // retries end there too, one press from another source.
     function startResume(p) {
         // (a file on a USB drive: its source again, with its subtitle files, from whichever drive has it now)
-        var local = (typeof LocalMedia !== 'undefined' && /^file:\/\//i.test(p.url || '')) ? LocalMedia.streamForUrl(p.url) : null;
+        var local = (typeof LocalMedia !== 'undefined' && (/^file:\/\//i.test(p.url || '') || (LocalMedia.isFolderUrl && LocalMedia.isFolderUrl(p.url)))) ? LocalMedia.streamForUrl(p.url) : null;
         var how = p.fromStart ? { fromStart: true } : null;   // (Play from start: the same source, from 0:00)
         if (local) { resumeSources(startPlayback(local, p.id, p.name, how), p.id); return; }
         var st = { url: p.url, name: p.name, _headers: U.sanitizeHeaders(p.headers) || undefined,
@@ -1433,8 +1433,8 @@
     //    then ones with a format marked "not working" on this TV (Settings > Formats), then
     //    links that don't play here.
     var TIERS = ['2160', '1440', '1080', '720', 'sd', 'other'];
-    var GROUPS = ['local', 'server', 'emby', 'plex', 'played'].concat(TIERS, ['ranked', 'unsuitable', 'worded', 'sized', 'bad', 'where']);
-    var GROUP_TITLES = { local: 'On your USB drive', server: 'On your Jellyfin server', emby: 'On your Emby server', plex: 'On your Plex server', played: 'Played before', '2160': '4K', '1440': '1440p', '1080': '1080p', '720': '720p',
+    var GROUPS = ['local', 'net', 'server', 'emby', 'plex', 'played'].concat(TIERS, ['ranked', 'unsuitable', 'worded', 'sized', 'bad', 'where']);
+    var GROUP_TITLES = { local: 'On your USB drive', net: 'On your network folder', server: 'On your Jellyfin server', emby: 'On your Emby server', plex: 'On your Plex server', played: 'Played before', '2160': '4K', '1440': '1440p', '1080': '1080p', '720': '720p',
         sd: 'SD', other: 'Other', ranked: 'Sources', unsuitable: 'Marked not suitable', worded: 'Hidden by your words', sized: 'Outside your size limits', bad: 'Not working or not allowed on this TV', where: 'Where to watch  ·  other apps' };
     var KIND_SCORE = { remux: 4, bluray: 3, web: 2, hdtv: 1, '': 1.5, cam: -5 };
     function tierOf(info) {
@@ -1470,7 +1470,7 @@
             var bad = usable ? Stremio.badFormats(st, info) : [];
             var blocked = usable ? Stremio.blockedRes(st, info) : '';   // a resolution you don't allow
             var pr = (usable && !unsuitable && !worded && !sized && !bad.length && !blocked) ? playedIndex(hist, st, info) : -1;
-            var group = !usable ? 'where' : unsuitable ? 'unsuitable' : worded ? 'worded' : sized ? 'sized' : (bad.length || blocked) ? 'bad' : st._localFile ? 'local' : st._jf ? (st._jf.kind === 'emby' ? 'emby' : st._jf.kind === 'plex' ? 'plex' : 'server') : pr >= 0 ? 'played' : byRes ? tierOf(info) : 'ranked';
+            var group = !usable ? 'where' : unsuitable ? 'unsuitable' : worded ? 'worded' : sized ? 'sized' : (bad.length || blocked) ? 'bad' : st._localFile ? (st._localFile.dav ? 'net' : 'local') : st._jf ? (st._jf.kind === 'emby' ? 'emby' : st._jf.kind === 'plex' ? 'plex' : 'server') : pr >= 0 ? 'played' : byRes ? tierOf(info) : 'ranked';
             var app = group === 'where' ? whereApp(st) : null;   // links that open an app here come first
             return { st: st, i: i, info: info, bad: bad, blocked: blocked, pr: pr, group: group, tier: tierOf(info), app: app, unsuitable: unsuitable, worded: worded, sized: sized };
         });

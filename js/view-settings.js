@@ -179,6 +179,9 @@
         wrap.appendChild(U.el('div', 'hint',
             'The track in your preferred language plays on its own; with none, the second choice. The red key switches while watching. ' +
             'Switching to it: Quick starts in your language at once. Safe is for files where Quick names your language but you hear another (the 2017 TV needs 10 seconds).'));
+        if (typeof YTPlay !== 'undefined' && YTPlay.installMode && YTPlay.installMode() === 'tizenbrew') {
+            wrap.appendChild(U.el('div', 'hint', '⚠ Under TizenBrew none of this applies: StremioK has no TV player there, and only a file’s first audio track plays. The sideloaded app can switch.'));
+        }
         focusSettings();
     }
 
@@ -382,6 +385,7 @@
             ['YouTube', 'Your YouTube channels, playlists and searches; YouTube in Search', 'youtube'],
             ['Streaming apps', 'Your apps (Prime Video, Netflix, …) that open a title\'s "where to watch" sources', 'appshortcuts'],
             ['USB drive', 'The Local tab: what\'s on your drive, matched to titles; hidden files', 'usb'],
+            ['Network folders', 'Folders a NAS or computer shares over WebDAV, in the Local tab: their videos as sources', 'netfolders'],
             ['Media servers', 'Your Jellyfin or Emby server: its libraries on Home, its files as sources', 'mediaservers'],
             ['Import configuration file', 'Import addons, API keys & IPTV playlists', 'import'],
             ['Export configuration', 'Your addons, playlists, API keys and settings, to your phone', 'export']] },
@@ -444,6 +448,7 @@
         else if (_settingsSection === 'storage') { settingsStorage(wrap); }
         else if (_settingsSection === 'tvapps') { settingsTvApps(wrap); }
         else if (_settingsSection === 'usb') { settingsUsb(wrap); }
+        else if (_settingsSection === 'netfolders') { settingsNetFolders(wrap); }
         else if (_settingsSection === 'mediaservers') { settingsMediaServers(wrap); }
         else if (_settingsSection === 'private') { settingsPrivate(wrap); }
         else if (_settingsSection === 'appshortcuts') { settingsAppShortcuts(wrap); }
@@ -516,10 +521,12 @@
             if (typeof YTPlay !== 'undefined' && YTPlay.installMode && YTPlay.installMode() === 'tizenbrew') { wrap.appendChild(U.el('div', 'hint', TIZENBREW_NOTE)); }
             // How StremioK was installed, and whether its YouTube service (channels, trailers) answers
             if (typeof YTPlay !== 'undefined' && YTPlay.installLabel) {
-                var about = U.el('div', 'hint settings-about', 'Installed as: ' + YTPlay.installLabel() + '   ·   YouTube service: checking…');
+                // (and which video player plays: the TV's own, or the page's, as under TizenBrew)
+                var player = '   ·   Video player: ' + ((window.webapis && webapis.avplay) ? 'the TV’s own' : YTPlay.installMode() === 'tizenbrew' ? 'the page’s (TizenBrew has no TV player: one audio track)' : 'the browser’s');
+                var about = U.el('div', 'hint settings-about', 'Installed as: ' + YTPlay.installLabel() + player + '   ·   YouTube service: checking…');
                 wrap.appendChild(about);
                 YTPlay.isRunning().then(function (up) {
-                    about.textContent = 'Installed as: ' + YTPlay.installLabel() + '   ·   YouTube service: ' +
+                    about.textContent = 'Installed as: ' + YTPlay.installLabel() + player + '   ·   YouTube service: ' +
                         (up ? 'running' : YTPlay.installMode() === 'wgt' ? 'starts when needed' : 'not running');
                 });
             }
@@ -1957,6 +1964,113 @@
         return st.videos + ' video' + (st.videos === 1 ? '' : 's') + ', ' + st.matched + ' matched to titles' + (st.truncated ? ' (a very large drive: only part of it)' : '') +
             (st.left ? ', ' + st.left + ' titles left to match' : '') + '   ·   indexed ' + U.dayLabel(st.at) + ' ' + new Date(st.at).toTimeString().slice(0, 5);
     }
+    // ---- Network folders (WebDAV): NetFolders ----
+    var _netListening = false;
+    function settingsNetFolders(wrap) {
+        wrap.appendChild(U.el('h2', null, 'Network folders'));
+        if (typeof NetFolders === 'undefined' || typeof LocalMedia === 'undefined') { focusSettings(); return; }
+        if (!_netListening) {
+            _netListening = true;
+            LocalMedia.onChange(function (what) {
+                if (_settingsSection !== 'netfolders' || /\bhidden\b/.test(scr('settings').className || '') || isModalOpen()) { return; }
+                if (what === 'status' || what === 'matches' || what === 'index') {
+                    var rows = scr('settings').querySelectorAll('.settings-wrap .addon-item');
+                    for (var i = 0; i < rows.length; i++) { if (rows[i].__netFolder) { rows[i].querySelector('.a-url').textContent = netFolderLine(rows[i].__netFolder); } }
+                }
+            });
+        }
+        var add = U.el('div', 'addon-item focusable cfg-row');
+        add.appendChild(U.el('div', 'a-name', '+ Add a network folder'));
+        add.appendChild(U.el('div', 'a-url', 'Its WebDAV address, then the user name and password it asks for, if any'));
+        add.__onselect = function () { askNetAddress(''); };
+        wrap.appendChild(add);
+        var focus = null;
+        NetFolders.all().forEach(function (f) {
+            var r = U.el('div', 'addon-item focusable cfg-row');
+            r.__netFolder = f;
+            r.appendChild(U.el('div', 'a-name', '🌐  ' + f.name + (f.off ? '   ·   Off' : '')));
+            r.appendChild(U.el('div', 'a-url', netFolderLine(f)));
+            r.__onselect = function () {
+                var d = NetFolders.driveOf(f), st = LocalMedia.status(d);
+                if (!f.off && st.state === 'scanning') { V.confirmStopIndexing(d, st, renderSettings); return; }
+                var opts = f.off ? [['on', 'Turn on']] : [['off', 'Turn off'], ['index', st.left ? 'Continue matching (' + st.left + ' titles left)' : 'Index again']];
+                pickList(f.name, opts.concat([['remove', 'Remove']]), null, function (v) {
+                    _focusChild = 'nf:' + f.id;
+                    if (v === 'on' || v === 'off') {
+                        NetFolders.setOn(f.id, v === 'on');
+                        markHomeDirty();
+                        U.toast('“' + f.name + '” ' + (v === 'on' ? 'on' : 'off'));
+                        renderSettings();
+                    } else if (v === 'index') {
+                        (st.left ? LocalMedia.continueMatching(d) : LocalMedia.scan(d)).then(function () {
+                            var s2 = LocalMedia.status(d);
+                            U.toast(s2.state === 'failed' ? 'Indexing failed' + (s2.error ? ': ' + s2.error : '') : 'Indexed: ' + s2.videos + ' videos, ' + s2.matched + ' matched', 5000);
+                        });
+                        renderSettings();
+                    } else if (v === 'remove') {
+                        confirm('Remove “' + f.name + '”? Its index goes too; the folder itself isn’t touched.', 'Remove', function () { NetFolders.remove(f.id); markHomeDirty(); renderSettings(); });
+                    }
+                });
+            };
+            if (_focusChild === 'nf:' + f.id) { focus = r; }
+            wrap.appendChild(r);
+        });
+        wrap.appendChild(U.el('div', 'hint', 'A NAS (Synology, QNAP), Nextcloud, or a computer running rclone (rclone serve webdav). Home › Local shows each folder; its videos play as they are (nothing converted), so the TV must play their format.'));
+        if (focus) { _focusChild = null; Focus.setScope(scr('settings'), focus); } else { focusSettings(); }
+    }
+    function netFolderLine(f) {
+        if (f.off) { return f.url + '   ·   its sources set aside, its index kept'; }
+        var st = LocalMedia.status(NetFolders.driveOf(f));
+        return f.url + (f.user ? '   ·   as ' + f.user : '') + (f.cert ? '   ·   its certificate trusted' : '') + '   ·   ' + usbDriveLine(st).replace('listing the drive', 'listing the folder').replace('a very large drive', 'a very large folder');
+    }
+    function askNetAddress(value) {
+        App.openEntry({
+            title: 'Network folder: address',
+            hint: 'Its WebDAV address, like http://192.168.0.50:8080/media (https:// too). RETURN cancels.',
+            value: value || 'http://', placeholder: 'http://192.168.0.50:8080/media', phone: 'webdav',
+            validate: function (v) { return NetFolders.addressProblem(v); },
+            onConfirm: function (url) {
+                App.back();
+                App.openEntry({
+                    title: 'Network folder: user name', hint: 'The user name it asks for; leave it empty if it asks for none. RETURN cancels.', value: '', placeholder: 'user name',
+                    validate: function () { return null; },
+                    onConfirm: function (user) {
+                        App.back();
+                        if (!('' + user).trim()) { netProbe(url, '', '', ''); return; }
+                        App.openEntry({
+                            title: 'Network folder: password', hint: 'Its password (kept on the TV, sent only to that folder). RETURN cancels.', value: '', placeholder: 'password', secret: true,
+                            validate: function () { return null; },
+                            onConfirm: function (pass) { App.back(); netProbe(url, ('' + user).trim(), '' + pass, ''); }
+                        });
+                    }
+                });
+            }
+        });
+    }
+    // Ask the folder with that sign-in; a certificate it made itself: asked about first.
+    function netProbe(url, user, pass, cert) {
+        U.spinner(true, 'Asking the folder…');
+        NetFolders.probe(url, user, pass, cert).then(function (p) {
+            U.spinner(false);
+            var f;
+            try { f = NetFolders.add(p); } catch (e) { U.toast(e.message, 5000); return; }
+            markHomeDirty();
+            _settingsSection = 'netfolders';
+            _focusChild = 'nf:' + f.id;
+            renderSettings();
+            U.toast('✓ Added “' + f.name + '”: Home › Local shows it', 5000);
+        }, function (e) {
+            U.spinner(false);
+            if (e && e.why === 'untrusted' && e.cert && !cert) {
+                confirm('“' + url + '”: trust this certificate? It isn’t from a known authority (one the folder made itself?)' + (e.name ? ', for ' + e.name : '') + (e.until ? ', until ' + e.until : '') +
+                    '. Its fingerprint (SHA-256): ' + e.fp + '. StremioK then accepts this certificate only, for this folder.', 'Trust this certificate', function () { netProbe(url, user, pass, e.cert); }, { noLabel: 'Cancel', plain: true });
+                return;
+            }
+            U.toast((e && e.message) || 'It failed', 7000);
+            if (_settingsSection === 'netfolders') { renderSettings(); }
+        });
+    }
+
     function settingsUsb(wrap) {
         wrap.appendChild(U.el('h2', null, 'USB drive'));
         if (typeof LocalMedia === 'undefined' || !LocalMedia.available()) {
@@ -1984,7 +2098,7 @@
             focusSettings();
             return;
         }
-        var ds = LocalMedia.knownDrives(), first = null;
+        var ds = LocalMedia.knownDrives().filter(function (d) { return !d.dav; }), first = null;   // (network folders: their own page)
         if (!ds.length) { wrap.appendChild(U.el('div', 'hint', 'No USB drive plugged in.')); }
         ds.forEach(function (d) {
             var r = U.el('div', 'addon-item focusable');

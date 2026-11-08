@@ -8,7 +8,10 @@
      opens, and a drive is indexed (StremioK's service walks it: which videos and subtitle
      files it has, so title pages know what's on it) only when you ask; the last index is kept.
    - Subtitle files next to a video (Film.srt, Film.en.srt…) are its subtitles, read through the
-     service; with a match, subtitle addons are asked with the file's OpenSubtitles hash too. */
+     service; with a match, subtitle addons are asked with the file's OpenSubtitles hash too.
+   - A network folder (NetFolders: WebDAV) is a drive too ({ label, root: 'dav:<id>', dav }):
+     listed and indexed through the service, its files played from their links (openUrl adds
+     its sign-in), its subtitle files read by the service; no downloads or file hash. */
 var LocalMedia = (function () {
     'use strict';
 
@@ -21,7 +24,7 @@ var LocalMedia = (function () {
     var FIX_KEY = 'stremiok.local.fixes';       // a file (or a show) -> your own match | { none }
     var INDEX_KEY = 'stremiok.local.index.';    // + a drive's root (the TV's database): { label, at, files, subs }, one per drive
     var INDEXES_KEY = 'stremiok.local.indexes'; // the drives with one kept: root -> when (the INDEXES_MAX latest)
-    var INDEXES_MAX = 4;
+    var INDEXES_MAX = 8;   // (USB drives and network folders)
     var HIDDEN_KEY = 'stremiok.local.hidden';
     var MATCHES_MAX = 3000, FIXES_MAX = 2000, NONE_RETRY_MS = 7 * 86400000;
     var LIST_MAX = 3000, FS_WAIT = 10000, WALK_WAIT = 150000;
@@ -79,20 +82,27 @@ var LocalMedia = (function () {
     // Where the token can't be read (Tizen 6: the service keeps it in a folder of its own), the
     // service takes StremioK's X-StremioK header instead (a web page can't send one).
     var NO_TOKEN = { 'X-StremioK': '1' };
-    function svcHeaders(token) { return token ? null : NO_TOKEN; }
+    function svcHeaders(token, extra) {
+        if (!extra) { return token ? null : NO_TOKEN; }
+        var h = {};
+        Object.keys(extra).forEach(function (k) { h[k] = extra[k]; });
+        if (!token) { h['X-StremioK'] = '1'; }
+        return h;
+    }
     // The service running and its token read (for the subtitle files' links): resolves either way.
     function ready() {
         if (!service()) { return Promise.resolve(false); }
         return YTPlay.ensureService().then(function () { return readToken(); }).then(function () { return true; }, function () { return false; });   // (no token: its header)
     }
-    function askService(path, timeout, max, cancel) {
+    // extra: headers of its own (a network folder's sign-in: NetFolders).
+    function askService(path, timeout, max, cancel, extra) {
         if (!service()) { return Promise.reject(new Error('no StremioK service here')); }
         return YTPlay.ensureService().then(function () { return readToken(); }).then(function (t) {
-            return U.getJSON(svcUrl(path, t), timeout, max, cancel, svcHeaders(t)).then(null, function (e) {
+            return U.getJSON(svcUrl(path, t), timeout, max, cancel, svcHeaders(t, extra)).then(null, function (e) {
                 if (!/HTTP 403\b/.test((e && e.message) || '')) { throw e; }
                 return readToken(true).then(function (t2) {
                     if (!t2 || t2 === t) { throw e; }
-                    return U.getJSON(svcUrl(path, t2), timeout, max, cancel, svcHeaders(t2));
+                    return U.getJSON(svcUrl(path, t2), timeout, max, cancel, svcHeaders(t2, extra));
                 });
             });
         });
@@ -146,8 +156,11 @@ var LocalMedia = (function () {
         return _drivesP;
     }
     function drives() { return _drives ? Promise.resolve(_drives) : refreshDrives(); }
-    function knownDrives() { return _drives || []; }
-    function hasDrive() { return !!(_drives && _drives.length); }
+    function netDrives() { return typeof NetFolders !== 'undefined' ? NetFolders.drives() : []; }
+    function isNet(d) { return !!(d && d.dav); }
+    // The USB drives read, then the network folders that are on.
+    function knownDrives() { return (_drives || []).concat(netDrives()); }
+    function hasDrive() { return knownDrives().length > 0; }
     function driveOf(abs) {
         var ds = knownDrives();
         for (var i = 0; i < ds.length; i++) { if (abs === ds[i].root || abs.indexOf(ds[i].root + '/') === 0) { return ds[i]; } }
@@ -173,16 +186,38 @@ var LocalMedia = (function () {
         U.crumb('usb: plugged in?');
         usbStorages().then(function (l) { _present = l.length; listen(); if (_present) { emit('drives'); } }, function () { listen(); });
     }
-    function present() { return _present > 0; }
+    function present() { return _present > 0 || netDrives().length > 0; }
+    // Resolves every drive (USB ones, then network folders), each one's saved index loaded.
     function ensure() {
-        if (!fsApi()) { return Promise.resolve([]); }
         if (_ensured) { return _ensured; }
-        _ensured = refreshDrives().then(function (ds) {
+        var usb = !fsApi() ? Promise.resolve([]) : refreshDrives().then(function (ds) {
             listen();
             if (service() && ds.length) { YTPlay.ensureService().then(function () { return readToken(); }).then(null, function () {}); }   // (for a big file's link: openUrl)
-            return Promise.all(ds.map(loadIndex)).then(function () { _read = true; emit('drives'); return ds; });
+            return ds;
+        });
+        _ensured = usb.then(function () {
+            var all = knownDrives();
+            return Promise.all(all.map(loadIndex)).then(function () { _read = true; emit('drives'); return all; });
         });
         return _ensured;
+    }
+    // A network folder added, removed, turned on or off: its index loaded (or set aside), the
+    // titles' sources made again.
+    function netChanged() {
+        var ds = netDrives();
+        Promise.all(ds.map(loadIndex)).then(function () { rebuild(); emit('drives'); emit('index'); });
+    }
+    // A network folder removed: its index deleted (here and kept on the TV).
+    function forgetDrive(root) {
+        if (!/^dav:/.test(root)) { return; }
+        _gen[root] = (_gen[root] || 0) + 1;
+        if (_cancel[root]) { _cancel[root].cancel(); delete _cancel[root]; }
+        delete _scanning[root]; delete _status[root]; delete _index[root];
+        if (U.bigStore) { U.bigStore.remove(INDEX_KEY + root); }
+        var kept = U.store.get(INDEXES_KEY, {}) || {};
+        if (kept[root]) { delete kept[root]; U.store.set(INDEXES_KEY, kept); }
+        rebuild();
+        emit('index'); emit('status');
     }
     function isRead() { return _read; }
     function listen() {
@@ -196,7 +231,7 @@ var LocalMedia = (function () {
                 }
                 _drives = null;
                 refreshDrives().then(function (ds) {
-                    Object.keys(_index).forEach(function (root) { if (!ds.some(function (d) { return d.root === root; })) { delete _index[root]; } });
+                    Object.keys(_index).forEach(function (root) { if (!/^dav:/.test(root) && !ds.some(function (d) { return d.root === root; })) { delete _index[root]; } });
                     return Promise.all(ds.map(loadIndex));
                 }).then(function () {
                     rebuild();
@@ -233,6 +268,7 @@ var LocalMedia = (function () {
     // A folder of a drive (rel '' its top): { entries: [{ name, dir, size, rel, abs, uri, bad? }],
     // via? 'service' } — the TV's own listing, else (Tizen 3 failing a whole folder) the service's.
     function list(drive, rel) {
+        if (isNet(drive)) { return NetFolders.list(drive.dav, rel); }
         rel = (rel || '').replace(/^\/+|\/+$/g, '');
         var vpath = drive.label + (rel ? '/' + rel : ''), abs = drive.root + (rel ? '/' + rel : '');
         function viaService(why) {
@@ -430,17 +466,22 @@ var LocalMedia = (function () {
     }
     // Forget the drives' indexes (here and kept on the TV): title pages stop offering their files
     // until a drive is indexed again.
+    // (the USB drives' only: a network folder keeps its own, see forgetDrive)
     function clearIndex() {
-        Object.keys(_scanning).forEach(function (root) { _gen[root] = (_gen[root] || 0) + 1; });   // (indexing now: stopped, nothing saved)
-        Object.keys(_cancel).forEach(function (root) { _cancel[root].cancel(); });
-        _scanning = {}; _cancel = {};
-        _index = {}; _status = {};
+        function usb(root) { return !/^dav:/.test(root); }
+        Object.keys(_scanning).filter(usb).forEach(function (root) { _gen[root] = (_gen[root] || 0) + 1; });   // (indexing now: stopped, nothing saved)
+        Object.keys(_cancel).filter(usb).forEach(function (root) { _cancel[root].cancel(); delete _cancel[root]; });
+        Object.keys(_scanning).filter(usb).forEach(function (root) { delete _scanning[root]; });
+        Object.keys(_index).filter(usb).forEach(function (root) { delete _index[root]; });
+        Object.keys(_status).filter(usb).forEach(function (root) { delete _status[root]; });
         rebuild();
+        var kept = U.store.get(INDEXES_KEY, {}) || {};
         if (U.bigStore) {
-            Object.keys(U.store.get(INDEXES_KEY, {}) || {}).forEach(function (root) { U.bigStore.remove(INDEX_KEY + root); });
+            Object.keys(kept).filter(usb).forEach(function (root) { U.bigStore.remove(INDEX_KEY + root); });
             U.bigStore.remove('stremiok.local.index');   // (1.9.0–1.9.3 kept every drive's in one)
         }
-        U.store.remove(INDEXES_KEY);
+        Object.keys(kept).filter(usb).forEach(function (root) { delete kept[root]; });
+        if (Object.keys(kept).length) { U.store.set(INDEXES_KEY, kept); } else { U.store.remove(INDEXES_KEY); }
         emit('index'); emit('status');
     }
     function forgetMatches() { U.store.remove(MATCH_KEY); U.store.remove(FIX_KEY); rebuild(); emit('matches'); }
@@ -520,6 +561,7 @@ var LocalMedia = (function () {
     // Walk a drive: the service in one go (its own file access), else folder by folder here.
     // cancel: stopping it (Stop, Clear) closes the request, and the service stops walking.
     function walk(drive, cancel) {
+        if (isNet(drive)) { return NetFolders.walk(drive.dav, cancel); }
         return askService('/fswalk?path=' + encodeURIComponent(drive.root), WALK_WAIT, 8 * 1024 * 1024, cancel).then(function (r) {
             return { files: U.listOf(r && r.files, 20000, function (f) { return f && typeof f.p === 'string'; }), truncated: !!(r && r.truncated) };
         }, function (e) {
@@ -711,11 +753,12 @@ var LocalMedia = (function () {
         });
     }
     function subTrack(drive, s, lang, label) {
-        var subPath = '/fssub?path=' + encodeURIComponent(drive.root + '/' + s);
-        var track = { id: 'file:' + s, lang: lang, _addon: label, _file: nameOf(s) };
+        var net = isNet(drive) ? drive.dav : null;
+        var subPath = net ? NetFolders.subPath(net, s) : '/fssub?path=' + encodeURIComponent(drive.root + '/' + s);
+        var track = { id: (net ? 'dav:' + net.id + ':' : 'file:') + s, lang: lang, _addon: label, _file: nameOf(s) };
         // (its link with the token as it is when used: read once the service is up)
         Object.defineProperty(track, 'url', { enumerable: true, get: function () { return svcUrl(subPath, _token); } });
-        Object.defineProperty(track, 'headers', { enumerable: false, get: function () { return svcHeaders(_token); } });   // (no token: its header)
+        Object.defineProperty(track, 'headers', { enumerable: false, get: function () { return svcHeaders(_token, net ? NetFolders.headers(net) : null); } });   // (no token: its header; a folder's sign-in)
         return track;
     }
     // A subtitle file of its own: its language when its name says one StremioK knows (after its
@@ -740,11 +783,14 @@ var LocalMedia = (function () {
     }
     var _recent = U.lru(200);   // url -> a source made here lately (Continue Watching's resume finds it)
     function makeStream(drive, file, subs, uri) {
-        var abs = drive.root + '/' + file.p, name = nameOf(file.p), url = uri || fileUri(abs);
-        var st = { name: '💾 USB drive', title: name + (file.size ? '\n💾 ' + humanSize(file.size) : ''), url: url,
+        var net = isNet(drive) ? drive.dav : null;
+        var abs = net ? NetFolders.fileUrl(net, file.p) : drive.root + '/' + file.p, name = nameOf(file.p), url = net ? abs : (uri || fileUri(abs));
+        var icon = net ? '🌐' : '💾';
+        var st = { name: icon + (net ? ' Network folder' : ' USB drive'), title: name + (file.size ? '\n' + icon + ' ' + humanSize(file.size) : ''), url: url,
             behaviorHints: { filename: name, videoSize: file.size || undefined, bingeGroup: 'stremiok-local' },
-            _addon: 'Your USB drive', _local: MARK, _localSubs: subs || subsInIndex(drive, file.p),
+            _addon: net ? 'Your network folder' : 'Your USB drive', _local: MARK, _localSubs: subs || subsInIndex(drive, file.p),
             _localFile: { abs: abs, rel: file.p, size: file.size || 0, name: name } };
+        if (net) { st._localFile.dav = net.id; }
         _recent.set(url, st);
         return st;
     }
@@ -753,14 +799,17 @@ var LocalMedia = (function () {
     // read past 2 GB of a file straight from the drive (playing from the start goes, every jump
     // stalls) —, else the file itself. The source's own link stays the file's (its identity).
     var BIG = 2147483647;
+    // A network folder's file: its link with the folder's sign-in (NetFolders.playUrl).
     function openUrl(url, size) {
+        if (typeof NetFolders !== 'undefined' && /^https?:/i.test(url || '')) { var nu = NetFolders.playUrl(url); if (nu) { return nu; } }
         if (!/^file:\/\/\/opt\/media\//i.test(url || '')) { return url; }
         var abs = realPath(url);
         if (!size) { var hit = _recent.get(url); size = hit && hit._localFile ? hit._localFile.size : 0; }
         if (!(size > BIG) || !_token || !service()) { return url; }
         return svcUrl('/fsfile?path=' + encodeURIComponent(abs), _token);
     }
-    function isLocalStream(s) { return !!(s && s._local === MARK && typeof s.url === 'string' && /^file:\/\/\/opt\/media\//i.test(s.url)); }
+    function isFolderUrl(url) { return typeof NetFolders !== 'undefined' && !!NetFolders.folderOfUrl(url); }
+    function isLocalStream(s) { return !!(s && s._local === MARK && typeof s.url === 'string' && (/^file:\/\/\/opt\/media\//i.test(s.url) || isFolderUrl(s.url))); }
     // The files on your drives for a movie (tt…) or an episode (tt…:1:2), as sources.
     function streamsFor(type, id) {
         if ((type !== 'movie' && type !== 'series') || !/^tt\d+(:\d+:\d+)?$/.test('' + id)) { return []; }
@@ -775,20 +824,26 @@ var LocalMedia = (function () {
             subsInIndex(x.drive, x.file.p).forEach(function (t) {
                 if (seen[t.id]) { return; }
                 seen[t.id] = 1;
-                t._addon = 'Your USB drive';
+                t._addon = isNet(x.drive) ? 'Your network folder' : 'Your USB drive';
                 out.push(t);
             });
         });
         (_subsById[id] || []).forEach(function (x) {   // (subtitle files of their own, matched to it)
             if (seen['file:' + x.rel]) { return; }
             seen['file:' + x.rel] = 1;
-            out.push(subTrack(x.drive, x.rel, langOfName(x.rel), 'Your USB drive'));
+            out.push(subTrack(x.drive, x.rel, langOfName(x.rel), isNet(x.drive) ? 'Your network folder' : 'Your USB drive'));
         });
         return out;
     }
     // A local file's source again from its link (Continue Watching), on whichever drive has it now.
     function streamForUrl(url) {
         if (_recent.get(url)) { return _recent.get(url); }
+        var nf = typeof NetFolders !== 'undefined' ? NetFolders.folderOfUrl(url) : null;
+        if (nf) {   // (a network folder's file: its index's size, where it has it)
+            var nd = NetFolders.driveOf(nf), nrel = NetFolders.relOf(nf, url), nx = _index[nd.root];
+            var nfile = (nx && nx.files.filter(function (y) { return y.p === nrel; })[0]) || { p: nrel, size: 0 };
+            return makeStream(nd, nfile);
+        }
         var abs = realPath(url), d = driveOf(abs);
         if (!/^\/opt\/media\//.test(abs)) { return null; }
         var rel = d ? abs.slice(d.root.length + 1) : abs.replace(/^\/opt\/media\/[^\/]+\//, '');
@@ -807,6 +862,7 @@ var LocalMedia = (function () {
     function subtitleExtra(localFile) {
         if (!localFile || !localFile.abs) { return Promise.resolve(null); }
         var base = { videoSize: localFile.size || undefined, filename: localFile.name };
+        if (localFile.dav) { return Promise.resolve(base); }   // (a network folder's: no hash)
         if (!_hashes[localFile.abs]) {
             _hashes[localFile.abs] = within(askService('/fshash?path=' + encodeURIComponent(localFile.abs), 8000, 4096), 9000, 'hash').then(function (r) {
                 return r && /^[0-9a-f]{16}$/.test(r.hash) ? r : null;
@@ -843,15 +899,25 @@ var LocalMedia = (function () {
         return m ? { size: +m[1], rel: m[2] } : { size: 0, rel: ('' + id).replace(/^local:/, '') };   // ('local:<path>': 1.9.0–1.9.2)
     }
     // fromStart: Play from start (Continue Watching), from 0:00.
+    // (a network folder's file: "@dav:<folder>/<path>" as its path, see resumePlain)
+    function plainRel(f) { return f.dav ? '@dav:' + f.dav + '/' + f.rel : f.rel; }
     function playPlain(st, onExit, id, fromStart) {
         var f = st._localFile;
-        Player.play({ url: st.url, type: 'movie', id: id || plainId(f.rel, f.size), name: f.name, streams: [], localSubs: st._localSubs, localFile: f, fromStart: !!fromStart || undefined }, onExit || function () {});
+        Player.play({ url: st.url, type: 'movie', id: id || plainId(plainRel(f), f.size), name: f.name, streams: [], localSubs: st._localSubs, localFile: f, fromStart: !!fromStart || undefined }, onExit || function () {});
     }
     // A plain file's Continue Watching card: on whichever drive has that file (that path, that
     // size) now.
     function resumePlain(e, onExit, fromStart) {
-        var want = parsePlainId(e.id), rel = want.rel;
+        var want = parsePlainId(e.id), rel = want.rel, dm = /^@dav:([a-z0-9]+)\/(.+)$/.exec(rel);
+        if (dm) {   // a network folder's file
+            var nf = typeof NetFolders !== 'undefined' ? NetFolders.get(dm[1]) : null;
+            if (!nf) { U.toast('The network folder with “' + nameOf(dm[2]) + '” was removed', 4000); return Promise.resolve(false); }
+            if (nf.off) { U.toast('“' + nf.name + '” is off: Settings › Content › Network folders', 4000); return Promise.resolve(false); }
+            playPlain(makeStream(NetFolders.driveOf(nf), { p: dm[2], size: want.size }), onExit, e.id, fromStart);
+            return Promise.resolve(true);
+        }
         return ensure().then(function (ds) {
+            ds = ds.filter(function (x) { return !isNet(x); });   // (a USB drive's file)
             if (!ds.length) { U.toast('Plug in the USB drive with “' + nameOf(rel) + '”', 4000); return false; }
             var d = null, f = null;
             ds.forEach(function (x) {
@@ -877,8 +943,10 @@ var LocalMedia = (function () {
         return (entries || []).some(function (x) { return !x.dir && isVideo(x.name) && !matchOf(x.rel, x.size) && !!parsedOf(x.rel); });
     }
 
+    if (typeof NetFolders !== 'undefined') { NetFolders.onChange(netChanged); }   // (netfolders.js loads first)
+
     return {
-        available: available, ready: ready, watch: watch, present: present, ensure: ensure, isRead: isRead, onChange: onChange, drives: drives, knownDrives: knownDrives, hasDrive: hasDrive, refreshDrives: refreshDrives,
+        available: available, ready: ready, watch: watch, present: present, ensure: ensure, forgetDrive: forgetDrive, isNet: isNet, isFolderUrl: isFolderUrl, isRead: isRead, onChange: onChange, drives: drives, knownDrives: knownDrives, hasDrive: hasDrive, refreshDrives: refreshDrives,
         serviceToken: function () { return readToken(); }, askService: askService, addDownloaded: addDownloaded, openUrl: openUrl, list: list, isVideo: isVideo, isSub: isSub, isHidden: isHidden, showHidden: showHidden, setShowHidden: setShowHidden, humanSize: humanSize,
         parseName: parseName, choose: choose, matchOf: matchOf, lookup: lookup, matchFolder: matchFolder, parsedOf: parsedOf, setMatch: setMatch, forgetMatches: forgetMatches, searchTitles: searchTitles,
         scan: scan, stopScan: stopScan, continueMatching: continueMatching, status: status, clearIndex: clearIndex, streamsFor: streamsFor, subsForTitle: subsForTitle, isStandaloneSub: isStandaloneSub, streamForUrl: streamForUrl, isLocalStream: isLocalStream, subtitleExtra: subtitleExtra,

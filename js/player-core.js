@@ -401,7 +401,7 @@ var PlayerParts = {};
     // is what's learned from it (s.stream, through ctx.learnFor); the title, its episodes and
     // whether it's private stay.
     var SOURCE_FIELDS = ['url', 'variantUrl', 'initialQualityHeight', 'yt', 'ytLang', '_headers', 'localSubs', 'localFile', 'subExtra', 'sourceSubs', 'formatInfo', 'onStarted', 'onFailed', 'stream',
-        '_reported', 'fromStart', 'resumeSec', 'switching', 'viaService', '_relay', '_relayFor', '_relayCc'];
+        '_reported', 'fromStart', 'resumeSec', 'switching', 'viaService', '_relay', '_relayFor', '_relayCc', '_relayFix'];
     // keep: a source that didn't start gives way to the next (nextSourceOnFail): the same place to
     // resume, and Play from the start as it was.
     function replaceSource(s, keep) {
@@ -954,6 +954,7 @@ var PlayerParts = {};
             if (loaded || !S.active || token !== _playToken) { return; }
             reportStart(false, 'TIMEOUT');
             U.spinner(false);
+            if (!drm) { U.log('player', 'Not played (the page’s video player): no start in ' + Math.round(HTML5_START_MS / 1000) + ' s (' + where(url) + ')'); }
             U.toast('This stream didn\'t start'); exitLater();
         }, drm ? SHAKA_START_MS : HTML5_START_MS);
         S.videoEl.onloadedmetadata = function () {
@@ -977,7 +978,11 @@ var PlayerParts = {};
         };
         S.videoEl.onerror = function () {
             if (!S.active || token !== _playToken || drm) { return; }   // (Shaka's own errors: see shakaLoadInto)
-            reportStart(false, S.videoEl.error && S.videoEl.error.code === 2 ? 'NETWORK' : 'MEDIA_ERR');
+            var me = S.videoEl.error, mcode = me ? me.code : 0;
+            reportStart(false, mcode === 2 ? 'NETWORK' : 'MEDIA_ERR');
+            // (the page's player says little: its code, and a message where the engine has one)
+            U.log('player', (loaded ? 'Stopped' : 'Not played') + ' (the page’s video player): ' + (['', 'aborted', 'a network error', 'the file couldn’t be decoded', 'a format or link it can’t play'][mcode] || 'an error') +
+                (me && me.message ? ' (' + me.message + ')' : '') + ' (' + where(url) + ')');
             U.toast('Playback error'); exitLater();
         };
         if (drm) {
@@ -1352,24 +1357,33 @@ var PlayerParts = {};
     // there, remembered for the channel, or in your default subtitle language), the channel plays
     // through the relay with them as subtitle tracks (ctx._relayCc), the sound as it is unless it
     // needs repacking too.
-    var LIVE_KEY = 'stremiok.livefix', LIVE_KEEP = 300, LIVE_DAYS = 14;
+    // Your own choice for a channel (the audio menu: its sound straight from the server or repacked,
+    // setLiveSound) is kept as its answer (mine), a year, over the look's.
+    var LIVE_KEY = 'stremiok.livefix', LIVE_KEEP = 300, LIVE_DAYS = 14, LIVE_MINE_DAYS = 365;
     function liveFixable(ctx) {
         return useAV && S.isLive && !!ctx && !ctx.yt && !ctx.trailer && !(ctx.stream && ctx.stream._drm) && /^https?:\/\//i.test(ctx.url || '') &&
             typeof YTPlay !== 'undefined' && !!YTPlay.liveOpen && YTPlay.installMode() !== 'browser';
     }
     function liveKnown(url) {
         var k = (U.store.get(LIVE_KEY, {}) || {})[url];
-        return (k && Date.now() - k.at < LIVE_DAYS * 86400000) ? k : null;
+        return (k && Date.now() - k.at < (k.mine ? LIVE_MINE_DAYS : LIVE_DAYS) * 86400000) ? k : null;
     }
     // The caption channels kept for a link: [{ ch: 'CC1', lang: 'en' }], or null (not known yet).
     function ccOf(k) {
         if (!k || !Array.isArray(k.cc)) { return null; }
         return k.cc.filter(function (c) { return c && /^CC[1-4]$/.test(c.ch) && (!c.lang || /^[a-z]{2,3}$/.test(c.lang)); }).slice(0, 4);
     }
-    function liveKeep(url, fix, cc) {
-        var all = U.store.get(LIVE_KEY, {}) || {};
+    // hls: whether its sound can be repacked at all (HLS of plain MPEG-TS segments, or a raw MPEG-TS
+    // stream: raw, with AAC sound, as the look found; not encrypted or fMP4 ones), kept with it,
+    // with the look's version (lv: one kept by an older look is looked at again).
+    var LIVE_LOOK = 2;
+    function liveKeep(url, fix, cc, mine, hls, raw) {
+        var all = U.store.get(LIVE_KEY, {}) || {}, prev = all[url];
         all[url] = { fix: fix ? 1 : 0, at: Date.now() };
         if (cc) { all[url].cc = cc; }
+        if (mine || (prev && prev.mine && !!prev.fix === !!fix)) { all[url].mine = 1; }   // (yours stays yours)
+        if (hls !== undefined) { all[url].hls = hls ? 1 : 0; all[url].lv = LIVE_LOOK; if (raw) { all[url].raw = 1; } }
+        else if (prev && prev.hls !== undefined) { all[url].hls = prev.hls; if (prev.lv) { all[url].lv = prev.lv; } if (prev.raw) { all[url].raw = 1; } }
         var keys = Object.keys(all);
         if (keys.length > LIVE_KEEP) {
             keys.sort(function (a, b) { return all[a].at - all[b].at; }).slice(0, keys.length - LIVE_KEEP).forEach(function (k) { delete all[k]; });
@@ -1386,11 +1400,42 @@ var PlayerParts = {};
         return cc.some(function (c) { return c.lang && langs.some(function (l) { return P.langMatches(l, c.lang); }); });
     }
     function ccIndex(cc, w) { for (var i = 0; i < cc.length; i++) { if (cc[i].ch === w.ch) { return i; } } return 0; }
-    function relayed(ctx, r, cc) {
+    // fix: the sound repacked through it (not only captions).
+    function relayed(ctx, r, cc, fix) {
         if (!r || typeof r.url !== 'string' || !/^http:\/\/localhost:\d+\/live\//.test(r.url)) { return false; }
-        ctx._relay = r.url; ctx._relayFor = ctx.url; ctx._relayCc = cc || null; ctx._ccOffer = cc ? null : ctx._ccOffer;
+        ctx._relay = r.url; ctx._relayFor = ctx.url; ctx._relayCc = cc || null; ctx._ccOffer = cc ? null : ctx._ccOffer; ctx._relayFix = !!fix;
         return true;
     }
+    // The audio menu's choice for a live channel (where its sound can be repacked: liveFixable):
+    // null, or { repacked, mine }.
+    // Only for a channel known to be repackable: an HLS link or format, or the look found HLS
+    // segments (a raw MPEG-TS stream, an Xtream account's default, can't go through the relay).
+    function liveSound() {
+        var ctx = S.ctx;
+        if (!S.active || !ctx || !liveFixable(ctx)) { return null; }
+        var known = liveKnown(ctx.url);
+        var hls = known && known.hls !== undefined ? known.hls === 1 : (HLS_LINK.test(ctx.url) || !!(ctx.formatInfo && ctx.formatInfo.container === 'hls'));
+        if (!hls) { return null; }
+        return { repacked: !!(ctx._relay && ctx._relayFix), mine: !!(known && known.mine) };
+    }
+    // Your choice: the channel again, its sound repacked by the service's relay or straight from
+    // the server (captions through the relay stay), kept for it (liveKeep, mine).
+    function setLiveSound(repack) {
+        var ctx = S.ctx;
+        if (!S.active || !ctx || !liveFixable(ctx)) { return; }
+        var known = liveKnown(ctx.url), cc = ctx._relayCc || null, raw = !!(known && known.raw);
+        liveKeep(ctx.url, repack, known ? ccOf(known) : null, true);   // (its hls answer kept)
+        U.log('player', 'Live sound ' + (repack ? 'repacked by StremioK\'s service' : 'straight from the server') + ': your choice for this channel');
+        var msg = repack ? 'Repacking this channel’s sound…' : 'Playing the sound straight from the server…';
+        if (!repack && !cc) { ctx._relay = null; ctx._relayFor = null; ctx._relayFix = false; reopen(msg); return; }
+        function failed() { if (S.ctx === ctx && S.active) { U.toast('StremioK’s service didn’t answer: the sound stays as it was', 5000); } }
+        YTPlay.liveOpen(ctx.url, ctx._headers, true, { fix: !!repack, cc: raw ? null : cc, raw: raw }).then(function (r) {
+            if (S.ctx !== ctx || !S.active) { return; }
+            if (!relayed(ctx, r, cc, repack)) { failed(); return; }
+            reopen(msg);
+        }, failed);
+    }
+    P.liveSound = liveSound; P.setLiveSound = setLiveSound;
     // HLS through StremioK's service (Settings › Playback › Seeking & buffering: 'off' | 'headers':
     // sources with their own User-Agent, Referer or Cookie | 'all'; or ctx.viaService, hold OK on a
     // source): the relay without the look, so every playlist and piece is fetched with the source's
@@ -1411,7 +1456,7 @@ var PlayerParts = {};
         var live = !!S.isLive, known = live && liveFixable(ctx) ? liveKnown(ctx.url) : null;
         YTPlay.liveOpen(ctx.url, ctx._headers, true, { fix: !!(known && known.fix), film: !live }).then(function (r) {
             if (S.ctx !== ctx || !S.active) { return; }
-            relayed(ctx, r, null);
+            relayed(ctx, r, null, !!(known && known.fix));
             startAV(ctx.url, settle);
         }, function () { if (S.ctx === ctx && S.active) { startAV(ctx.url, settle); } });
     }
@@ -1422,9 +1467,9 @@ var PlayerParts = {};
         var withCc = ccWanted(ctx, cc) ? cc : null;
         if (cc) { ctx._liveChecked = true; }   // (both answers in: not asked again)
         if (!known || (!known.fix && !withCc)) { startAV(ctx.url, settle); return; }
-        YTPlay.liveOpen(ctx.url, ctx._headers, true, { fix: !!known.fix, cc: withCc }).then(function (r) {
+        YTPlay.liveOpen(ctx.url, ctx._headers, true, { fix: !!known.fix, cc: withCc, raw: !!known.raw }).then(function (r) {
             if (S.ctx !== ctx || !S.active) { return; }
-            relayed(ctx, r, withCc);
+            relayed(ctx, r, withCc, !!known.fix);
             startAV(ctx.url, settle);
         }, function () { if (S.ctx === ctx && S.active) { startAV(ctx.url, settle); } });
     }
@@ -1439,7 +1484,7 @@ var PlayerParts = {};
         if (!ctx || ctx._liveChecked || !liveFixable(ctx)) { return; }
         ctx._liveChecked = true;
         var known = liveKnown(ctx.url);
-        if (known && ccOf(known)) { return; }
+        if (known && ccOf(known) && known.lv === LIVE_LOOK) { return; }   // (one kept by an older look: looked at again, once)
         var url = ctx.url;
         stopLiveLook();
         var look = _liveLook = U.cancelToken();
@@ -1447,11 +1492,12 @@ var PlayerParts = {};
             if (_liveLook === look) { _liveLook = null; }
             if (!r || !r.sure) { return; }   // (couldn't tell: asked again next time)
             var cc = (r.ccSure || r.cc === undefined) ? (ccOf(r) || []) : null, fix = known ? !!known.fix : !!r.fix;   // (captions with no text yet: asked again next time; the sound's answer: as first found)
-            liveKeep(url, fix, cc);
+            var hls = !/not an HLS playlist|no variant|encrypted or fMP4|not MPEG-TS|no AAC sound|clock is on the sound/i.test(r.why || '');   // (repackable: its AAC sound reached)
+            liveKeep(url, fix, cc, false, hls, !!r.raw);
             if (S.ctx !== ctx || !S.active || ctx.url !== url) { return; }
             if (cc && cc.length && !ctx._relayCc) { ctx._ccOffer = cc; }
             if (cc && cc.length && ccWanted(ctx, cc)) { ccOn(ctx, 'Adding this channel’s captions…'); return; }
-            if (known || !fix || ctx._relay || !relayed(ctx, r, null)) { return; }   // (the sound: restarted for on its first look only)
+            if (known || !fix || ctx._relay || !relayed(ctx, r, null, true)) { return; }   // (the sound: restarted for on its first look only)
             U.log('player', 'Live sound repacked by StremioK\'s service (' + (r.why || '') + ')');
             reopen('Fixing this channel’s sound…');
         }, function () {});
@@ -1463,7 +1509,7 @@ var PlayerParts = {};
         var known = liveKnown(ctx.url), cc = ccOf(known) || ctx._ccOffer;
         if (!cc || !cc.length || !liveFixable(ctx)) { return Promise.resolve(false); }
         return YTPlay.liveOpen(ctx.url, ctx._headers, true, { fix: !!(known && known.fix), cc: cc }).then(function (r) {
-            if (S.ctx !== ctx || !S.active || !relayed(ctx, r, cc)) { return false; }
+            if (S.ctx !== ctx || !S.active || !relayed(ctx, r, cc, !!(known && known.fix))) { return false; }
             var w = want || cc.filter(function (c) { return ccWanted(ctx, [c]); })[0] || null;
             U.log('player', 'Live captions through StremioK\'s service (' + cc.map(function (c) { return c.ch; }).join(', ') + ')');
             reopen(message);
@@ -1602,6 +1648,7 @@ var PlayerParts = {};
             shakaStop();
             try { S.videoEl.pause(); } catch (e3) {}
             S.videoEl.removeAttribute('src');
+            try { S.videoEl.load(); } catch (e4) {}   // (src removed alone doesn't release the file: it stayed loaded, playable behind the menus)
             S.videoEl.className = '';
         }
         useAV = hasAV; P.useAV = hasAV;   // (the next playback the TV's player's, unless it's ClearKey too)

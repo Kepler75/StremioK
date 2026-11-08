@@ -472,12 +472,13 @@ channels where it gives one; the rest is read from the source's name and file.
   replace it, and the spinner and any error are for the channel chosen last. A channel number
   waits a second and a half for a second digit.
 - **Choppy sound:** some servers cut a channel's sound (AAC) into pieces that don't start at a
-  whole frame. Once an HLS channel plays, StremioK's service looks at the start of one of its
-  segments; when its sound is cut that way, the channel restarts through the service, which
-  repacks the sound (whole frames, each with its own time) and passes the picture as it is.
-  Remembered per channel link for two weeks. Not for encrypted streams or sound it can't read.
-  A look still under way stops when you switch channel or close the player, its downloads in the
-  service with it (zapping doesn't pile them up).
+  whole frame. Once a channel plays, StremioK's service looks at the start of one of its HLS
+  segments, or of a raw MPEG-TS stream; when its sound is cut that way, the channel restarts
+  through the service, which repacks it (see [Live relay](#live-relay)).
+  Remembered per channel link for two weeks; yours (the audio menu) a year. Not for
+  encrypted streams or sound it can't read.
+  A look still under way stops when you switch channel or close the player, with its downloads
+  (zapping doesn't pile them up).
 - **Closed captions:** the same look says which caption channels (CC1–CC4) have text, and their
   language (English, Spanish, Portuguese) from its words; none yet: asked next time. On,
   the channel plays through the [relay](#live-relay), as subtitle tracks. HLS only: a plain
@@ -620,6 +621,21 @@ them.
   from its name, no indexing again). Downloads use their own up-to-date list of trusted
   certificates (the 2017 TV's own is too old for many servers).
 
+## Network folders
+
+- **WebDAV:** listed with `PROPFIND`, one level at a time, always through StremioK's service (no
+  CORS rules, and certificates checked as below). Basic sign-in only.
+- **The service keeps nothing:** each request names the folder's address in its link and carries
+  the sign-in (and a trusted certificate) in headers, never in a link.
+- **Certificates:** checked against the bundled list. One no known authority signed is read
+  from a handshake with checking off (nothing sent) for the app to ask about; trusted, it's the
+  only one the service accepts for that folder (not its name). The TV's player checks its own
+  way (the Tizen 6 TV's takes self-made ones).
+- **Playing:** the player gets the file's link with the user name and password in it
+  (`https://user:password@…`), made as it starts. Sources, Continue Watching and Diagnostics keep
+  the link without them.
+- **Otherwise as a USB drive** (one index per folder), without downloads or the file hash.
+
 ## Media servers
 
 - **Their API:** Jellyfin 10.9 or newer, Emby 4.7 or newer (`/System/Info/Public` says which).
@@ -628,11 +644,12 @@ them.
   a link the player opens carries the sign-in as `ApiKey` or `api_key`. Quick Connect asks every 3
   seconds, for 10 minutes.
 - **Which titles it has:** read when a title page first needs it (films and series, their ids),
-  again after 30 minutes or a *Reload*.
+  again after 30 minutes or a *Reload*. Not read (too big or slow): a title is searched for by
+  name, taken only with the same IMDb or TMDB id.
 - **Rows:** each Movies or Shows library (`CollectionType`), by when it was added, 100 at a time;
   *Continue watching* (films) and *Next up* (a show's card, opening at that episode). A title with
   an IMDb id is a card with it (`tt…`); any other `jfm.<server>.<item>` or `jfs.<server>.<series>`.
-- **Sources:** each version of the file (`MediaSources`), from
+- **Sources:** each version of the file (`MediaSources`, else `PlaybackInfo`'s), from
   `/Videos/<item>/stream.<container>?static=true` (the file untouched); quality from the video's
   size; subtitle files next to it (`IsExternal`) as SRT; chapters when one is named.
 - **Seek pictures:** Jellyfin's `Trickplay` set nearest 320 wide; Emby's `/Videos/<item>/index.bif`
@@ -819,6 +836,7 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 | Health | `/health` | "ok": the app waits for it before playing | nothing |
 | YouTube | `/yt`, `/ytinfo`, `/ytsubs`, `/ytsb`, `/ytlist` | A video's HLS master; its audio languages, end screen, cards and chapters; its captions as WebVTT; SponsorBlock sections and DeArrow; searches, channels and playlists | local address, no `Origin` |
 | USB drives | `/fslist`, `/fswalk`, `/fssub`, `/fshash`, `/fsfile` | A folder's listing; every video and subtitle file under a folder (the index); a subtitle file as UTF-8; a video's OpenSubtitles hash; a file served with ranges | + token or header |
+| Network folders | `/dav/list`, `/dav/walk`, `/dav/sub` | A folder's listing; every video and subtitle file under it; a subtitle file as UTF-8 | + token or header |
 | Downloads | `/fsdl/add`, `list`, `cancel`, `clear`, `space` | Downloads to a USB drive, and a drive's free space | + token or header |
 | Phone page | `/entry/open`, `poll`, `close` | Opens, polls and closes the one-time page | + token or header |
 | AIOManager | `/aiom/addons` | Reads an account's addons | + token or header |
@@ -896,6 +914,15 @@ Each endpoint's parameters are described at the top of `service/index.js`.
   A walk covers up to 5,000 folders and 20,000 files, 12 levels deep, and starts nothing new
   after 90 s.
 
+### Network folders
+
+- Requests go only to the folder's server, below its address; redirects are followed on the same
+  server only, and the host rule of downloads applies.
+- `/dav/list` reads one `PROPFIND` answer up to 2 MB within 20 s, 2,000 entries. `/dav/walk`
+  covers up to 2,000 folders and 20,000 files, 12 levels deep, 4 listings at once, one walk at a
+  time, and starts nothing new after 90 s. `/dav/sub` reads a subtitle file up to 5 MB, converted
+  as `/fssub` does.
+
 ### Downloads
 
 - One at a time, up to 50 in the list, into a `….part` file renamed when complete.
@@ -940,11 +967,11 @@ rule as downloads applies.
 
 ### Live relay
 
-`/live/open` looks at the start of one of a channel's segments (up to 1.5 MB) to see whether its
-AAC sound is cut mid-frame. If it is, it returns a relay link that passes the picture as it is
-and repacks the sound into whole frames, each with its own time. At most 4 relays at a time,
-each dropped after 5 minutes unused; playlists up to 1 MB and segments up to 32 MB, 20 seconds
-each. The channel's User-Agent, Referer and Cookie are passed on, and the same host rule as
+`/live/open` looks at the start of one of a channel's segments (up to 1.5 MB), or a raw stream's
+first 1 MB, for AAC sound cut mid-frame. If it is, it returns a relay link that
+passes the picture as it is and repacks the sound into whole frames, each with its own time (a
+raw stream as it comes, `/live/<id>/t`). At most 4 relays, each dropped after 5 minutes unused;
+playlists up to 1 MB and segments up to 32 MB, 20 seconds each. The channel's User-Agent, Referer and Cookie are passed on, and the same host rule as
 downloads applies.
 
 **HLS through StremioK's service** (Settings › Playback › Seeking & buffering, or hold OK on a

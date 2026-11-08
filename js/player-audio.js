@@ -303,6 +303,15 @@
         } catch (e) { return '(unreadable: ' + trackError(e) + ')'; }
     }
 
+    // No TV player (TizenBrew: the TV gives it only to installed apps; a desktop browser): the
+    // page's <video> plays a file's first audio track whatever is chosen (the TV's engine ignores
+    // its audioTracks; checked on the Tizen 6 TV, issue 17), so the menu says so instead.
+    function cantSwitch() { return !avplay; }
+    function cantSwitchText() {
+        return (typeof YTPlay !== 'undefined' && YTPlay.installMode && YTPlay.installMode() === 'tizenbrew')
+            ? 'Under TizenBrew only a file’s first audio track plays: the TV gives its own player only to installed apps. The sideloaded app can switch.'
+            : 'Here only a file’s first audio track plays (no TV player).';
+    }
     // Tracks sorted by language (preferred languages first) and named in full, so the
     // same language's tracks sit together.
     function audioMenu() {
@@ -314,12 +323,13 @@
             var na = langName(a.k), nb = langName(b.k);
             return na !== nb ? (na < nb ? -1 : 1) : a.n - b.n;
         });
-        var idx = 0;
+        var idx = 0, stuck = cantSwitch() && tracks.length > 1;
         var items = tracks.map(function (x, i) {
             var tr = x.tr;
             if (tr.index === _audioIdx) { idx = i; }
             return { label: audioMenuLabel(tr, x.n), sel: (tr.index === _audioIdx),
                 run: function () {
+                    if (stuck) { closeMenu(); U.toast(cantSwitchText(), 6000); return; }
                     // re-picking the checked track re-applies it (see selectAudio)
                     selectAudio(tr.index, 'Audio: ' + audioLabel(tr, x.n), tr.index === _audioIdx);
                     var info = trackInfo(tr);
@@ -329,6 +339,20 @@
                     closeMenu();
                 } };
         });
+        // A live channel: its sound straight from the server, or repacked by StremioK's service
+        // (player-core's setLiveSound), after its tracks.
+        var ls = P.liveSound ? P.liveSound() : null;
+        if (ls) {
+            [[false, 'Sound: straight from the server'], [true, 'Sound: repacked by StremioK’s service']].forEach(function (o) {
+                var on = o[0] === ls.repacked;
+                items.push({ label: o[1], sel: on, detail: on && ls.mine ? 'your choice' : '', run: function () {
+                    closeMenu();
+                    if (on) { U.toast(o[1].replace('Sound: ', 'Already ') + '', 2500); return; }
+                    P.setLiveSound(o[0]);
+                } });
+            });
+        }
+        if (stuck) { return { title: 'Audio track', items: items, idx: idx, wide: true, node: U.el('div', 'sm-detail', cantSwitchText()) }; }
         return { title: 'Audio track', items: items, idx: idx };
     }
 

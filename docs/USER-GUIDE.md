@@ -19,6 +19,7 @@ How to use StremioK, task by task. Also:
 - [IPTV and radio](#iptv-and-radio)
 - [YouTube](#youtube)
 - [Your USB drive](#your-usb-drive)
+- [A network folder (WebDAV)](#a-network-folder-webdav)
 - [Your media server](#your-media-server)
 - [Trakt](#trakt)
 - [Other apps (where to watch)](#other-apps-where-to-watch)
@@ -129,6 +130,8 @@ where it came from.
   [IPTV and radio](#iptv-and-radio)).
 - **A USB drive:** plug it in and the Local tab appears (see
   [Your USB drive](#your-usb-drive)).
+- **A network folder** (Settings › Content › Network folders): a folder a NAS or computer shares
+  over WebDAV, in the Local tab too (see [A network folder](#a-network-folder-webdav)).
 
 ## Getting around
 
@@ -581,6 +584,7 @@ moves up above it.
   chosen while paused or jumping changes once the video plays on (the TV can't switch then).
 - Your choice is remembered per title; a series' next episode takes the one made last in that
   series.
+- **Under TizenBrew** only a file's first audio track plays: see [Installing](INSTALL.md#tizenbrew-has-no-tv-player).
 
 ## IPTV and radio
 
@@ -643,7 +647,8 @@ An Xtream account's films and series come with its channels, as do a Stalker por
 - **YouTube live** channels (`youtube.com`, `youtu.be` links) play too, as does an Xtream channel
   leading there.
 - **Choppy sound** on some channels is fixed on its own: the channel restarts ("Fixing this
-  channel's sound…").
+  channel's sound…"). Or choose for a channel yourself: Red › *Sound: straight from the server*
+  or *Sound: repacked by StremioK's service*, kept for that channel (not encrypted ones).
 - **Closed captions** in a channel's picture (CC1–CC4): Green lists *Closed captions (CC1)*;
   picking one restarts the channel with them. Ones in your
   default subtitle language turn on by themselves. HLS only: on Xtream, switch *Format* to HLS.
@@ -798,6 +803,32 @@ drive*, or UP › *⬇ Download* while it plays.
   file deleted), *Retry*, or *Remove from the list*.
 - Done, it's at once a source on its title page ("💾 USB drive"), matched to the title it was
   downloaded for, with its subtitle file.
+
+## A network folder (WebDAV)
+
+The Local tab also shows folders shared on your network over **WebDAV**: from a NAS (Synology,
+QNAP), Nextcloud, or a computer or Raspberry Pi running rclone (`rclone serve webdav`).
+
+### Adding one
+
+Settings › Content › **Network folders** › *Add a network folder*: its address, like
+`http://192.168.0.50:8080/media` (`https://` too), then the user name and password it asks for,
+if any. They're kept on the TV and sent only to that folder.
+
+A folder whose `https://` certificate it made itself (no known authority signed it) is asked
+about first: *Trust this certificate* shows its fingerprint, and StremioK then accepts that
+certificate only, for that folder. A new one is asked about again.
+
+### What you get
+
+- **As a USB drive:** [browsing](#browsing), [matching to titles](#matched-to-titles), its
+  [index](#indexing-a-drive) (*Index this folder*), the hold-OK menu, plain files, and
+  [subtitle files](#subtitle-files) next to a video. Its sources are **On your network folder**.
+- **Played straight from the folder** (not converted), so it must be a format the TV plays.
+- **Not:** downloads to it, or the file hash subtitle addons use to find ones made for it.
+
+OK on a folder in Settings › Content › Network folders: *Turn off* (its sources set aside, its
+index kept; *Turn on* brings them back), *Index again*, or *Remove*.
 
 ## Your media server
 

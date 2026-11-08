@@ -23,7 +23,7 @@ var Jellyfin = (function () {
     'use strict';
 
     var KEY = 'stremiok.jellyfin.servers', DEV_KEY = 'stremiok.jellyfin.device', LIBS_KEY = 'stremiok.jellyfin.libs';
-    var PAGE = 100, INDEX_FRESH_MS = 30 * 60000, INDEX_RETRY_MS = 60000, LIBS_FRESH_MS = 86400000;
+    var PAGE = 100, INDEX_FRESH_MS = 30 * 60000, INDEX_RETRY_MS = 60000, INDEX_SLOW_MS = 30 * 60000, LIBS_FRESH_MS = 86400000;
     var QC_EVERY = 3000, QC_FOR = 10 * 60000, REPORT_EVERY = 60000, TICKS = 10000000;
     var _changeFns = [];
     function onChange(fn) { _changeFns.push(fn); }
@@ -283,7 +283,7 @@ var Jellyfin = (function () {
         kind = KINDS[kind] ? kind : 'jellyfin';
         if (!_addons[kind]) {
             _addons[kind] = { __local: true, __sources: true, url: 'local:' + kind, base: 'local:' + kind,
-                __impl: { catalog: catalog, meta: meta, streams: function (type, id) { return streams(type, id, kind); } },
+                __impl: { catalog: catalog, meta: meta, streams: function (type, id, m) { return streams(type, id, kind, m); } },
                 manifest: { id: 'org.stremiok.' + kind, name: KINDS[kind].name, version: '1.0.0', types: ['movie', 'series'], resources: RESOURCES, catalogs: [] } };
         }
         fillCatalogs(kind);
@@ -426,7 +426,10 @@ var Jellyfin = (function () {
         }, function (e) {
             U.log('jellyfin', '“' + srv.name + '” (' + kindName(srv) + '): its titles couldn’t be read (' + U.problem(e) + ')');
             var old = _index[srv.id], map = (old && old.map) || { __ids: {}, __tm: {}, __played: [], __err: true };   // (__err: never read)
-            if (old && old.p === p) { _index[srv.id] = { at: Date.now() - INDEX_FRESH_MS + INDEX_RETRY_MS, map: map }; }   // (asked again in a minute)
+            // (asked again in a minute; one that timed out — a list too big or slow for one answer, as a server
+            // presenting a whole catalog has — after 30 minutes, titles looked up one at a time meanwhile: idsFor)
+            var slow = /Timed out/i.test((e && e.message) || '');
+            if (old && old.p === p) { _index[srv.id] = { at: Date.now() - INDEX_FRESH_MS + (slow ? INDEX_SLOW_MS : INDEX_RETRY_MS), map: map }; }
             return map;
         });
         _index[srv.id] = { at: x ? x.at : 0, map: x ? x.map : null, p: p };
@@ -441,7 +444,48 @@ var Jellyfin = (function () {
         if (map.__tm && map.__tm[id]) { l.push('tmdb:' + map.__tm[id]); }
         return l;
     }
-    function copies(type, id, kind) {
+    // A title the server's list can't give (never read: too big or slow for one answer, as a server
+    // presenting a whole catalog is): searched for by its name, taken only when its IMDb or TMDB id
+    // is the one asked for. Kept FOUND_MS (a failed search: asked again next time).
+    var FOUND_MS = 30 * 60000, _found = U.lru(300);
+    function lookup(srv, type, key, name) {
+        name = ('' + (name || '')).replace(/\s+/g, ' ').trim().slice(0, 100);
+        if (!name) { return Promise.resolve([]); }
+        var k = srv.id + '|' + type + '|' + key, had = _found.get(k);
+        if (had && had.p && Date.now() - had.at < FOUND_MS) { return had.p; }
+        var p = get(srv, K(srv).items(uid(srv)) + 'recursive=true&includeItemTypes=' + (type === 'movie' ? 'Movie' : 'Series') + '&searchTerm=' + enc(name) +
+            '&fields=ProviderIds&enableImages=false&enableUserData=false&limit=40').then(function (r) {
+            return U.listOf(r && r.Items, 40, function (it) { return it && it.Id && (imdbOf(it) === key || (!!tmdbOf(it) && 'tmdb:' + tmdbOf(it) === key)); }).map(function (it) { return '' + it.Id; });
+        }, function (e) {
+            _found.set(k, null);
+            U.log('jellyfin', '“' + srv.name + '”: “' + name + '” couldn’t be looked up (' + U.problem(e) + ')');
+            return [];
+        });
+        _found.set(k, { at: Date.now(), p: p });
+        return p;
+    }
+    // The server's items for a title: from its list, as before; with no list yet, or none to be
+    // had, looked up by name meanwhile (lookup), the list's answer used when that finds none.
+    function idsFor(srv, type, key, name) {
+        var x = _index[srv.id];
+        var fromList = index(srv).then(function (map) { return map[type + '|' + key] || []; });
+        if (x && x.map && !x.map.__err) { return fromList; }
+        return lookup(srv, type, key, name).then(function (ids) { return ids.length ? ids : fromList; });
+    }
+    // A film or episode listed without its files (a server presenting remote ones gives them only
+    // when asked to play it: PlaybackInfo): asked for them then.
+    function withFiles(srv, it) {
+        if (!it || !it.Id || (it.MediaSources && it.MediaSources.length)) { return Promise.resolve(it); }
+        return U.getJSON(api(srv) + '/Items/' + enc(it.Id) + '/PlaybackInfo?userId=' + uid(srv), waitMs(), 8 * 1048576, null, headers(srv, srv.token, true), '{}').then(function (r) {
+            var l = U.listOf(r && r.MediaSources, 200, function (ms) { return ms && ms.Id; });
+            return l.length ? Object.assign({}, it, { MediaSources: l }) : it;
+        }, function (e) {
+            U.log('jellyfin', '“' + srv.name + '”: the files of “' + (it.Name || it.Id) + '” couldn’t be read (' + U.problem(e) + ')');
+            return it;
+        });
+    }
+    function filesOf(srv, it) { return withFiles(srv, it).then(function (x) { return sourcesOf(srv, x); }); }
+    function copies(type, id, kind, meta) {
         var key = '', season = null, episode = null;
         if (type === 'movie') { key = /^(tt\d+|tmdb:\d+)$/.test('' + id) ? '' + id : ''; }
         else if (type === 'series') {
@@ -449,10 +493,11 @@ var Jellyfin = (function () {
             if (mm) { key = mm[1]; season = +mm[2]; episode = +mm[3]; }
         }
         if (!key) { return Promise.resolve([]); }
+        var name = meta && typeof meta.name === 'string' ? meta.name : '';
         return Promise.all(servers(kind).map(function (srv) {
-            return index(srv).then(function (map) {
-                return Promise.all((map[type + '|' + key] || []).slice(0, 3).map(function (iid) {
-                    return type === 'movie' ? item(srv, iid).then(function (it) { return sourcesOf(srv, it); }, none) : episodeSources(srv, iid, season, episode);
+            return idsFor(srv, type, key, name).then(function (ids) {
+                return Promise.all(ids.slice(0, 3).map(function (iid) {
+                    return type === 'movie' ? item(srv, iid).then(function (it) { return filesOf(srv, it); }, none) : episodeSources(srv, iid, season, episode);
                 }));
             }).then(flat, none);
         })).then(flat);
@@ -763,24 +808,25 @@ var Jellyfin = (function () {
     }
     function sourcesOf(srv, it) {
         if (!it || !it.Id) { return []; }
-        return U.listOf(it.MediaSources, 8, function (ms) { return ms.Id; }).map(function (ms) { return source(srv, it, ms); });
+        return U.listOf(it.MediaSources, 16, function (ms) { return ms.Id; }).map(function (ms) { return source(srv, it, ms); });
     }
     function episodeSources(srv, sid, season, episode) {
         return episodes(srv, sid).then(function (eps) {
             var e = eps.filter(function (x) { return x.season === season && x.episode === episode; })[0];
-            return e ? sourcesOf(srv, e.it) : [];
-        }, none);
+            return e ? filesOf(srv, e.it) : [];
+        }).then(null, none);
     }
     // A title's sources: its own (jfm / jfs ids), or the servers' copies (of that kind: each
     // kind's addon asks for its own) of a title from your addons.
-    function streams(type, id, kind) {
+    // meta: the title's details (its name: lookup).
+    function streams(type, id, kind, meta) {
         var x = parseId(id);
         if (x) {
             if (!x.srv) { return Promise.resolve([]); }
-            if (x.kind === 'm') { return item(x.srv, x.item).then(function (it) { return sourcesOf(x.srv, it); }, none); }
+            if (x.kind === 'm') { return item(x.srv, x.item).then(function (it) { return filesOf(x.srv, it); }).then(null, none); }
             return x.season != null ? episodeSources(x.srv, x.item, x.season, x.episode) : Promise.resolve([]);
         }
-        return copies(type, id, kind);
+        return copies(type, id, kind, meta);
     }
     function isJellyfinId(id) { return /^jf[ms]\./.test('' + id); }
     function nameOfId(id) { var x = parseId(id); return x && x.srv ? kindName(x.srv) : 'Jellyfin'; }

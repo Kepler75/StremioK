@@ -85,6 +85,7 @@ body.look-modern #screen-home .row-title { margin: 0 0 4px 90px; }   /* (Home: i
 body.look-modern #screen-home .row-scroller { padding: 26px 90px; }
 body.look-modern .card { border: 0; border-radius: 16px; background: rgba(255,255,255,0.07); margin-right: 26px; }
 body.look-modern .card .cap { padding: 20px 12px 8px 12px; font-size: 18px; line-height: 22px; max-height: 72px; background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0.9)); }   /* (two lines fit, a landscape poster's too) */
+body.look-modern .card.person-card .cap { max-height: none; padding-top: 16px; }   /* (a person's: as tall as name and role need; style.css) */
 body.look-modern .card.focusable.focused { border: 0; box-shadow: 0 0 0 4px #fff; -webkit-transform: scale(1.06); transform: scale(1.06); }
 body.look-modern .card.focusable.moving { border: 0; box-shadow: 0 0 0 4px #f59e0b; }
 body.look-modern.fx-full .card { -webkit-transition: -webkit-transform 0.16s ease-out, box-shadow 0.16s ease-out; transition: transform 0.16s ease-out, box-shadow 0.16s ease-out; }

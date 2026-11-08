@@ -29,13 +29,13 @@ video through Samsung's AVPlay API.
   Tomatoes, Metacritic… with your own API keys), seasons and episodes with their own pages,
   *Cast & more*, *More like this* and collections.
 - **The player:** resume where you stopped, skip intros, recaps and credits, next episode,
-  subtitles (addons', the file's own, and your own files on a USB drive) with your choice of look, audio
+  subtitles (addons', the file's own, and your own files) with your choice of look, audio
   tracks remembered, switching source mid-playback, private viewing.
 - **IPTV and radio** from your M3U playlists, Xtream accounts and Stalker portals (with their
   films and series), with CH+ / CH−.
 - **YouTube:** live channels, trailers, and your own YouTube channels, playlists and searches,
   with SponsorBlock, DeArrow, chapters and captions.
-- **Local:** the videos on a USB drive, matched to their titles.
+- **Local:** the videos on a USB drive or a network folder (WebDAV), matched to their titles.
 - **Jellyfin, Emby and Plex:** your server's libraries on Home, its files as sources.
 - **Torrents**, through Stremio's streaming server or a TorrServer you run on your network.
 - **Made for the remote:** D-pad navigation throughout; ▶ Play on a movie, episode or channel plays
@@ -46,8 +46,9 @@ video through Samsung's AVPlay API.
 
 Three ways, all covered step by step in the **[installation guide](docs/INSTALL.md)**:
 
-- **TizenBrew** (Tizen 3.0 to 6.0): add the NPM module `stremiok`. No certificate needed;
-  StremioK's storage is shared with other TizenBrew modules.
+- **TizenBrew** (Tizen 3.0 to 6.0): add the NPM module `stremiok`. No certificate needed, but
+  [Web Player is limited](docs/INSTALL.md#tizenbrew-has-no-tv-player) (ie: no audio switching), and
+  storage shared with other modules.
 - **Apps2Samsung:** installs a [release](https://github.com/Kepler75/StremioK/releases)'s
   `.wgt`, signing it with your own Samsung certificate. No Tizen Studio needed.
 - **Tizen Studio:** build the `.wgt` from this repository and sideload it.
@@ -63,7 +64,8 @@ Three ways, all covered step by step in the **[installation guide](docs/INSTALL.
 3. **Trakt**, optional: connect your account to share watched marks and Continue Watching.
 4. **IPTV**, optional: your M3U playlist links, an Xtream account (its server, username and
    password) or a Stalker portal (its address and MAC address).
-5. **A USB drive**, optional: plug it in and the Local tab appears.
+5. **A USB drive or network folder**, optional: plug a drive in, or add a WebDAV folder; the
+   Local tab appears.
 
 [Getting started](docs/USER-GUIDE.md#getting-started) in the user guide walks through each.
 
@@ -94,8 +96,8 @@ responsibility.
 
 - AVPlay behavior varies by TV generation, codec and HLS provider.
 - Torrents play only through a streaming server you run on your network.
-- Home rows show 30 titles of a catalog unless you change it, up to *Unlimited* (★ Favorites shows
-  all yours); Discover pages through the rest.
+- Under TizenBrew there's no TV player (only the `.wgt` has it): one audio track per file, no
+  built-in subtitle tracks, no PlayReady or Widevine channels; opening apps depends on TizenBrew.
 - No StremioK account and no profiles: settings, addons and progress stay on the TV. The
   only sync is optional: Trakt (watched marks, Continue Watching, ratings).
 - Subtitles use an HTML overlay; gzipped (`.gz`) subtitle files aren't decoded.
@@ -105,8 +107,7 @@ responsibility.
   opens a one-time page StremioK serves on your home network. It's plain HTTP (unencrypted),
   so use it only on a network you trust, since addon and playlist links often carry tokens.
 - "Where to watch" sources open the app on its home screen, or on the title only where an
-  addon you added gives the app's own link and the app takes it. Opening apps under TizenBrew
-  depends on what TizenBrew allows its modules; the `.wgt` has the permission.
+  addon you added gives the app's own link and the app takes it.
 - YouTube channels and trailers depend on the bundled service and on YouTube's
   undocumented behavior, so YouTube changes may need resolver updates.
 

@@ -442,8 +442,11 @@ html, body {
 .more-panel { top: 440px; left: 0; right: 0; bottom: 0; }
 .more-rows { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; }
 .card.person-card { width: 150px; height: 225px; }
-.card .cap .cap-name { font-weight: bold; }
-.card .cap .cap-sub { font-size: 15px; color: #c7cbd4; }
+/* A person's caption: the name in up to two lines, the role in one ("…" past it), the caption as
+   tall as they need (a fixed height cut the role off under a two-line name). */
+.card.person-card .cap { max-height: none; padding-top: 18px; }
+.card .cap .cap-name { font-weight: bold; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.card .cap .cap-sub { font-size: 15px; color: #c7cbd4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .person-photo { position: absolute; top: 116px; right: 80px; width: 220px; height: 330px; border-radius: 12px; background-size: cover; background-position: center top; }
 
 /* --- Episode ratings grid --- */

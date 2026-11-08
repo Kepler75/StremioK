@@ -3,6 +3,24 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.3.3 — 2026-11-08
+- **After a lot of debugging & troubleshooting: TizenBrew has no TV player** (#17): the TV gives
+  its own player only to installed apps, so under TizenBrew a file with several audio tracks only
+  plays its first one. The audio menu, Settings › Playback › Audio and the installation guide now
+  say so; Diagnostics names the player in use.
+- **Network folders (WebDAV)** (Settings › Content › Network folders): a folder a NAS, Nextcloud
+  or a computer running rclone shares, in the Local tab beside USB drives: browsed, matched,
+  indexed, its videos sources (*On your network folder*), with their subtitle files.
+- **A network folder's sign-in** is kept on the TV and sent only to that folder.
+- **Large Jellyfin catalogs:** when a server's list of titles doesn't come (too big or slow), a
+  title is searched for by name and taken only with the same IMDb or TMDB id; a film or episode
+  listed without its files gets them from the server.
+- **A live channel's choppy sound** is repaired on raw MPEG-TS channels too (an Xtream account's
+  default), not only HLS ones; and it's your choice (Red): *straight from the server* or
+  *repacked by StremioK's service*, kept for that channel.
+- **Fixed:** a cast or crew card cut off the role under a two-line name; under TizenBrew, a closed
+  player's video stayed loaded and could play behind the menus.
+
 ## 2.3.2 — 2026-11-07
 - **TizenBrew runs one version at a time:** a TV could keep an old version, or a mix of two, for
   hours after a release (2.3.0 with 2.3.1 listed, #17). TizenBrew now opens a start page that

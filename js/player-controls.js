@@ -645,7 +645,7 @@
         // Order per spec: Subtitles, Audio Track, Select Source, Playback
         var items = [];
         items.push({ label: 'Subtitles', run: function () { pushMenu(subConfigMenu()); } });
-        if (getAudioTracks().length > 1) {
+        if (getAudioTracks().length > 1 || (P.liveSound && P.liveSound())) {   // (a live channel: its sound's choice too)
             items.push({ label: 'Audio track', run: function () { pushMenu(audioMenu()); } });
         }
         if (hasYtLanguages()) {   // (a YouTube video with dubs: each is a stream of its own)
@@ -851,6 +851,7 @@
         var c = S.ctx;
         if (c.yt) { return 'Through YouTube’s service (on the TV)'; }
         if (c._relay) { return 'Through StremioK’s service: the sound repacked'; }
+        if (c.localFile && c.localFile.dav) { return 'From your network folder'; }
         if (c.localFile) { return /^http:\/\/localhost/.test(typeof LocalMedia !== 'undefined' && LocalMedia.openUrl ? LocalMedia.openUrl(c.url, c.localFile.size) : '') ? 'From the USB drive, through StremioK’s service (over 2 GB)' : 'From the USB drive'; }
         return 'Straight from the server';
     }
@@ -932,7 +933,7 @@
         if (_menuOpen && _menuStack[0] && _menuStack[0].color === key) { closeMenu(); return; }
         var m = null;
         if (key === 'RED') {
-            if (getAudioTracks().length > 1) { m = audioMenu(); }
+            if (getAudioTracks().length > 1 || (P.liveSound && P.liveSound())) { m = audioMenu(); }
             else if (hasYtLanguages()) { m = ytLanguageMenu(); }
             else { U.toast('Only one audio track', 1800); return; }
         } else if (key === 'GREEN') {

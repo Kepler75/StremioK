@@ -116,6 +116,13 @@ to add (OK adds one; hidden system apps on request). On the TV only.
 | *Clear the USB index* | | Title pages stop offering the drive's files; Local still browses it. |
 | *Forget matches* | | Every video is matched again from its name, yours too. |
 
+### Network folders
+
+| Setting | Choices | What it does |
+|---------|---------|--------------|
+| *Add a network folder* | | A WebDAV folder's address, then its user name and password, if any (see the [user guide](USER-GUIDE.md#a-network-folder-webdav)). |
+| Each folder | *Turn off* / *on*, *Index again*, *Remove* | Off: its sources set aside, its index kept. |
+
 ### Media servers
 
 | Setting | Choices | What it does |

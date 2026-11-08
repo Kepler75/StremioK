@@ -16,16 +16,16 @@ StremioK runs on Samsung TVs with Tizen 3.0 or later (2017 models onward). It's 
 |---|---|---|---|
 | You need | TizenBrew on the TV (Tizen 3.0 to 6.0) | Apps2Samsung on a computer or Android phone, a Samsung account | Tizen Studio and a Samsung certificate profile |
 | Certificate signing | none | done for you by Apps2Samsung | yours |
+| The TV's own video player ([see below](#tizenbrew-has-no-tv-player)) | **no** | yes | yes |
 | StremioK's storage | shared with every other TizenBrew module ([see below](#tizenbrew-shares-storage)) | its own | its own |
 | Downloads to a USB drive, indexing a drive | no | yes | yes |
 | A USB drive's subtitle files for streamed titles | no | yes | yes |
 | Continue Watching on the TV's home bar (Tizen 4 and later) | no | yes | yes |
 | Opening other apps ("where to watch") | as far as TizenBrew allows its modules | yes | yes |
 
-Apart from these, the features are the same in all three, YouTube included; how well a TV's
-own player copes with a stream doesn't depend on how StremioK was installed. The sideloaded app
+Apart from these, the features are the same in all three, YouTube included. The sideloaded app
 (Apps2Samsung or Tizen Studio) and TizenBrew can both be installed on one TV. *Settings › Diagnostics* says
-how a copy was installed and whether its YouTube service is running.
+how a copy was installed, its video player, and whether its YouTube service runs.
 
 ## TizenBrew
 
@@ -39,6 +39,19 @@ certificate signing.
 TizenBrew starts StremioK's YouTube service when it launches StremioK. If the service doesn't
 answer, StremioK says so: close it, open it again from TizenBrew, and update TizenBrew if
 that doesn't help (it needs a TizenBrew that runs module services).
+
+### TizenBrew has no TV player
+
+> **The big limitation:** TizenBrew opens StremioK as a web page, and the TV gives its own video
+> player only to installed apps. Under TizenBrew StremioK plays through the page's video player,
+> so:
+>
+> - **a file with several audio tracks plays its first one** (choosing another does nothing);
+> - a file's own subtitle tracks aren't offered (addons' and files' still are);
+> - PlayReady and Widevine channels don't play (ClearKey ones do);
+> - no live-channel sound repair or *Play through StremioK's service*.
+>
+> For these, use the sideloaded app ([Apps2Samsung](#apps2samsung-a-releases-wgt)).
 
 ### TizenBrew shares storage
 
