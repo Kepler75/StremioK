@@ -71,6 +71,7 @@ sources that are only torrents; Stremio's can also convert a video the TV can't 
 | *Where to watch: country* | **automatic** (the TV's language region; US when it has none), or a country | The country for TMDB's where-to-watch services and Discover's Browse catalogs. |
 | *Trakt account* | connect / disconnect | See [Trakt](USER-GUIDE.md#trakt). |
 | *Trakt sync* | *Sync now*, *Let them go* | When it last synced, changes waiting, and any Trakt refused with what it said. |
+| *Stremio account* | connect; *Sync now*, *Disconnect* | See [Your Stremio account](USER-GUIDE.md#your-stremio-account). |
 
 ### IPTV
 

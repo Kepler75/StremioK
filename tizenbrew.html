@@ -10,7 +10,7 @@
     // from there: it opens this version's own copy (npm/stremiok@<version>/index.html), whose
     // files all come from that address. build.sh stamps the ?v= below.
     (function () {
-        var v = '?v=2.3.3'.slice(3), l = location, rest = (l.search || '') + (l.hash || '');
+        var v = '?v=2.3.4'.slice(3), l = location, rest = (l.search || '') + (l.hash || '');
         var m = /^(\/module\/npm%2F[^\/%@]+)\//i.exec(l.pathname || '');
         l.replace(m ? m[1] + '%40' + v + '/index.html' + rest : 'index.html' + rest);
     })();

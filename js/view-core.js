@@ -827,6 +827,9 @@ var ViewParts = {};
             if (type === 'movie' || eps.length) {
                 opts.push(['watched', watched ? 'Mark unwatched' : (type === 'series' ? 'Mark whole series watched' : 'Mark watched')]);
             }
+            // Your Stremio account's Library (connected): in it, or not
+            var lib = typeof StremioSync !== 'undefined' && StremioSync.isConnected() && (type === 'movie' || type === 'series');
+            if (lib) { opts.push(['lib', StremioSync.inLibrary(type, m.id) ? 'Remove from Stremio Library' : 'Add to Stremio Library']); }
             // Rate on Trakt (connected, a title with an IMDb id): yours shown once rated
             var canRate = typeof Trakt !== 'undefined' && Trakt.isConnected() && Trakt.rate && /^tt\d+$/.test(m.id);
             var mine = canRate ? Trakt.myRating(type, m.id) : null;
@@ -834,6 +837,7 @@ var ViewParts = {};
             return { name: m.name || m.title || '', items: opts, run: function (v) {
                 if (v === 'details') { App.openDetail(type, m.id, meta); }
                 else if (v === 'np') { toggleNowPlaying(type, m); }
+                else if (v === 'lib') { toggleLibrary(type, m); }
                 else if (v === 'watched') { setTitleWatched(type, m, !watched); }
                 else if (v === 'rate') { rateOnTrakt(type, m.id, m.name || m.title || ''); }
             } };
@@ -910,6 +914,7 @@ var ViewParts = {};
     function nowPlayingEntries(type, id) {
         var all = Player.continueList();
         if (typeof Trakt !== 'undefined' && Trakt.isConnected && Trakt.isConnected() && Trakt.continueList) { all = all.concat(Trakt.continueList()); }
+        if (typeof StremioSync !== 'undefined' && StremioSync.isConnected()) { all = all.concat(StremioSync.continueList()); }   // (your Stremio account's)
         return all.filter(function (e) {
             return e.type === type && (e.id === id || e.parent === id || (type === 'series' && ('' + e.id).split(':')[0] === id));
         });
@@ -918,8 +923,9 @@ var ViewParts = {};
     function toggleNowPlaying(type, m) {
         var present = nowPlayingEntries(type, m.id);
         if (present.length) {
-            present.forEach(function (e) {   // (Trakt's: hidden from Watching, as Watching's own Remove does)
-                if (e._trakt) { if (Trakt.dismiss) { Trakt.dismiss(e.type, e.id); } } else { Player.removeProgress(e.type, e.id); }
+            present.forEach(function (e) {   // (Trakt's: hidden from Watching, as Watching's own Remove does; your Stremio account's: off there too)
+                if (e._trakt) { if (Trakt.dismiss) { Trakt.dismiss(e.type, e.id); } } else if (!e._stremio) { Player.removeProgress(e.type, e.id); }
+                if (typeof StremioSync !== 'undefined' && StremioSync.dismiss) { StremioSync.dismiss(e.type, e.id); }
             });
             U.toast('Removed from Continue Watching');
         } else if (type === 'movie') {
@@ -936,6 +942,14 @@ var ViewParts = {};
     // adds and removes by: the id the title's details came with, which can differ from the
     // one it was opened by, e.g. a TMDB id in Discover for an IMDb one).
     function nowPlayingLabel(type, id) { return inNowPlaying(type, id) ? '✓  In Continue Watching' : '+  Add to Continue Watching'; }
+    // Your Stremio account's Library (Settings › Integrations › Stremio account): a title in it or not.
+    function libraryLabel(type, id) { return StremioSync.inLibrary(type, id) ? '✓  In Stremio Library' : '+  Stremio Library'; }
+    function toggleLibrary(type, m) {
+        var on = !StremioSync.inLibrary(type, m.id);
+        StremioSync.setInLibrary(type, { id: m.id, name: m.name || m.title || '', poster: m.poster || '' }, on);
+        U.toast(on ? 'Added to your Stremio Library' : 'Removed from your Stremio Library');
+    }
+    function libraryOn() { return typeof StremioSync !== 'undefined' && StremioSync.isConnected(); }
 
     // "Hold OK for more": shown while the focused item has a menu of its own behind a held OK
     // (a card, a season, an episode, a source, a file on the USB drive…), so those menus can
@@ -974,4 +988,7 @@ var ViewParts = {};
     V.scr = scr;
     V.showModal = showModal;
     V.toggleNowPlaying = toggleNowPlaying;
+    V.libraryLabel = libraryLabel;
+    V.toggleLibrary = toggleLibrary;
+    V.libraryOn = libraryOn;
 })(ViewParts);

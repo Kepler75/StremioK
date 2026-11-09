@@ -709,7 +709,7 @@ var U = (function () {
         var LEFTOVER_SHARE = 0.5, _busy = null, _refusalTidy = false;
         // Use the TV's database (Settings › Diagnostics › Storage; on unless turned off):
         // off, the big copies are kept in the settings storage (BIG_KEY: the ones that go here).
-        var USE_KEY = 'stremiok.bigdb', BIG_KEY = /^stremiok\.(homecache|local\.index|iptv\.cache\.|trakt\.watched|media\.watched)/;
+        var USE_KEY = 'stremiok.bigdb', BIG_KEY = /^stremiok\.(homecache|local\.index|iptv\.cache\.|trakt\.watched|media\.watched|stremio\.items)/;
         function enabled() { return store.get(USE_KEY, true) !== false; }
         function lsBigKeys() {
             var out = [];

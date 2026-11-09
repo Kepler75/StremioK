@@ -22,6 +22,7 @@ How to use StremioK, task by task. Also:
 - [A network folder (WebDAV)](#a-network-folder-webdav)
 - [Your media server](#your-media-server)
 - [Trakt](#trakt)
+- [Your Stremio account](#your-stremio-account)
 - [Other apps (where to watch)](#other-apps-where-to-watch)
 
 ## Getting started
@@ -57,7 +58,8 @@ way can be combined with the others.
   already have are shown as such and can't be ticked; links StremioK can't use (an addon on
   the computer Stremio runs on) are left out. StremioK signs out of your account straight
   after reading the list: no password reaches the TV, nothing of the account is kept, and
-  your Stremio account isn't changed.
+  your Stremio account isn't changed. With your account [connected](#your-stremio-account), its
+  sign-in is used instead.
 - **From AIOManager** (the sideloaded app or TizenBrew, through StremioK's service):
   *AIOManager* opens its own page.
   - *Address*: your AIOManager's. OK lists the public instances AIOManager names (ElfHosted,
@@ -126,6 +128,9 @@ where it came from.
 - **Trakt** (Settings › Content › Integrations › *Trakt account*): scan the QR code with your
   phone and confirm. Watched marks, Continue Watching and your watchlist then follow your Trakt
   account (see [Trakt](#trakt)).
+- **Your Stremio account** (Settings › Content › Integrations › *Stremio account*): Continue
+  Watching, watched marks and your Library sync with it (see
+  [Your Stremio account](#your-stremio-account)).
 - **IPTV playlists** (Settings › Content › IPTV): your M3U links (see
   [IPTV and radio](#iptv-and-radio)).
 - **A USB drive:** plug it in and the Local tab appears (see
@@ -906,6 +911,24 @@ do; there's nothing else to set up.
   until you connect again.
 - **Disconnecting** clears everything kept from Trakt (history, Continue Watching, rows, ratings)
   and the changes waiting. Connecting again starts afresh.
+
+## Your Stremio account
+
+Connect in Settings › Content › Integrations › *Stremio account*: scan the QR code with your
+phone, sign in to Stremio and approve. Stremio on your phone or computer and StremioK then pick
+up where the other left off.
+
+- **From the account:** what you left part-way is in Continue Watching (a show at its episode);
+  what you watched is marked watched; your Library is a **Stremio Library** row on Movies and
+  Series.
+- **To the account:** where you stopped, watched and not watched, the next episode queued,
+  *Remove* from Continue Watching, and *+ Stremio Library* on a title page (or hold OK on a
+  poster).
+- **Changed in both places:** the latest change to a title wins.
+- **Only films and series** from your addons are synced: never USB or network-folder files, a
+  media server's own items, YouTube or channels. Trakt, when connected, is kept in step too.
+- **The *Stremio account* row** shows when it last synced and the changes waiting; OK for *Sync
+  now* or *Disconnect*. Disconnecting signs out and clears what was kept from the account.
 
 ## Other apps (where to watch)
 

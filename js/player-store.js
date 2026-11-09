@@ -11,14 +11,16 @@
     var WATCHED_KEY = 'stremiok.watched';
     function watchedAll() { return U.store.get(WATCHED_KEY, {}) || {}; }
     // A mark made here: watched at (ms, > 0), or not watched at (−ms; false: an older "not
-    // watched", at 0). Trakt's history (when connected) and your media servers' marks are weighed
-    // against it by time: marked watched here: watched; marked not watched here: watched only if
-    // Trakt or a server has it watched since (on another device); no mark here: as they have it.
+    // watched", at 0). Trakt's history (when connected), your Stremio account's and your media
+    // servers' marks are weighed against it by time: marked watched here: watched; marked not
+    // watched here: watched only if one of them has it watched since (on another device); no mark
+    // here: as they have it.
     // null: none knows it.
     function traktAt(type, id) {
         var t = (typeof Trakt !== 'undefined' && Trakt.isConnected && Trakt.isConnected() && Trakt.watchedAt) ? Trakt.watchedAt(type, id) : 0;
         var s = (typeof Jellyfin !== 'undefined' && Jellyfin.watchedAt) ? Jellyfin.watchedAt(type, id) : 0;   // (Jellyfin, Emby and Plex: js/jellyfin.js)
-        return Math.max(t || 0, s || 0);
+        var a = (typeof StremioSync !== 'undefined' && StremioSync.watchedAt) ? StremioSync.watchedAt(type, id) : 0;   // (your Stremio account)
+        return Math.max(t || 0, s || 0, a || 0);
     }
     function watchedState(type, id) {
         var v = watchedAll()[type + ':' + id], t = traktAt(type, id);
@@ -43,12 +45,14 @@
         });
         return out;
     }
-    // quiet: Trakt not told (it's been told another way: a finished scrobble)
+    // quiet: Trakt not told (it's been told another way: a finished scrobble); your Stremio
+    // account always is
     function setWatched(type, id, on, quiet) {
         var a = watchedAll();
         a[type + ':' + id] = on ? Date.now() : -Date.now();
         U.store.set(WATCHED_KEY, a);
         if (!quiet) { tellTrakt(type, [id], on); }
+        tellStremio(type, [id], on);
     }
     function setWatchedMany(type, ids, on) {
         var a = watchedAll();
@@ -56,7 +60,9 @@
         ids.forEach(function (id) { a[type + ':' + id] = value; });
         U.store.set(WATCHED_KEY, a);
         tellTrakt(type, ids, on);
+        tellStremio(type, ids, on);
     }
+    function tellStremio(type, ids, on) { if (typeof StremioSync !== 'undefined' && StremioSync.onMarked) { StremioSync.onMarked(type, ids, !!on); } }
     // A "not watched" Trakt has confirmed (and its copy shows): dropped here, so Trakt decides.
     function clearUnwatched(type, id) {
         var a = watchedAll(), k = type + ':' + id, v = a[k];
@@ -158,6 +164,7 @@
         if (all[k]) { all[k].added = true; }
         else { all[k] = { id: e.id, type: e.type, name: e.name, poster: e.poster, background: e.background, parent: e.parent, position: 0, duration: 0, updated: Date.now(), added: true }; }
         U.store.set(PROGRESS_KEY, all);
+        if (typeof StremioSync !== 'undefined' && StremioSync.onAdded) { StremioSync.onAdded(e); }   // (your Stremio account's too, at its start)
     }
 
     function progressFor(type, id) { return progressAll()[type + ':' + id] || null; }

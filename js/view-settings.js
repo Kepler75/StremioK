@@ -639,7 +639,8 @@
                 var an = U.el('div', 'a-name', 'Import addons from your Stremio account');
                 an.appendChild(originBadge('stremio'));
                 acct.appendChild(an);
-                acct.appendChild(U.el('div', 'a-url', 'Sign in on your phone with a QR code, then tick the addons to add (StremioK signs out straight after)'));
+                acct.appendChild(U.el('div', 'a-url', typeof StremioSync !== 'undefined' && StremioSync.isConnected() ? 'From the account connected in Integrations: tick the addons to add'
+                    : 'Sign in on your phone with a QR code, then tick the addons to add (StremioK signs out straight after)'));
                 acct.__onselect = stremioImport;
                 wrap.appendChild(acct);
             }
@@ -667,11 +668,53 @@
     // Import addons from your Stremio account (js/stremio-account.js): a QR code of Stremio's
     // sign-in link, asked until you approve on your phone; then the account's addons to tick
     // (none ticked; yours already shown as such); the account signed out as soon as it's read.
+    // Connected (Settings › Integrations): its kept sign-in used, and kept.
     function stremioImport() {
+        if (typeof StremioSync !== 'undefined' && StremioSync.isConnected() && !StremioSync.connectStatus().reconnect) {
+            U.spinner(true);
+            StremioAccount.addons(StremioSync.authKey()).then(function (list) { U.spinner(false); importPick(list); }, function (e) {
+                U.spinner(false);
+                U.toast('Couldn’t import: ' + ((e && e.message) || 'unknown'), 5000);
+            });
+            return;
+        }
+        stremioSignIn('Import addons from your Stremio account', function (key, body, gone, fail) {
+            U.clear(body);
+            body.appendChild(U.el('div', 'tc-line', 'Reading your addons…'));
+            var read = StremioAccount.addons(key);
+            read.then(function () { StremioAccount.signOut(key); }, function () { StremioAccount.signOut(key); });   // (signed out as soon as it's read)
+            return read.then(function (list) {
+                if (gone()) { return; }
+                if (!list.length) { fail(new Error('your account has no addons StremioK can use')); return; }
+                closeModal();
+                importPick(list);
+            });
+        });
+    }
+    function importPick(list) {
+        if (!list.length) { U.toast('Your Stremio account has no addons StremioK can use', 5000); return; }
+        var mine = Stremio.getAddonUrls();
+        var items = list.map(function (x, i) {
+            var have = mine.indexOf(x.url) !== -1 || mine.indexOf(Stremio.normalizeUrl ? Stremio.normalizeUrl(x.url) : x.url) !== -1;
+            return { key: '' + i, label: x.name + '  ·  ' + shortHost(x.url), have: have };
+        });
+        pickMany('Your Stremio addons: tick the ones to add', items, { button: function (n) { return 'Import ' + n + ' addon' + (n === 1 ? '' : 's'); } }, function (keys) {
+            var n = 0, last = null;
+            keys.forEach(function (k) { var added = Stremio.addAddon(list[+k].url); if (added) { n++; last = added; if (Stremio.setAddonOrigin) { Stremio.setAddonOrigin(added, 'stremio'); } } });
+            clearCatalogCache();
+            refreshAddonRows(last);
+            U.toast('Imported ' + n + ' addon' + (n === 1 ? '' : 's'), 3000);
+            renderSettings();
+        });
+    }
+    // Stremio's sign-in box: a code and a QR code of its link, asked until it's approved on your
+    // phone; then signedIn(key, body, gone, fail) (gone(): the box closed meanwhile: the key is
+    // given up).
+    function stremioSignIn(title, signedIn) {
         var existing = document.querySelector('.modal-overlay');
         if (existing) { existing.parentNode.removeChild(existing); }
         var overlay = U.el('div', 'modal-overlay'), box = U.el('div', 'modal-box');
-        box.appendChild(U.el('div', 'modal-msg', 'Import addons from your Stremio account'));
+        box.appendChild(U.el('div', 'modal-msg', title));
         var body = U.el('div', 'trakt-connect');
         body.appendChild(U.el('div', 'tc-line', 'Asking Stremio for a code…'));
         box.appendChild(body);
@@ -688,7 +731,7 @@
         function fail(e) {
             if (gone) { return; }
             U.clear(body);
-            body.appendChild(U.el('div', 'tc-line', 'Couldn’t import: ' + ((e && e.message) || 'unknown')));
+            body.appendChild(U.el('div', 'tc-line', 'Couldn’t ' + (/^Import/.test(title) ? 'import' : 'connect') + ': ' + ((e && e.message) || 'unknown')));
         }
         StremioAccount.start().then(function (c) {
             if (gone) { return; }
@@ -710,28 +753,7 @@
             body.appendChild(U.el('div', 'tc-line small', 'Sign in to Stremio there and approve. Waiting…'));
             return StremioAccount.wait(c.code, stopped).then(function (key) {
                 if (gone) { StremioAccount.signOut(key); return; }
-                U.clear(body);
-                body.appendChild(U.el('div', 'tc-line', 'Reading your addons…'));
-                var read = StremioAccount.addons(key);
-                read.then(function () { StremioAccount.signOut(key); }, function () { StremioAccount.signOut(key); });   // (signed out as soon as it's read)
-                return read.then(function (list) {
-                    if (gone) { return; }
-                    if (!list.length) { fail(new Error('your account has no addons StremioK can use')); return; }
-                    var mine = Stremio.getAddonUrls();
-                    var items = list.map(function (x, i) {
-                        var have = mine.indexOf(x.url) !== -1 || mine.indexOf(Stremio.normalizeUrl ? Stremio.normalizeUrl(x.url) : x.url) !== -1;
-                        return { key: '' + i, label: x.name + '  ·  ' + shortHost(x.url), have: have };
-                    });
-                    closeModal();
-                    pickMany('Your Stremio addons: tick the ones to add', items, { button: function (n) { return 'Import ' + n + ' addon' + (n === 1 ? '' : 's'); } }, function (keys) {
-                        var n = 0, last = null;
-                        keys.forEach(function (k) { var added = Stremio.addAddon(list[+k].url); if (added) { n++; last = added; if (Stremio.setAddonOrigin) { Stremio.setAddonOrigin(added, 'stremio'); } } });
-                        clearCatalogCache();
-                        refreshAddonRows(last);
-                        U.toast('Imported ' + n + ' addon' + (n === 1 ? '' : 's'), 3000);
-                        renderSettings();
-                    });
-                });
+                return signedIn(key, body, stopped, fail);
             });
         }).then(null, function (e) { if (!e || e.message !== 'stopped') { fail(e); } });
     }
@@ -1480,6 +1502,13 @@
                 'Your watched marks and Continue Watching then sync with Trakt.'));
         }
 
+        // Your Stremio account, kept in step (js/stremio-sync.js)
+        if (typeof StremioSync !== 'undefined' && typeof StremioAccount !== 'undefined') {
+            wrap.appendChild(U.el('h2', null, 'Stremio account'));
+            wrap.appendChild(stremioAccountRow());
+            wrap.appendChild(U.el('div', 'hint', 'Connect your Stremio account (sign in on your phone): its Continue Watching, watched marks and Library then sync with StremioK, both ways.'));
+        }
+
         wrap.appendChild(U.el('div', 'hint',
             'Keys are stored on this TV only. OMDb gives real IMDb per-episode ratings (used first when set); TMDB adds episode images & ratings.'));
         focusSettings();
@@ -1562,6 +1591,52 @@
             });
         };
         return r;
+    }
+
+    // Your Stremio account: connected (who, when it last synced, OK for Sync now / Disconnect), or
+    // not (OK to connect: Stremio's sign-in code, as the addon import).
+    function stremioAccountRow() {
+        var st = StremioSync.connectStatus(), r = U.el('div', 'addon-item focusable cfg-row');
+        function two(x) { return (x < 10 ? '0' : '') + x; }
+        var d = st.lastSync ? new Date(st.lastSync) : null;
+        var bits = [];
+        if (st.connected) {
+            bits.push(d ? 'Last synced ' + (U.dayLabel ? U.dayLabel(st.lastSync) + ' ' : '') + two(d.getHours()) + ':' + two(d.getMinutes()) : 'Not synced yet');
+            if (st.pending) { bits.push(st.pending + ' change' + (st.pending === 1 ? '' : 's') + ' waiting'); }
+            if (st.err) { bits.push('⚠ ' + st.err); }
+        }
+        r.appendChild(U.el('div', 'a-name', 'Stremio account' + (st.connected && st.user ? ':  ' + st.user : '')));
+        r.appendChild(U.el('div', 'a-url', st.connected && st.reconnect ? 'Its sign-in no longer works — press OK to connect again'
+            : st.connected ? bits.join('   ·   ') + '   ·   OK for options' : 'Not connected — press OK to connect'));
+        r.__onselect = function () {
+            if (!st.connected || st.reconnect) { stremioConnect(); return; }
+            pickList('Stremio account', [['now', 'Sync now'], ['off', 'Disconnect']], null, function (v) {
+                if (v === 'now') { U.toast('Syncing with your Stremio account…'); StremioSync.sync().then(function () { markHomeDirty(); renderSettings(); }); }
+                else if (v === 'off') {
+                    confirm('Disconnect your Stremio account?', 'Disconnect', function () {
+                        StremioSync.disconnect();
+                        U.toast('Stremio account disconnected');
+                        markHomeDirty();
+                        renderSettings();
+                    });
+                }
+            });
+        };
+        return r;
+    }
+    // Stremio's sign-in code (a QR code): approved on your phone, the key kept (StremioSync.connect).
+    function stremioConnect() {
+        stremioSignIn('Connect your Stremio account', function (key, body, gone) {
+            U.clear(body);
+            body.appendChild(U.el('div', 'tc-line', 'Connecting…'));
+            return StremioSync.connect(key).then(function (user) {
+                if (gone()) { return; }
+                U.clear(body);
+                body.appendChild(U.el('div', 'tc-line', '✓ Connected' + (user ? ' as ' + user : '') + ': syncing'));
+                markHomeDirty();
+                setTimeout(function () { if (isModalOpen()) { onModalClose(null); closeModal(); renderSettings(); } }, 1500);
+            });
+        });
     }
 
     // Device-code connect overlay: shows the code + URL, polls, updates on success.
@@ -2161,6 +2236,7 @@
         if (key === 'stremiok.homecache') { return { name: 'Home’s saved rows' }; }
         if (key === 'stremiok.trakt.watched') { return { name: 'Trakt watched history' }; }
         if (key === 'stremiok.media.watched') { return { name: 'Media servers’ watched marks' }; }
+        if (key === 'stremiok.stremio.items') { return { name: 'Your Stremio account’s library' }; }
         if ((m = key.match(/^stremiok\.iptv\.cache\.(.+)$/))) {
             var p = (typeof IPTV !== 'undefined' ? IPTV.getPlaylists() : []).filter(function (x) { return x.id === m[1]; })[0];
             return p ? { name: 'IPTV playlist copy: ' + (p.name || (('' + p.url).match(/^[a-z]+:\/\/(?:[^\/@]*@)?([^\/?#:]+)/i) || [])[1] || 'a playlist') }

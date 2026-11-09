@@ -24,6 +24,7 @@ var Jellyfin = (function () {
 
     var KEY = 'stremiok.jellyfin.servers', DEV_KEY = 'stremiok.jellyfin.device', LIBS_KEY = 'stremiok.jellyfin.libs';
     var PAGE = 100, INDEX_FRESH_MS = 30 * 60000, INDEX_RETRY_MS = 60000, INDEX_SLOW_MS = 30 * 60000, LIBS_FRESH_MS = 86400000;
+    var INDEX_PAGE = 2000, INDEX_PAGES = 25;   // (a server's list read 2,000 titles at a time, 50,000 at most: see pages)
     var QC_EVERY = 3000, QC_FOR = 10 * 60000, REPORT_EVERY = 60000, TICKS = 10000000;
     var _changeFns = [];
     function onChange(fn) { _changeFns.push(fn); }
@@ -406,22 +407,54 @@ var Jellyfin = (function () {
     // ---- Which titles each server has (for titles from your addons) ----
     // type|tt… and type|tmdb:… -> its item ids; read when first asked, kept INDEX_FRESH_MS (the
     // old list answers while a new one is read).
+    // A list is read a page at a time (page(start) -> a Promise of that page's items), INDEX_PAGE
+    // titles a page, each with the server's own wait, until a page comes short, INDEX_PAGES at
+    // most: { items, part } (part: not all of it: more than that, or a page after the first that
+    // didn't come, its error in part.e). The first page not coming: the whole read fails.
+    function pages(page) {
+        var items = [];
+        function next(n) {
+            return page(n * INDEX_PAGE).then(function (l) {
+                items = items.concat(l);
+                if (l.length < INDEX_PAGE) { return { items: items, part: null }; }
+                if (n + 1 >= INDEX_PAGES) { return { items: items, part: { more: true } }; }
+                return next(n + 1);
+            }, function (e) {
+                if (!n) { throw e; }
+                return { items: items, part: { e: e } };
+            });
+        }
+        return next(0);
+    }
     var _index = {};
     function index(srv) {
         var x = _index[srv.id];
         if (x && x.map && (x.p || Date.now() - x.at < INDEX_FRESH_MS)) { return Promise.resolve(x.map); }
         if (x && x.p) { return x.p; }
-        var p = get(srv, K(srv).items(uid(srv)) + 'recursive=true&includeItemTypes=Movie,Series&fields=ProviderIds&enableImages=false&enableUserData=true&enableTotalRecordCount=false', 16 * 1048576).then(function (r) {
+        var p = pages(function (start) {
+            return get(srv, K(srv).items(uid(srv)) + 'recursive=true&includeItemTypes=Movie,Series&fields=ProviderIds&enableImages=false&enableUserData=true&enableTotalRecordCount=false' +
+                '&sortBy=SortName&sortOrder=Ascending&startIndex=' + start + '&limit=' + INDEX_PAGE, 8 * 1048576).then(function (r) { return U.listOf(r && r.Items, INDEX_PAGE); });
+        }).then(function (got) {
             var map = { __ids: {}, __tm: {}, __played: [] };   // (__ids, __tm: an item's IMDb, TMDB id, for Next up's cards and watched marks; __played: its played films and shows)
             function add(k, v) { (map[k] = map[k] || []).push(v); }
-            U.listOf(r && r.Items, 100000).forEach(function (it) {
+            got.items.forEach(function (it) {
                 var t = it.Type === 'Movie' ? 'movie' : it.Type === 'Series' ? 'series' : '', tt = imdbOf(it), tm = tmdbOf(it);
                 if (!t || !it.Id) { return; }
                 if (tt) { add(t + '|' + tt, '' + it.Id); map.__ids['' + it.Id] = tt; }
                 if (tm) { add(t + '|tmdb:' + tm, '' + it.Id); map.__tm['' + it.Id] = tm; }
                 if (it.UserData && it.UserData.Played) { map.__played.push({ t: t, ids: titleIds(map, (t === 'movie' ? 'jfm.' : 'jfs.') + srv.id + '.', '' + it.Id), at: Date.parse(it.UserData.LastPlayedDate || '') || 1 }); }
             });
-            if (_index[srv.id] && _index[srv.id].p === p) { _index[srv.id] = { at: Date.now(), map: map }; }
+            // Not all of it (__part): titles looked up by name too (idsFor). A page that didn't come:
+            // the list read again as a failed one would be (in a minute; timed out: in 30).
+            var at = Date.now();
+            if (got.part) {
+                map.__part = true;
+                if (got.part.e) {
+                    U.log('jellyfin', '“' + srv.name + '” (' + kindName(srv) + '): only ' + got.items.length + ' of its titles read (' + U.problem(got.part.e) + ')');
+                    at -= INDEX_FRESH_MS - (/Timed out/i.test(got.part.e.message || '') ? INDEX_SLOW_MS : INDEX_RETRY_MS);
+                }
+            }
+            if (_index[srv.id] && _index[srv.id].p === p) { _index[srv.id] = { at: at, map: map }; }
             return map;
         }, function (e) {
             U.log('jellyfin', '“' + srv.name + '” (' + kindName(srv) + '): its titles couldn’t be read (' + U.problem(e) + ')');
@@ -444,9 +477,9 @@ var Jellyfin = (function () {
         if (map.__tm && map.__tm[id]) { l.push('tmdb:' + map.__tm[id]); }
         return l;
     }
-    // A title the server's list can't give (never read: too big or slow for one answer, as a server
-    // presenting a whole catalog is): searched for by its name, taken only when its IMDb or TMDB id
-    // is the one asked for. Kept FOUND_MS (a failed search: asked again next time).
+    // A title the server's list can't give (never read, or not all of it: too big or slow, as a
+    // server presenting a whole catalog is): searched for by its name, taken only when its IMDb or
+    // TMDB id is the one asked for. Kept FOUND_MS (a failed search: asked again next time).
     var FOUND_MS = 30 * 60000, _found = U.lru(300);
     function lookup(srv, type, key, name) {
         name = ('' + (name || '')).replace(/\s+/g, ' ').trim().slice(0, 100);
@@ -464,12 +497,12 @@ var Jellyfin = (function () {
         _found.set(k, { at: Date.now(), p: p });
         return p;
     }
-    // The server's items for a title: from its list, as before; with no list yet, or none to be
-    // had, looked up by name meanwhile (lookup), the list's answer used when that finds none.
+    // The server's items for a title: from its list, as before; with no list yet, none to be had or
+    // not all of it, looked up by name meanwhile (lookup), the list's answer used when that finds none.
     function idsFor(srv, type, key, name) {
         var x = _index[srv.id];
         var fromList = index(srv).then(function (map) { return map[type + '|' + key] || []; });
-        if (x && x.map && !x.map.__err) { return fromList; }
+        if (x && x.map && !x.map.__err && !x.map.__part) { return fromList; }
         return lookup(srv, type, key, name).then(function (ids) { return ids.length ? ids : fromList; });
     }
     // A film or episode listed without its files (a server presenting remote ones gives them only
@@ -873,6 +906,6 @@ var Jellyfin = (function () {
         signIn: signIn, quickConnect: quickConnect, remove: remove, reload: reload, libraries: libsOf, synthAddon: synthAddon, synthAddons: synthAddons, kindsOn: kindsOn,
         kindName: kindName, nameOfId: nameOfId, catalog: catalog, meta: meta, streams: streams, isJellyfinId: isJellyfinId, onPlayer: onPlayer, resumeFor: resumeFor,
         segments: segments, trickplayAt: trickplayAt, waitMs: waitMs, sourceKind: sourceKind, refreshMarks: refreshMarks, watchedAt: watchedAt,
-        shared: { chapterSegments: chapterSegments, namedChapters: namedChapters, marksFrom: marksFrom }   // (Plex's chapters and watched marks read the same way)
+        shared: { chapterSegments: chapterSegments, namedChapters: namedChapters, marksFrom: marksFrom, pages: pages, INDEX_PAGE: INDEX_PAGE }   // (Plex's chapters, watched marks and lists read the same way)
     };
 })();

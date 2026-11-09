@@ -16,6 +16,7 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
 - [IPTV](#iptv)
 - [Addons](#addons)
 - [Trakt](#trakt)
+- [Stremio account](#stremio-account)
 - [USB drives](#usb-drives)
 - [Media servers](#media-servers)
 - [Storage](#storage)
@@ -581,6 +582,24 @@ them.
   episode's TheTVDB number when the addon gives it (its `tvdb_id`, or TheTVDB's picture of the
   episode).
 
+## Stremio account
+
+- **As Stremio's own apps sync:** a title is one record with the time it last changed. StremioK
+  asks for every record's time, reads the ones newer there (100 a request) and sends the ones
+  newer here (50 a request): the newest wins, a title at a time.
+- **When:** at launch, every 15 minutes, and 5 seconds after a change here; while playing, where
+  you stopped at most every 3 minutes (as Stremio's player), and on stopping.
+- **Watched episodes** are packed bits in the show's episode order (season, episode, release
+  date), placed by the last one watched. They're read with the show's details (30 shows a sync),
+  and written only when that last watched episode is in the list read here (another addon's ids:
+  left as they are).
+- **Queued and removed:** a queued episode is at 1 ms, as Stremio queues one; *Remove* clears the
+  place.
+- **Limits:** films and series with an IMDb, TMDB, TVDB, Kitsu, MAL or AniList id; 4,000 records
+  kept, the oldest go, in the TV's database; answers up to 4 MB.
+- **Sign-in:** Stremio's TV sign-in (`link.stremio.com`), its key kept. One Stremio no longer
+  takes stops the sync until you connect again.
+
 ## USB drives
 
 - **When drives are read:** nothing is read at launch. Drives are read when the Local tab (or
@@ -643,9 +662,10 @@ them.
   `Authorization` (Jellyfin) or `X-Emby-Authorization` (Emby, under `/emby`, its paths per user);
   a link the player opens carries the sign-in as `ApiKey` or `api_key`. Quick Connect asks every 3
   seconds, for 10 minutes.
-- **Which titles it has:** read when a title page first needs it (films and series, their ids),
-  again after 30 minutes or a *Reload*. Not read (too big or slow): a title is searched for by
-  name, taken only with the same IMDb or TMDB id.
+- **Which titles it has** (Plex too): read when a title page first needs it (films and series,
+  their ids), 2,000 a request, 50,000 at most; again after 30 minutes or a *Reload*. Not all read
+  (too big, or a request timed out: asked again after 30 minutes): a title is also searched for
+  by name, taken only with the same IMDb or TMDB id.
 - **Rows:** each Movies or Shows library (`CollectionType`), by when it was added, 100 at a time;
   *Continue watching* (films) and *Next up* (a show's card, opening at that episode). A title with
   an IMDb id is a card with it (`tt…`); any other `jfm.<server>.<item>` or `jfs.<server>.<series>`.

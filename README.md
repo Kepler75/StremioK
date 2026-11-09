@@ -22,7 +22,7 @@ video through Samsung's AVPlay API.
 
 - **Your addons:** catalogs, details, sources and subtitles from the Stremio addons you add
   (Cinemeta and OpenSubtitles to start with), in the order you choose.
-- **Home** with Watching (Continue Watching, synced with **Trakt** if you connect it), Movies,
+- **Home** with Watching (Continue Watching, synced with **Trakt** or **Stremio** if you connect them), Movies,
   Series, IPTV, Guide, Radio, Sports, YouTube and Local tabs; **Discover** to browse any catalog in full;
   **Search** across every addon that can search, and people by name.
 - **Title pages:** ranked sources with **▶ Play best**, trailers, ratings (IMDb, Rotten
@@ -61,7 +61,7 @@ Three ways, all covered step by step in the **[installation guide](docs/INSTALL.
    titles playable.
 2. **API keys**, optional: your own TMDB, OMDb and MDBList keys add ratings, *Cast & more*,
    *where to watch* and episode trailers.
-3. **Trakt**, optional: connect your account to share watched marks and Continue Watching.
+3. **Trakt** or **Stremio**, optional: connect to share watched marks and Continue Watching.
 4. **IPTV**, optional: your M3U playlist links, an Xtream account (its server, username and
    password) or a Stalker portal (its address and MAC address).
 5. **A USB drive or network folder**, optional: plug a drive in, or add a WebDAV folder; the
@@ -99,7 +99,7 @@ responsibility.
 - Under TizenBrew there's no TV player (only the `.wgt` has it): one audio track per file, no
   built-in subtitle tracks, no PlayReady or Widevine channels; opening apps depends on TizenBrew.
 - No StremioK account and no profiles: settings, addons and progress stay on the TV. The
-  only sync is optional: Trakt (watched marks, Continue Watching, ratings).
+  only syncs are optional: Trakt and your Stremio account.
 - Subtitles use an HTML overlay; gzipped (`.gz`) subtitle files aren't decoded.
 - No playback speed control (the TV's player mutes audio at other speeds), and no
   HDR / frame-rate mode switching (not available to web apps on Tizen 3).
@@ -125,5 +125,5 @@ the [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/) (see its
 reads it through SkipDB's public API and keeps none of it.
 
 `js/qrcode.js` is [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) by
-Kazuhiko Arase (MIT), unchanged; it draws the TV's QR codes (Trakt sign-in, entering text from
-your phone, Continue on phone, an addon's Share and Configure).
+Kazuhiko Arase (MIT), unchanged; it draws the TV's QR codes (sign-ins, entering text from your
+phone, Continue on phone, an addon's Share and Configure).

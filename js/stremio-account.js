@@ -4,6 +4,7 @@
    seconds, it then gives a sign-in key (start, wait). With it the account's addons are read
    (addons) and the key is given up at once (signOut): no password on the TV, nothing of the
    account kept, the account itself unchanged. StremioK has no key of Stremio's: none is needed.
+   Keeping your account in step (js/stremio-sync.js) signs in the same way and keeps the key.
    Global namespace: StremioAccount */
 var StremioAccount = (function () {
     'use strict';
@@ -35,24 +36,28 @@ var StremioAccount = (function () {
             setTimeout(ask, POLL_MS);
         });
     }
-    // POST a request to Stremio's API: its result.
-    function call(method, body) {
+    // POST a request to Stremio's API: its result (an answer over max, MAX_BYTES unless given,
+    // refused). A refusal's Error carries Stremio's code (1: the sign-in no longer works).
+    function call(method, body, max) {
+        max = max || MAX_BYTES;
         return new Promise(function (resolve, reject) {
             var xhr = new XMLHttpRequest(), done = false;
             try { xhr.open('POST', API + method, true); } catch (e) { reject(new Error('couldn’t reach Stremio')); return; }
             xhr.timeout = 20000;
             xhr.setRequestHeader('Content-Type', 'application/json');
             xhr.onprogress = function (ev) {   // (an answer over MAX_BYTES: stopped as it arrives, as every other request is)
-                if (!done && ev && ev.loaded > MAX_BYTES) { done = true; try { xhr.abort(); } catch (e) {} reject(new Error('too large an answer')); }
+                if (!done && ev && ev.loaded > max) { done = true; try { xhr.abort(); } catch (e) {} reject(new Error('too large an answer')); }
             };
             xhr.onreadystatechange = function () {
                 if (xhr.readyState !== 4 || done) { return; }
                 done = true;
                 var text = '' + (xhr.responseText || ''), data = null;
-                if (text.length > MAX_BYTES) { reject(new Error('too large an answer')); return; }
+                if (text.length > max) { reject(new Error('too large an answer')); return; }
                 try { data = JSON.parse(text); } catch (e2) { data = null; }
                 if (xhr.status >= 200 && xhr.status < 300 && data && data.result) { resolve(data.result); return; }
-                reject(new Error((data && data.error && data.error.message) || ('HTTP ' + xhr.status)));
+                var err = new Error((data && data.error && data.error.message) || ('HTTP ' + xhr.status));
+                err.code = (data && data.error && typeof data.error.code === 'number') ? data.error.code : 0;
+                reject(err);
             };
             xhr.ontimeout = function () { if (!done) { done = true; reject(new Error('Stremio didn’t answer')); } };
             xhr.onerror = function () { if (!done) { done = true; reject(new Error('couldn’t reach Stremio')); } };
@@ -75,5 +80,5 @@ var StremioAccount = (function () {
     // The key given up (Stremio's own sign-out): whatever happens, nothing is kept here.
     function signOut(key) { return call('logout', { type: 'Logout', authKey: key }).then(function () {}, function () {}); }
 
-    return { start: start, wait: wait, addons: addons, signOut: signOut };
+    return { start: start, wait: wait, addons: addons, signOut: signOut, call: call };
 })();

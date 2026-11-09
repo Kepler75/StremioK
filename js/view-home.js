@@ -1036,6 +1036,7 @@
             [e].concat(e._dupes || []).forEach(function (d) {   // (the show's other episodes too)
                 Player.removeProgress(d.type, d.id);
                 if (typeof Trakt !== 'undefined' && Trakt.dismiss) { Trakt.dismiss(d.type, d.id); }
+                if (typeof StremioSync !== 'undefined' && StremioSync.dismiss) { StremioSync.dismiss(d.type, d.id); }   // (off your Stremio account's too)
             });
         }
         remove.__onselect = function () {
@@ -1066,8 +1067,10 @@
         showModal(overlay, details || watched);
     }
 
-    // Local progress merged with Trakt playback (when connected), deduped, newest first; a
-    // place kept here that Trakt has you watching past since (another TV) left out.
+    // Local progress merged with Trakt playback and your Stremio account's Continue Watching (when
+    // connected), deduped, newest first; a place kept here that Trakt or the account has you
+    // watching past since (another device) left out. A title both here and in the account: its
+    // place from whichever is newer (the stream to resume it, this TV's).
     // One card per show: its furthest episode (highest season, then episode), placed by
     // the show's most recent activity. The others ride along as _dupes so Remove clears
     // the whole show.
@@ -1076,6 +1079,17 @@
     function continueEntries(byActivity) {
         var local = Player.continueList(), traktOn = typeof Trakt !== 'undefined' && Trakt.isConnected();
         if (traktOn && Trakt.watchedPast) { local = local.filter(function (e) { return !Trakt.watchedPast(e); }); }
+        var stremioOn = typeof StremioSync !== 'undefined' && StremioSync.isConnected();
+        if (stremioOn) {
+            local = local.filter(function (e) { return !StremioSync.watchedPast(e); });
+            var here = {};
+            local.forEach(function (e, i) { here[e.type + ':' + e.id] = i; });
+            StremioSync.continueList().forEach(function (s) {
+                var i = here[s.type + ':' + s.id];
+                if (i === undefined) { return; }
+                if ((s.updated || 0) > (local[i].updated || 0) && s.position) { local[i] = Object.assign({}, local[i], { position: s.position, duration: s.duration || local[i].duration, updated: s.updated }); }
+            });
+        }
         var merged = local.slice();
         if (traktOn) {
             var seen = {};
@@ -1083,6 +1097,14 @@
             Trakt.continueList().forEach(function (e) {
                 var k = e.type + ':' + e.id;
                 if (!seen[k]) { seen[k] = 1; merged.push(e); }
+            });
+        }
+        if (stremioOn) {
+            var had = {};
+            merged.forEach(function (e) { had[e.type + ':' + e.id] = 1; });
+            StremioSync.continueList().forEach(function (e) {
+                var k = e.type + ':' + e.id;
+                if (!had[k]) { had[k] = 1; merged.push(e); }
             });
         }
         var list = onePerShow(merged);   // (the most recent activity first)

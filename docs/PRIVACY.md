@@ -30,6 +30,7 @@ Kept on the TV, in StremioK's own storage:
 - your channels' TV guides, up to 2 days old, each with its link (an Xtream one has your
   username and password in it);
 - with Trakt connected: your Trakt history and sign-in tokens;
+- with your Stremio account connected: its sign-in key and a copy of its library;
 - your media servers' and network folders' addresses and sign-ins (a folder's password, not a
   server's), and while StremioK runs, each server's titles.
 
@@ -47,7 +48,7 @@ is shown or appears in an error message, and in the logs.
 | Your Jellyfin, Emby or Plex server; your network folders | Requests for its libraries and files, with its sign-in; what you play from it (where you stopped, finished), as its own apps report | Once you've added it |
 | Plex (`plex.tv`) | A request for the code you enter, then StremioK's sign-in, to list your servers and their addresses | When you add a Plex server |
 | AIOManager | Your API key, to read your addon list; StremioK shows in its *Connections* as a *Pull* app. Your addons are never sent | When you sync |
-| Your Stremio account | Read once to list your addons; StremioK signs out straight after. No password reaches the TV | When you import |
+| Your Stremio account | To import: read once, then signed out. Connected: what you play (where you stopped, watched), your marks and Library changes. No password reaches the TV | When you import, or while connected |
 | TheIntroDB, SkipDB, IntroDB, AniSkip, ARM | The title's ids, season, episode and length, to find skip times | As something plays |
 | YouTube | What any YouTube page asks for (no account, no key), through StremioK's service | YouTube videos, trailers, YouTube catalogs |
 | SponsorBlock (`sponsor.ajay.app`) | The first 4 characters of a hash of the video's id: the answer covers every video sharing them, so it isn't told which one. For DeArrow titles in a list, the listed videos' ids (what a channel lists, not what you watch) | YouTube videos and lists |
@@ -136,13 +137,14 @@ TizenBrew serves every module from the same address, so they all share one stora
 TizenBrew module you install can read what StremioK keeps (API keys, addon links with their
 tokens, playlist links with any username and password, network folders' sign-ins, the stream links of what you're watching
 with their request headers, which can carry debrid tokens, remembered subtitle links, the
-sources you've played, Trakt's sign-in tokens) and reach StremioK's service. Only install
+sources you've played, Trakt's and Stremio's sign-ins) and reach StremioK's service. Only install
 modules you trust, or use the sideloaded app, which keeps its data to itself.
 
 ## Clearing what's kept
 
 - **Trakt:** disconnecting stops everything under way for that sign-in and clears what was kept
   from Trakt (history, Continue Watching, rows, ratings) and the changes waiting.
+- **Stremio account:** disconnecting signs out and clears the copy of its library.
 - **AIOManager:** *Forget AIOManager* (see [Getting started](USER-GUIDE.md#add-your-addons)).
 - **Saved copies:** Settings › Diagnostics › Storage › *Clear saved copies*.
 - **USB:** *Clear the USB index* and *Forget matches* (Settings › Content › USB drive).

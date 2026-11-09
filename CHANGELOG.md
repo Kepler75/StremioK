@@ -3,6 +3,16 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.3.4 — 2026-11-09
+- **Your Stremio account, kept in step** (Settings › Content › Integrations › *Stremio account*):
+  Continue Watching, watched marks and your Library sync with it, both ways; the latest change to
+  a title wins. Your Library is a *Stremio Library* row; *+ Stremio Library* on a title page adds
+  to it.
+- **Importing addons** uses the connected account, without signing in again.
+- **Large media server libraries:** Jellyfin, Emby and Plex lists of titles are read 2,000 at a
+  time, so a big library's copies show on title pages; one too big or slow is searched by name
+  (the same IMDb or TMDB id), now on Plex too.
+
 ## 2.3.3 — 2026-11-08
 - **After a lot of debugging & troubleshooting: TizenBrew has no TV player** (#17): the TV gives
   its own player only to installed apps, so under TizenBrew a file with several audio tracks only

@@ -446,6 +446,7 @@ var Stremio = (function () {
             if (typeof Plex !== 'undefined') { Plex.synthAddons().forEach(function (a) { addons.push(a); }); }   // (your Plex servers')
             if (hasYouTube()) { addons.push(YouTube.synthAddon()); }   // (after your addons: its rows last on Home)
             if (typeof Trakt !== 'undefined' && Trakt.isConnected()) { addons.push(Trakt.synthAddon()); }   // (your Watchlist and Up next)
+            if (typeof StremioSync !== 'undefined' && StremioSync.isConnected()) { addons.push(StremioSync.synthAddon()); }   // (your Stremio account's Library)
             _loaded = addons;
             U.mark('addons');
             var stale = urls.filter(function (u) { return !_refreshedUrls[u] && saved[u]; });

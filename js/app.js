@@ -270,6 +270,10 @@ var App = (function () {
         if (typeof Trakt !== 'undefined' && Trakt.isConnected()) {
             Trakt.refreshCaches().then(function () { if (_current === 'home') { Views.renderHome(); } });
         }
+        // ...and your Stremio account, both ways (js/stremio-sync.js).
+        if (typeof StremioSync !== 'undefined' && StremioSync.isConnected()) {
+            StremioSync.sync().then(function () { if (_current === 'home' && !Player.isActive()) { Views.renderHome(); } });
+        }
         serverMarks();
     }
     // Your media servers' watched marks: read at launch, when a server is added, reloaded or
