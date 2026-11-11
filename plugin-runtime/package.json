@@ -1,0 +1,17 @@
+{
+  "name": "stremiok-plugin-runtime",
+  "private": true,
+  "description": "Builds js/vendor/quickjs/ (Nuvio plugins' runtime) from pinned, unchanged libraries. Not part of the app: node build.js",
+  "license": "MIT",
+  "devDependencies": {
+    "@babel/core": "8.1.2",
+    "@babel/preset-env": "8.0.7",
+    "@jitl/quickjs-asmjs-mjs-release-sync": "0.32.0",
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
+    "cheerio": "1.2.0",
+    "crypto-js": "4.2.0",
+    "esbuild": "0.28.2",
+    "quickjs-emscripten-core": "0.32.0",
+    "regenerator-runtime": "0.14.1"
+  }
+}

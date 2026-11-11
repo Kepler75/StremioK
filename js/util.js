@@ -398,12 +398,21 @@ var U = (function () {
         var ua = headerValue(h.ua != null ? h.ua : (h['User-Agent'] || h['user-agent']), HEADER_MAX.ua);
         var ref = headerValue(h.ref != null ? h.ref : (h.Referer || h.referer), HEADER_MAX.ref);
         var cookie = headerValue(h.cookie != null ? h.cookie : (h.Cookie || h.COOKIE), HEADER_MAX.cookie);
+        // (and three the TV's player can't send, played through the service: see player-core's
+        // fileViaService) an Origin is a site's address alone
+        var origin = headerValue(h.origin != null ? h.origin : (h.Origin || h.ORIGIN), HEADER_MAX.ref);
+        var accept = headerValue(h.accept != null ? h.accept : (h.Accept || h.ACCEPT), HEADER_MAX.ua);
+        var lang = headerValue(h.lang != null ? h.lang : (h['Accept-Language'] || h['accept-language']), HEADER_MAX.ua);
         if (ref && !/^https?:\/\/[^\s]+$/i.test(ref)) { ref = ''; }
-        if (!ua && !ref && !cookie) { return null; }
+        if (origin && !/^https?:\/\/[^\s\/?#]+$/i.test(origin)) { origin = ''; }
+        if (!ua && !ref && !cookie && !origin && !accept && !lang) { return null; }
         var out = {};
         if (ua) { out.ua = ua; }
         if (ref) { out.ref = ref; }
         if (cookie) { out.cookie = cookie; }
+        if (origin) { out.origin = origin; }
+        if (accept) { out.accept = accept; }
+        if (lang) { out.lang = lang; }
         return out;
     }
 

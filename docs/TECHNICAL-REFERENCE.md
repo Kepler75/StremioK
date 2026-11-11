@@ -994,7 +994,7 @@ rule as downloads applies.
 first 1 MB, for AAC sound cut mid-frame. If it is, it returns a relay link that
 passes the picture as it is and repacks the sound into whole frames, each with its own time (a
 raw stream as it comes, `/live/<id>/t`). At most 4 relays, each dropped after 5 minutes unused;
-playlists up to 1 MB and segments up to 32 MB, 20 seconds each. The channel's User-Agent, Referer and Cookie are passed on, and the same host rule as
+playlists up to 1 MB and segments up to 32 MB, 20 seconds each. The channel's own headers are passed on, and the same host rule as
 downloads applies.
 
 **HLS through StremioK's service** (Settings › Playback › Seeking & buffering, or hold OK on a
@@ -1005,6 +1005,11 @@ Not YouTube, DRM or USB files. A film's (`&film=1`) keeps every link it named (a
 keeps its last 400), relays its keys, init sections and encrypted pieces too, asks a byte range
 as one, and is dropped after 3 hours unused. If the service doesn't answer, the source plays as
 it is.
+
+**Files through StremioK's service** (`/live/file`, `/live/<id>/f`): a non-HLS source needing
+headers the TV's player can't send (Origin, Accept, Accept-Language; any, under TizenBrew), or
+asked for by hold OK. Each request goes on with its headers and byte range; redirects into your
+home network follow *Local-network links from internet addons*.
 
 Closed captions (CEA-608 in H.264, HEVC or MPEG-2 pictures) at a segment's start: the look reads
 the whole segment, up to 8 MB. Asked for (`&cc=CC1-en`; `&fix=0`: sound as it is), the relay adds

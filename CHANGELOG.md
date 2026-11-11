@@ -3,6 +3,16 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.3.6 — 2026-11-11
+- **Nuvio plugins** (Settings › Content › Nuvio plugins; 2017 and newer TVs, sideloaded
+  app): add a repository made for the Nuvio apps and turn on its plugins; their sources show on
+  title pages with your addons'. Off by default, with a warning first: a plugin is someone
+  else's code, kept apart from your settings and files ([Nuvio plugins](docs/PLUGINS.md)) (#21).
+- **Sources that need their own headers play:** a file whose host wants headers the TV's player
+  can't send (Origin, Accept, Accept-Language; under TizenBrew, any) plays through StremioK's
+  service, seeking included. Hold OK on a source › *Play through StremioK's service* works for
+  files too.
+
 ## 2.3.5 — 2026-11-11
 - **StremioK in 16 languages** (Settings › Appearance › *Language*): English, Spanish,
   Portuguese (Brazil), French, German, Italian, Polish, Russian, Hindi, Japanese, Korean, Hebrew,

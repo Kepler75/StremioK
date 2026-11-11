@@ -443,6 +443,7 @@ var Stremio = (function () {
             else if (iptvOn) { iptvJoin(addons, rev); }
             if (typeof XtVod !== 'undefined' && XtVod.isEnabled()) { addons.push(XtVod.synthAddon()); }   // (your Xtream accounts' films and series: after your addons)
             if (typeof StVod !== 'undefined' && StVod.isEnabled()) { addons.push(StVod.synthAddon()); }   // (your Stalker portals' films and series)
+            if (typeof Plugins !== 'undefined' && Plugins.hasSources()) { addons.push(Plugins.synthAddon()); }   // (your Nuvio plugins: a source addon)
             if (typeof Jellyfin !== 'undefined') { Jellyfin.synthAddons().forEach(function (a) { addons.push(a); }); }   // (your Jellyfin and Emby servers' libraries: one addon a kind)
             if (typeof Plex !== 'undefined') { Plex.synthAddons().forEach(function (a) { addons.push(a); }); }   // (your Plex servers')
             if (hasYouTube()) { addons.push(YouTube.synthAddon()); }   // (after your addons: its rows last on Home)
@@ -2408,7 +2409,7 @@ var Stremio = (function () {
         addonUrlProblem: function (v) { return U.urlProblem(v); },
         getAddonUrls: getAddonUrls, manifestProblem: function (url) { return _manifestProblem[url] || ''; }, manifestDetail: function (url) { return _manifestDetail[url] || ''; }, addAddon: addAddon, removeAddon: removeAddon, moveAddon: moveAddon, streamNotes: streamNotes, keepSource: keepSource, forgetSource: forgetSource, sourceId: sourceId, hasStreamAddons: hasStreamAddons, thirdPartyNote: thirdPartyNote, refreshAddons: refreshAddons, refreshAddon: refreshAddon,
         getIntegrations: getIntegrations, setIntegration: setIntegration, getPrefs: getPrefs, setPref: setPref, addonLogo: addonLogo,
-        getIntroSegments: getIntroSegments,
+        getIntroSegments: getIntroSegments, tmdbFind: tmdbFind,
         tmdbValidate: tmdbValidate, mdblistValidate: mdblistValidate, omdbValidate: omdbValidate,
         tmdbFindTvId: tmdbFindTvId, tmdbSeasonEpisodes: tmdbSeasonEpisodes, tmdbImg: tmdbImg,
         tmdbTitleExtras: tmdbTitleExtras, tmdbExtrasById: tmdbExtrasById, tmdbEpisodeCast: tmdbEpisodeCast, tmdbEpisodeTrailer: tmdbEpisodeTrailer, setHideWords: setHideWords, hideWordHit: hideWordHit, normalizeAddonUrl: normalizeManifestUrl, debridOf: debridOf, addonOrigin: addonOrigin, setAddonOrigin: setAddonOrigin, parseSetupList: parseSetupList, applySetupEntries: applySetupEntries, exportGroups: exportGroups, exportSetup: exportSetup, sizeLimitHit: sizeLimitHit, setSizeLimit: setSizeLimit, gbText: gbText, runtimeMinutes: runtimeMinutes, tmdbPeople: tmdbPeople, tmdbPerson: tmdbPerson, tmdbBrowse: tmdbBrowse, tmdbTitleTrailers: tmdbTitleTrailers, tmdbProviders: tmdbProviders, tmdbProvidersKept: tmdbProvidersKept, tmdbGenres: tmdbGenres, tmdbWhereToWatch: tmdbWhereToWatch, watchRegion: watchRegion, autoWatchRegion: autoWatchRegion, tmdbImdbId: tmdbImdbId, findFilm: findFilm, hasTmdb: function () { return !!tmdbKey(); },
@@ -2420,7 +2421,7 @@ var Stremio = (function () {
         getMeta: getMeta, getStreams: getStreams, prefetchStreams: prefetchStreams, dedupeStreams: dedupeStreams,
         getSubtitles: getSubtitles,
         getSearchCatalogs: getSearchCatalogs, findTitles: findTitles,
-        addonsChanged: function () { _loaded = null; },   // (StremioK's own YouTube catalogs changed)
+        addonsChanged: function () { _loaded = null; }, sourcesChanged: sourcesChanged,   // (StremioK's own YouTube catalogs changed)
         setAllowLocal: function (on) { setPref('allowLocal', !!on); var kept = _loaded; configChanged(); _loaded = kept; },
         getRanking: getRanking, moveRanking: moveRanking, toggleRanking: toggleRanking,
         setPlayedFirst: setPlayedFirst, resetRanking: resetRanking,

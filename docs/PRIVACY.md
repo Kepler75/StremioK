@@ -47,6 +47,7 @@ is shown or appears in an error message, and in the logs.
 | Trakt | What you play (where you stopped, watched), marks you make by hand, ratings | Only when connected |
 | Your Jellyfin, Emby or Plex server; your network folders | Requests for its libraries and files, with its sign-in; what you play from it (where you stopped, finished), as its own apps report | Once you've added it |
 | Plex (`plex.tv`) | A request for the code you enter, then StremioK's sign-in, to list your servers and their addresses | When you add a Plex server |
+| Your Nuvio plugins' websites | Whatever the plugin asks: the title's TMDB number, season and episode, and your TMDB key ([Nuvio plugins](PLUGINS.md)) | When on, as you open titles |
 | AIOManager | Your API key, to read your addon list; StremioK shows in its *Connections* as a *Pull* app. Your addons are never sent | When you sync |
 | Your Stremio account | To import: read once, then signed out. Connected: what you play (where you stopped, watched), your marks and Library changes. No password reaches the TV | When you import, or while connected |
 | TheIntroDB, SkipDB, IntroDB, AniSkip, ARM | The title's ids, season, episode and length, to find skip times | As something plays |

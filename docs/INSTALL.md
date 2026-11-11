@@ -49,7 +49,8 @@ that doesn't help (it needs a TizenBrew that runs module services).
 > - **a file with several audio tracks plays its first one** (choosing another does nothing);
 > - a file's own subtitle tracks aren't offered (addons' and files' still are);
 > - PlayReady and Widevine channels don't play (ClearKey ones do);
-> - no live-channel sound repair or *Play through StremioK's service*.
+> - no live-channel sound repair, and HLS sources don't go through StremioK's service (files
+>   that need headers do).
 >
 > For these, use the sideloaded app ([Apps2Samsung](#apps2samsung-a-releases-wgt)).
 

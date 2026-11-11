@@ -133,6 +133,16 @@ to add (OK adds one; hidden system apps on request). On the TV only.
 | Each server | *Turn off* / *on*, *Reload*, *Sign out and remove* | See the [user guide](USER-GUIDE.md#what-you-get). |
 | *Wait for a server* | **Normal** (20 s), 45, 90, 180 seconds | Longer for a slow one (a Raspberry Pi). |
 
+### Nuvio plugins
+
+Only on 2017 and newer TVs, with the sideloaded app (2018–2020 ones: experimental). What they are and the risks: [Nuvio plugins](PLUGINS.md).
+
+| Setting | Choices | What it does |
+|---------|---------|--------------|
+| *Nuvio plugins* | **Off**, On | On (after a warning): your plugins look for sources on title pages. |
+| *+ Add a repository* | its address | Downloads its list of plugins and their code. |
+| Each repository | *↻ Refresh*, *Remove*, each plugin On / **Off** | Gets its latest plugins, removes it, or turns one on or off. |
+
 ### Import configuration file
 
 A link to a text file (up to 256 KB) with one addon link, playlist link or API key per line;
@@ -191,7 +201,7 @@ settings replace yours (StremioK restarts).
 | *Seek step* | 5, **10**, 15, 30 seconds | How far LEFT / RIGHT jump. FF / REW jump three steps; holding a direction speeds up. |
 | *Reconnect live channels* | Off, **A few times**, Keep trying | A channel that drops (lost, frozen or ended) opens again at the live edge: 3 times in 5 minutes, or with no limit, up to a minute apart (BACK stops it). Off: the player closes. |
 | *Buffer* | **Normal (the TV's own)**, More, Most | What the TV's player loads before starting and after running dry (More: 8 and 10 seconds; Most: 15 and 20): slower to start, dry less often. |
-| *HLS through StremioK's service* | **Off**, Sources that need headers, All HLS sources | The service fetches it with the source's User-Agent, Referer and Cookie (the TV's player can't always send them): a step more to start. Hold OK on a source: once. |
+| *HLS through StremioK's service* | **Off**, Sources that need headers, All HLS sources | The service fetches it with the source's own headers (the TV's player can't always send them): a step more to start. Hold OK on a source: once. Files that need headers the player can't send always go through it. |
 
 ### Source ranking
 

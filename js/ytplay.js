@@ -82,11 +82,36 @@ var YTPlay = (function () {
     // Referer ({ ua, ref }). opts (with force): { fix: false (the sound as it is), cc: the caption
     // channels to add as subtitle tracks }. cancel (a U.cancelToken): the look stopped, the
     // service's downloads with it (another channel, the player closed).
+    // A source's own headers (h: U.sanitizeHeaders's) as the service's query, each in the link's
+    // own query: User-Agent, Referer, Cookie, Origin, Accept, Accept-Language.
+    function headerQuery(h) {
+        if (!h) { return ''; }
+        return (h.ua ? '&ua=' + encodeURIComponent(h.ua) : '') + (h.ref ? '&ref=' + encodeURIComponent(h.ref) : '') + (h.cookie ? '&cookie=' + encodeURIComponent(h.cookie) : '') +
+            (h.origin ? '&origin=' + encodeURIComponent(h.origin) : '') + (h.accept ? '&accept=' + encodeURIComponent(h.accept) : '') + (h.lang ? '&lang=' + encodeURIComponent(h.lang) : '');
+    }
+    // A file (not HLS) through the service's file relay, with its headers and the player's byte
+    // range: { url } the player opens. lan: redirects into the home network allowed
+    // (Settings › Content › Addons › Local-network links from internet addons).
+    function fileOpen(url, h, lan) {
+        if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
+        return ensureService().then(entryAuth).then(function (a) {
+            return U.getJSON(PROXY + '/live/file?u=' + encodeURIComponent(url) + headerQuery(h) + (lan ? '&lan=1' : '') + a.q, 5000, 65536, null, a.h);
+        });
+    }
+    // Where a Nuvio plugin's Worker sends its requests (js/plugins.js): { url, headers }, the
+    // token in the link (a Worker's POST then needs no preflight). lan: home-network requests
+    // allowed (Local-network links from internet addons).
+    function pluginNet(lan) {
+        if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
+        return ensureService().then(entryAuth).then(function (a) {
+            return { url: PROXY + '/plug/fetch?' + (a.q || '').replace(/^&/, '') + (lan ? '&lan=1' : ''), headers: a.h || {} };
+        });
+    }
     function liveOpen(url, h, force, opts, cancel) {
         if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
         var cc = opts && opts.cc ? opts.cc.map(function (c) { return c.ch + (c.lang ? '-' + c.lang : ''); }).join(',') : '';
         return ensureService().then(entryAuth).then(function (a) {
-            var q = '/live/open?u=' + encodeURIComponent(url) + (h && h.ua ? '&ua=' + encodeURIComponent(h.ua) : '') + (h && h.ref ? '&ref=' + encodeURIComponent(h.ref) : '') + (h && h.cookie ? '&cookie=' + encodeURIComponent(h.cookie) : '') + (force ? '&force=1' : '') +
+            var q = '/live/open?u=' + encodeURIComponent(url) + headerQuery(h) + (force ? '&force=1' : '') +
                 (force && opts && opts.fix === false ? '&fix=0' : '') + (force && cc ? '&cc=' + encodeURIComponent(cc) : '') + (force && opts && opts.film ? '&film=1' : '') + (force && opts && opts.raw ? '&raw=1' : '');
             return U.getJSON(PROXY + q + a.q, force ? 5000 : 30000, 65536, cancel || null, a.h);
         });
@@ -96,7 +121,7 @@ var YTPlay = (function () {
     function hlsMaster(url, h) {
         if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
         return ensureService().then(entryAuth).then(function (a) {
-            var q = '/live/master?u=' + encodeURIComponent(url) + (h && h.ua ? '&ua=' + encodeURIComponent(h.ua) : '') + (h && h.ref ? '&ref=' + encodeURIComponent(h.ref) : '') + (h && h.cookie ? '&cookie=' + encodeURIComponent(h.cookie) : '');
+            var q = '/live/master?u=' + encodeURIComponent(url) + headerQuery(h);
             return U.getText(PROXY + q + a.q, 12000, 524288, null, false, a.h);
         });
     }
@@ -304,6 +329,6 @@ var YTPlay = (function () {
         return MODE === 'tizenbrew' ? U.t('TizenBrew module') : MODE === 'wgt' ? U.t('Sideloaded app (.wgt)') : U.t('Browser (development)');
     }
 
-    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, hlsMaster: hlsMaster, aiomAddons: aiomAddons, stalkerList: stalkerList, stalkerVod: stalkerVod, drmLicense: drmLicense, stalkerPlayUrl: stalkerPlayUrl, stalkerGenres: stalkerGenres, stalkerLink: stalkerLink, xtvodAsk: xtvodAsk, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, entryGive: entryGive, entrySeen: entrySeen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
+    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, fileOpen: fileOpen, pluginNet: pluginNet, hlsMaster: hlsMaster, aiomAddons: aiomAddons, stalkerList: stalkerList, stalkerVod: stalkerVod, drmLicense: drmLicense, stalkerPlayUrl: stalkerPlayUrl, stalkerGenres: stalkerGenres, stalkerLink: stalkerLink, xtvodAsk: xtvodAsk, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, entryGive: entryGive, entrySeen: entrySeen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
         installLabel: installLabel, unavailableMessage: unavailableMessage, isRunning: isRunning, port: PORT };
 })();

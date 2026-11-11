@@ -1629,15 +1629,19 @@
         U.store.set(UNSUIT_KEY, all);
     }
     // Hold OK on a source: Play from the start (a place to resume), Play through StremioK's service
-    // (an HLS one), Not suitable (or back), and
+    // (see serviceHlsOk), Not suitable (or back), and
     // with a USB drive plugged in, Download to it (js/downloads.js). With only Not suitable to
     // offer, it's asked at once.
-    // An HLS source (not YouTube, DRM or a USB file): Play through StremioK's service, this once
-    // (Settings › Playback › Seeking & buffering › HLS through StremioK's service, for all of them).
+    // A source on the internet (not YouTube, DRM, a USB file or the service's own links): Play
+    // through StremioK's service, this once. An HLS one through its relay (Settings › Playback ›
+    // Seeking & buffering › HLS through StremioK's service, for all of them; not under TizenBrew,
+    // whose page player can't take it), a file through the file relay (player-core's fileViaService).
     function serviceHlsOk(stream) {
         if (!stream || stream._yt || stream._localFile || stream._drm || typeof YTPlay === 'undefined' || YTPlay.installMode() === 'browser') { return false; }
         var url = '' + (stream.url || '');
-        return /^https?:\/\//i.test(url) && (/\.m3u8?(?:[?#]|$)/i.test(url) || Stremio.streamInfo(stream).container === 'hls');
+        if (!/^https?:\/\//i.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)[:\/]/i.test(url) || /\.mpd(?:[?#]|$)/i.test(url)) { return false; }
+        var hls = /\.m3u8?(?:[?#]|$)/i.test(url) || Stremio.streamInfo(stream).container === 'hls';
+        return !hls || YTPlay.installMode() !== 'tizenbrew';
     }
     function sourceMenu(stream) {
         var canStart = !howHere() && savedPlace(_d.streamId);

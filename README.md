@@ -38,10 +38,12 @@ video through Samsung's AVPlay API.
 - **Local:** the videos on a USB drive or a network folder (WebDAV), matched to their titles.
 - **Jellyfin, Emby and Plex:** your server's libraries on Home, its files as sources.
 - **16 languages** ([translating](docs/TRANSLATING.md)).
+- **Nuvio plugins** (2017+ TVs): plugins made for the Nuvio apps as sources
+  ([what they are, and the risks](docs/PLUGINS.md)).
 - **Torrents**, through Stremio's streaming server or a TorrServer you run on your network.
 - **Made for the remote:** D-pad navigation throughout; ▶ Play on a movie, episode or channel plays
-  its top source at once; hold OK where an item has more to
-  offer (*Hold OK for more* says so); zoom up to 140% for reading from further away.
+  its top source at once; hold OK for more where offered; zoom up to 140% for reading from
+  further away.
 
 ## Install
 
@@ -68,7 +70,7 @@ Three ways, all covered step by step in the **[installation guide](docs/INSTALL.
 5. **A USB drive or network folder**, optional: plug a drive in, or add a WebDAV folder; the
    Local tab appears.
 
-[Getting started](docs/USER-GUIDE.md#getting-started) in the user guide walks through each.
+The user guide's [Getting started](docs/USER-GUIDE.md#getting-started) covers each.
 
 ## Content / legal note
 
@@ -76,16 +78,16 @@ This app hosts **no** media. It is a client for the open Stremio addon protocol:
 metadata come from the addons you install (**Cinemeta**, the official one, by default), and
 playable sources come from whatever **stream addons you add yourself** in Settings. Streams
 that only expose a torrent `infoHash` play only through a streaming server you run (Stremio's
-or TorrServer): this app embeds no torrent or debrid engine.
+or TorrServer): this app embeds no torrent or debrid engine. Nuvio plugins are third-party code
+you add; StremioK neither hosts nor checks what they find.
 > **Note on WatchHub:** StremioK doesn't install it: its answers say it's only for clients
 > Stremio authorizes in writing. "Where to watch" comes from TMDB instead (with a TMDB key).
 
 The **IPTV** feature likewise hosts no content: you supply your own M3U playlist URLs, Xtream
 accounts or Stalker portals. For YouTube entries, the bundled service finds the video's stream; the video itself
 comes straight from YouTube. No video or audio is kept: everything plays straight from its
-source, unless you download it to your own USB drive. What StremioK does keep, on the TV, is
-your progress, settings and copies that let it start faster (see
-[Privacy and data](docs/PRIVACY.md#what-stays-on-the-tv)).
+source, unless you download it to your own USB drive. StremioK keeps only your progress, settings
+and caches, on the TV ([Privacy and data](docs/PRIVACY.md#what-stays-on-the-tv)).
 
 **DRM:** StremioK doesn't break or bypass copy protection. A protected channel plays only with
 the license server or keys its playlist gives (Widevine and PlayReady through the TV's player,
@@ -95,8 +97,6 @@ responsibility.
 
 ## Known limitations
 
-- AVPlay behavior varies by TV generation, codec and HLS provider.
-- Torrents play only through a streaming server you run on your network.
 - Under TizenBrew there's no TV player (only the `.wgt` has it): one audio track per file, no
   built-in subtitle tracks, no PlayReady or Widevine channels; opening apps depends on TizenBrew.
 - No StremioK account and no profiles: settings, addons and progress stay on the TV. The
@@ -104,9 +104,8 @@ responsibility.
 - Subtitles use an HTML overlay; gzipped (`.gz`) subtitle files aren't decoded.
 - No playback speed control (the TV's player mutes audio at other speeds), and no
   HDR / frame-rate mode switching (not available to web apps on Tizen 3).
-- Search and text fields use the TV's own on-screen keyboard, or **your phone**: a QR code
-  opens a one-time page StremioK serves on your home network. It's plain HTTP (unencrypted),
-  so use it only on a network you trust, since addon and playlist links often carry tokens.
+- Text fields use the TV's keyboard, or **your phone**: a QR code opens a one-time page on your
+  home network, over plain HTTP, so use it only on a network you trust (links carry tokens).
 - "Where to watch" sources open the app on its home screen, or on the title only where an
   addon you added gives the app's own link and the app takes it.
 - YouTube channels and trailers depend on the bundled service and on YouTube's
@@ -118,7 +117,8 @@ MIT: see [LICENSE](LICENSE).
 
 It includes [Shaka Player](https://github.com/shaka-project/shaka-player) 5.3.3 (© Google LLC,
 Apache License 2.0: [js/vendor/SHAKA-LICENSE](js/vendor/SHAKA-LICENSE)), loaded only to play
-ClearKey channels.
+ClearKey channels. Nuvio plugins' runtime (`js/vendor/quickjs/`: quickjs-emscripten, cheerio,
+crypto-js; MIT, with BSD and ISC parts, licenses there) loads only when a plugin runs.
 
 Skip timestamps come partly from [SkipDB](https://skipdb.tv), whose data is published under
 the [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/) (see its

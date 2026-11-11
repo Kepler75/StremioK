@@ -404,6 +404,7 @@
             [U.t('USB drive'), U.t('The Local tab: what\'s on your drive, matched to titles; hidden files'), 'usb'],
             [U.t('Network folders'), U.t('Folders a NAS or computer shares over WebDAV, in the Local tab: their videos as sources'), 'netfolders'],
             [U.t('Media servers'), U.t('Your Jellyfin or Emby server: its libraries on Home, its files as sources'), 'mediaservers'],
+            [U.t('Nuvio plugins'), U.t('Programs written for the Nuvio apps that look for sources: someone else’s code, run on your TV'), 'plugins'],
             [U.t('Import configuration file'), U.t('Import addons, API keys & IPTV playlists'), 'import'],
             [U.t('Export configuration'), U.t('Your addons, playlists, API keys and settings, to your phone'), 'export']] },
         playback: { title: U.t('Playback'), rows: [
@@ -467,6 +468,7 @@
         else if (_settingsSection === 'usb') { settingsUsb(wrap); }
         else if (_settingsSection === 'netfolders') { settingsNetFolders(wrap); }
         else if (_settingsSection === 'mediaservers') { settingsMediaServers(wrap); }
+        else if (_settingsSection === 'plugins') { settingsPlugins(wrap); }
         else if (_settingsSection === 'private') { settingsPrivate(wrap); }
         else if (_settingsSection === 'appshortcuts') { settingsAppShortcuts(wrap); }
         else if (_settingsSection === 'import') { settingsImport(wrap); }
@@ -533,7 +535,10 @@
     function settingsGroup(wrap, key) {
         var g = SETTINGS_GROUPS[key];
         wrap.appendChild(U.el('h2', null, g.title));
-        g.rows.forEach(function (row) { wrap.appendChild(sectionRow(row[0], row[1], row[2])); });
+        g.rows.forEach(function (row) {
+            if (row[2] === 'plugins' && !(typeof Plugins !== 'undefined' && Plugins.supported())) { return; }   // (a TV that can't run them: not offered)
+            wrap.appendChild(sectionRow(row[0], row[1], row[2]));
+        });
         if (key === 'diagnostics') {
             if (typeof YTPlay !== 'undefined' && YTPlay.installMode && YTPlay.installMode() === 'tizenbrew') { wrap.appendChild(U.el('div', 'hint', TIZENBREW_NOTE)); }
             // How StremioK was installed, and whether its YouTube service (channels, trailers) answers
@@ -1712,6 +1717,85 @@
     }
 
     // ---- Media servers: your Jellyfin servers ----
+    // Settings › Content › Nuvio plugins (js/plugins.js): on / off (after a warning), the
+    // repositories you added, each one's plugins on / off. Only on a TV that can run them.
+    function settingsPlugins(wrap) {
+        wrap.appendChild(U.el('h2', null, U.t('Nuvio plugins')));
+        if (typeof Plugins === 'undefined' || !Plugins.supported()) {
+            wrap.appendChild(U.el('div', 'hint', U.t('Nuvio plugins need a 2017 or newer TV and the sideloaded app.')));
+            focusSettings(); return;
+        }
+        var on = Plugins.isEnabled(), focus = null;
+        var sw = U.el('div', 'addon-item focusable cfg-row');
+        sw.appendChild(U.el('div', 'a-name', U.t('Nuvio plugins:') + '  ' + (on ? U.t('On') : U.t('Off'))));
+        sw.appendChild(U.el('div', 'a-url', (on ? U.t('Your plugins look for sources on title pages') : U.t('Off: no plugin runs'))
+            + '   ·   ' + (on ? U.t('OK to turn off') : U.t('OK to turn on'))));
+        sw.__onselect = function () {
+            _focusChild = 'pl:switch';
+            if (on) { Plugins.setEnabled(false); renderSettings(); return; }
+            confirm(U.t('Nuvio plugins are someone else’s code, run on your TV. StremioK keeps them apart from your settings and files, but they can reach any website, they learn which titles you open, and they’re given your TMDB key. StremioK doesn’t check what they find, and gives no help with any particular plugin. Turn them on?'),
+                U.t('Turn on'), function () { Plugins.setEnabled(true); renderSettings(); });
+        };
+        if (_focusChild === 'pl:switch') { focus = sw; }
+        wrap.appendChild(sw);
+        if (!Stremio.getIntegrations().tmdb) { wrap.appendChild(U.el('div', 'hint', U.t('Plugins look titles up by their TMDB number: add a TMDB key in Settings › Content › Integrations.'))); }
+        if (Plugins.experimental()) { wrap.appendChild(U.el('div', 'hint', U.t('Experimental on this TV: plugins haven’t been tried on its generation yet, and run slower here (one at a time).'))); }
+        else if (Plugins.slower()) { wrap.appendChild(U.el('div', 'hint', U.t('Plugins run slower on this TV than on 2021 and newer ones (one at a time).'))); }
+        var add = U.el('div', 'addon-item focusable cfg-row');
+        add.appendChild(U.el('div', 'a-name', U.t('+ Add a repository')));
+        add.appendChild(U.el('div', 'a-url', U.t('Its address (a manifest.json): its plugins are listed, each off until you turn it on')));
+        add.__onselect = function () {
+            App.openEntry({
+                title: U.t('Nuvio plugins: repository'), hint: U.t('Its address, like https://example.com/plugins/manifest.json. RETURN cancels.'),
+                value: 'https://', placeholder: 'https://example.com/plugins/manifest.json', phone: 'plugins',
+                validate: function (v) { return Plugins.addressProblem(v); },
+                onConfirm: function (url) {
+                    App.back();
+                    U.spinner(true, U.t('Reading the repository…'));
+                    Plugins.addRepo(url).then(function (r) {
+                        U.spinner(false);
+                        U.toast(U.tn(r.repo.plugins.length, 'Added “{name}”: {n} plugin (off until you turn it on)', 'Added “{name}”: {n} plugins (off until you turn them on)', { name: r.repo.name }), 5000);
+                        _focusChild = 'pl:' + r.repo.id;
+                        renderSettings();
+                    }, function (e) { U.spinner(false); U.toast(U.t('Couldn’t add it: {why}', { why: U.problem(e) }), 6000); });
+                }
+            });
+        };
+        wrap.appendChild(add);
+        Plugins.repos().forEach(function (r) {
+            var row = U.el('div', 'addon-item focusable cfg-row');
+            row.appendChild(U.el('div', 'a-name', '📦  ' + r.name));
+            row.appendChild(U.el('div', 'a-url', r.url + '   ·   ' + U.tn(r.plugins.length, '{n} plugin', '{n} plugins') + '   ·   ' + U.t('OK: refresh or remove')));
+            row.__onselect = function () {
+                pickList(r.name, [['refresh', U.t('↻ Refresh')], ['remove', U.t('Remove')]], null, function (v) {
+                    _focusChild = 'pl:' + r.id;
+                    if (v === 'refresh') {
+                        U.spinner(true, U.t('Reading the repository…'));
+                        Plugins.refreshRepo(r.id).then(function (x) {
+                            U.spinner(false);
+                            U.toast(U.t('“{name}”: {added} new, {changed} changed', { name: r.name, added: x.added, changed: x.changed }) + (x.failed ? '   ·   ' + U.tn(x.failed, '{n} didn’t come (kept as it was)', '{n} didn’t come (kept as they were)') : ''), 5000);
+                            renderSettings();
+                        }, function (e) { U.spinner(false); U.toast(U.t('Couldn’t refresh it: {why}', { why: U.problem(e) }), 6000); });
+                    } else {
+                        confirm(U.t('Remove “{name}” and its plugins?', { name: r.name }), U.t('Remove'), function () { Plugins.removeRepo(r.id); renderSettings(); });
+                    }
+                });
+            };
+            if (_focusChild === 'pl:' + r.id) { focus = row; }
+            wrap.appendChild(row);
+            r.plugins.forEach(function (p) {
+                var pr = U.el('div', 'addon-item focusable cfg-row');
+                pr.appendChild(U.el('div', 'a-name', '      ' + (p.on ? '✓  ' : '○  ') + p.name + (p.version ? '  ' + p.version : '')));
+                var kinds = p.types.map(function (t) { return t === 'tv' ? U.t('Series') : U.t('Movies'); }).join(', ');
+                pr.appendChild(U.el('div', 'a-url', '      ' + kinds + '   ·   ' + (p.on ? U.t('On') : U.t('Off')) + '   ·   ' + (p.on ? U.t('OK to turn off') : U.t('OK to turn on'))));
+                pr.__onselect = function () { _focusChild = 'pp:' + r.id + '.' + p.id; Plugins.setPlugin(r.id, p.id, !p.on); renderSettings(); };
+                if (_focusChild === 'pp:' + r.id + '.' + p.id) { focus = pr; }
+                wrap.appendChild(pr);
+            });
+        });
+        wrap.appendChild(U.el('div', 'hint', U.t('Repositories come only from addresses you add. Their sources show with your addons’ (From: Nuvio plugins). The plugin format is the Nuvio project’s; StremioK isn’t affiliated with it.')));
+        if (focus) { _focusChild = null; Focus.setScope(scr('settings'), focus); } else { focusSettings(); }
+    }
     function settingsMediaServers(wrap) {
         wrap.appendChild(U.el('h2', null, U.t('Media servers')));
         var have = typeof Jellyfin !== 'undefined';

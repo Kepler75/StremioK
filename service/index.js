@@ -1801,19 +1801,20 @@ function handle(req, res) {
         // The app's own guide POSTs: a browser sends an Origin with every POST (the app's page is
         // file://: "null"); let through with the token, or the guide ticket (for an app that can't
         // read the token: see /epg/ticket), which no web page has (/epg/ only).
-        if (who === 'origin' && req.method === 'POST' && /^\/(epg\/(load|get|clear)|drm\/license|entry\/give)$/.test(path) && /^(null|file:\/\/)$/.test(String(req.headers.origin || '')) && (hasToken(parts[1]) || hasTicket(parts[1]))) { who = null; }   // (and a DRM license's: see drmControl)
+        if (who === 'origin' && req.method === 'POST' && /^\/(epg\/(load|get|clear)|drm\/license|entry\/give|plug\/fetch)$/.test(path) && /^(null|file:\/\/)$/.test(String(req.headers.origin || '')) && (hasToken(parts[1]) || hasTicket(parts[1]))) { who = null; }   // (and a DRM license's: see drmControl)
         if (who) { send(res, 403, 'text/plain', 'not allowed (' + who + ')'); return; }
         if (req.method === 'OPTIONS') { if (isFs) { send(res, 403, 'text/plain', 'not allowed'); return; } res.writeHead(200); res.end(); return; }
         var epgPost = req.method === 'POST' && /^\/epg\/(load|get|clear)$/.test(path);   // (a guide's channels: in the body, see epgControl)
         var drmPost = req.method === 'POST' && path === '/drm/license';   // (a Widevine license request: see drmControl)
         var givePost = req.method === 'POST' && path === '/entry/give';   // (a configuration file for the phone: see entryControl)
-        if (req.method !== 'GET' && !epgPost && !drmPost && !givePost) { send(res, 405, 'text/plain', 'GET only'); return; }   // (before any work)
+        var plugPost = req.method === 'POST' && path === '/plug/fetch';   // (a Nuvio plugin's request: see plugControl)
+        if (req.method !== 'GET' && !epgPost && !drmPost && !givePost && !plugPost) { send(res, 405, 'text/plain', 'GET only'); return; }   // (before any work)
         if (req.url.length > (/^\/epg\//.test(path) ? 32768 : /^\/(fsdl\/add|live\/(open|master)|dav\/(list|walk|sub))$/.test(path) ? 8192 : 2048)) { send(res, 414, 'text/plain', 'request too long'); return; }   // (a download's link can be long; a guide's channels, a bitset)
         // (StremioK gave up on it — a screen left, the player closed: what it still waits for is
         // dropped; 'close' before the response finished means that on every Node)
         var leaving = [];
         function leaveAll() { var l = leaving; leaving = []; l.forEach(function (f) { try { f(); } catch (e) {} }); }
-        if (!isFs && path !== '/dav/walk' && !/^\/live\/[0-9a-f]{32}\/t$/.test(path)) {   // (a folder's walk, a raw channel's stream: their own limits)
+        if (!isFs && path !== '/dav/walk' && !/^\/live\/[0-9a-f]{32}\/[tf]$/.test(path)) {   // (a folder's walk, a raw channel's or a file's stream: their own limits)
             var deadline = setTimeout(function () { if (!res.headersSent) { send(res, 504, 'text/plain', 'took too long'); } leaveAll(); }, REQ_MS);
             res.on('finish', function () { clearTimeout(deadline); });
             res.on('close', function () { clearTimeout(deadline); if (!res.finished) { leaveAll(); } });
@@ -1835,6 +1836,16 @@ function handle(req, res) {
             req.setEncoding('utf8');
             req.on('data', function (c) { if (over) { return; } body += c; if (body.length > EPG_BODY_MAX) { over = true; send(res, 413, 'text/plain', 'too much asked'); } });
             req.on('end', function () { if (!over) { epgControl(req, res, path, (parts[1] ? parts[1] + '&' : '') + body); } });
+            return;
+        }
+        if (path === '/plug/fetch' && !plugPost) { send(res, 405, 'text/plain', 'POST only'); return; }
+        if (plugPost) {
+            if (!entryAllowed(req, parts[1])) { send(res, 403, 'text/plain', 'not allowed (token)'); req.resume(); return; }
+            if (+(req.headers['content-length'] || 0) > PLUG_ASK_MAX) { send(res, 413, 'text/plain', 'too much asked'); req.resume(); return; }
+            var pbody = '', pover = false;
+            req.setEncoding('utf8');
+            req.on('data', function (c) { if (pover) { return; } pbody += c; if (pbody.length > PLUG_ASK_MAX) { pover = true; send(res, 413, 'text/plain', 'too much asked'); } });
+            req.on('end', function () { if (!pover) { plugControl(res, parts[1], pbody, leaving); } });
             return;
         }
         if (drmPost) {
@@ -2008,9 +2019,7 @@ function liveGet(u, who, max, cb, part) {
         var pu;
         try { pu = urllib.parse(url); } catch (e) { cb(e); return; }
         if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !dlHostOk(pu.hostname)) { cb(upError('a link it can\'t follow', 400)); return; }
-        var h = { 'User-Agent': who.ua || TV_UA };
-        if (who.ref) { h.Referer = who.ref; }
-        if (who.cookie) { h.Cookie = who.cookie; }
+        var h = liveHeaders(who);
         if (who.range) { h.Range = who.range; }   // (a film's piece that's part of a file: EXT-X-BYTERANGE)
         var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, headers: h };
         if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
@@ -2557,9 +2566,7 @@ function liveStream(s, req, res) {
         var pu;
         try { pu = urllib.parse(url); } catch (e) { fail(400, 'bad link'); return; }
         if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !dlHostOk(pu.hostname)) { fail(400, 'a link it can\'t follow'); return; }
-        var h = { 'User-Agent': s.ua || TV_UA };
-        if (s.ref) { h.Referer = s.ref; }
-        if (s.cookie) { h.Cookie = s.cookie; }
+        var h = liveHeaders(s);
         var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, headers: h };
         if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
         try {
@@ -2636,7 +2643,7 @@ function liveSession(u, who, opts) {
         delete _live[ids[0]];
     }
     var raw = !!opts.raw && !opts.film;
-    var s = { id: crypto.randomBytes(16).toString('hex'), ua: who.ua, ref: who.ref, cookie: who.cookie || '', links: {}, at: {}, next: 0, last: Date.now(), a: liveAudio(),
+    var s = { id: crypto.randomBytes(16).toString('hex'), ua: who.ua, ref: who.ref, cookie: who.cookie || '', origin: who.origin || '', accept: who.accept || '', lang: who.lang || '', links: {}, at: {}, next: 0, last: Date.now(), a: liveAudio(),
         fix: opts.fix !== false && !opts.film, cc: opts.cc && opts.cc.length && !opts.film && !raw ? opts.cc : null, film: !!opts.film, c: ccState(), got: Object.create(null),
         raw: raw ? u : null };
     _live[s.id] = s;
@@ -2685,8 +2692,198 @@ function liveProbe(u, who, cb, leaving) {
     }
     list(u);
 }
+// ---- Nuvio plugins' requests (/plug/fetch) ----
+// A plugin (js/plugins.js runs it, in QuickJS inside a Web Worker) reaches the network only
+// through here: POST, the token in the link (a page's Worker can't send the header without a
+// preflight), the ask in the body as JSON { url, method, headers, body, redirect }. http(s) only;
+// never the TV itself; the home network only when the link says lan=1 (Local-network links from
+// internet addons: Allowed), checked on the name, on the address it resolves to, and at every
+// redirect. Nothing of StremioK's is added (no cookies, keys or its headers); the plugin's own
+// headers go as they are, but for those that only the connection decides. The answer: JSON
+// { status, statusText, url, redirected, headers, body } (text, up to 1 MB after unpacking).
+var PLUG_ASK_MAX = 300 * 1024, PLUG_BODY_MAX = 1048576, PLUG_MS = 20000, PLUG_ACTIVE = 6, PLUG_PER_MINUTE = 240, PLUG_HOPS = 5;
+var PLUG_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+var PLUG_DROP = /^(host|content-length|connection|keep-alive|transfer-encoding|te|trailer|upgrade|proxy-.*|x-stremiok|accept-encoding)$/i;
+var _plugActive = 0, _plugRecent = [];
+function plugHeaders(h) {
+    var out = {}, n = 0, size = 0;
+    if (!h || typeof h !== 'object') { return out; }
+    Object.keys(h).forEach(function (k) {
+        var v = String(h[k] == null ? '' : h[k]);
+        if (n >= 40 || !/^[!#$%&'*+.^_\x60|~0-9A-Za-z-]{1,64}$/.test(k) || PLUG_DROP.test(k) || !/^[\x20-\x7e\t]*$/.test(v) || (size += k.length + v.length) > 16384) { return; }
+        out[k] = v; n++;
+    });
+    return out;
+}
+function plugControl(res, query, text, leaving) {
+    var ask = null;
+    try { ask = JSON.parse(text); } catch (e) { ask = null; }
+    if (!ask || typeof ask !== 'object') { send(res, 400, 'text/plain', 'failed: not a request'); return; }
+    var url = String(ask.url || ''), method = String(ask.method || 'GET').toUpperCase(), lan = /(?:^|&)lan=1(?:&|$)/.test(query || '');
+    if (!/^https?:\/\/[^\s]+$/i.test(url) || url.length > 4096) { send(res, 400, 'text/plain', 'failed: only http(s) links'); return; }
+    if (PLUG_METHODS.indexOf(method) === -1) { send(res, 400, 'text/plain', 'failed: method ' + method); return; }
+    var body = ask.body == null ? null : String(ask.body);
+    var now = Date.now();
+    _plugRecent = _plugRecent.filter(function (t) { return now - t < 60000; });
+    if (_plugRecent.length >= PLUG_PER_MINUTE) { send(res, 429, 'text/plain', 'failed: too many requests, wait a minute'); return; }
+    if (_plugActive >= PLUG_ACTIVE) { send(res, 503, 'text/plain', 'failed: busy'); return; }
+    _plugActive++; _plugRecent.push(now);
+    var r = null, over = false, hops = 0, headers = plugHeaders(ask.headers);
+    if (!Object.keys(headers).some(function (k) { return /^user-agent$/i.test(k); })) { headers['User-Agent'] = TV_UA; }
+    headers['Accept-Encoding'] = 'gzip, deflate';
+    function done(code, out) {
+        if (over) { return; }
+        over = true; _plugActive--; clearTimeout(timer);
+        try { if (r) { r.abort(); } } catch (e) {}
+        if (code === 200) { send(res, 200, 'application/json', JSON.stringify(out)); } else { send(res, code, 'text/plain', 'failed: ' + out); }
+    }
+    leaving.push(function () { done(499, 'nobody waiting'); });
+    var timer = setTimeout(function () { done(504, 'timed out'); }, PLUG_MS);
+    function go(u) {
+        var pu;
+        try { pu = urllib.parse(u); } catch (e) { done(400, 'bad link'); return; }
+        if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !dlHostOk(pu.hostname)) { done(403, 'not a link a plugin may follow'); return; }
+        if (!lan && isLanName(pu.hostname)) { done(403, 'a link into your home network (Local-network links from internet addons: Blocked)'); return; }
+        var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, method: method, headers: headers };
+        if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
+        try {
+            r = (pu.protocol === 'https:' ? https : http).request(opts, function (resp) {
+                if (over) { resp.resume(); return; }
+                var sc = resp.statusCode, loc = resp.headers.location;
+                if (ask.redirect !== 'manual' && sc >= 300 && sc < 400 && loc && sc !== 304) {
+                    resp.resume();
+                    if (++hops > PLUG_HOPS) { done(502, 'too many redirects'); return; }
+                    if (sc === 303 || ((sc === 301 || sc === 302) && method === 'POST')) { method = 'GET'; body = null; }
+                    go(urllib.resolve(u, loc));
+                    return;
+                }
+                var parts = [], size = 0;
+                resp.on('data', function (c) {
+                    if (over) { return; }
+                    size += c.length;
+                    if (size > PLUG_BODY_MAX) { done(502, 'answer too large (over 1 MB)'); return; }
+                    parts.push(c);
+                });
+                resp.on('end', function () {
+                    if (over) { return; }
+                    decompress(Buffer.concat(parts), resp.headers['content-encoding'], function (err, buf) {
+                        if (err) { done(502, 'couldn\'t unpack the answer'); return; }
+                        if (buf.length > PLUG_BODY_MAX) { done(502, 'answer too large (over 1 MB)'); return; }
+                        var hs = {};
+                        Object.keys(resp.headers).forEach(function (k) { if (!/^(content-encoding|content-length|transfer-encoding|connection)$/i.test(k)) { var v = resp.headers[k]; hs[k] = (Array.isArray(v) ? v.join(', ') : String(v)).slice(0, 8192); } });
+                        done(200, { status: sc, statusText: resp.statusMessage || '', url: u, redirected: hops > 0, headers: hs, body: buf.toString('utf8') });
+                    });
+                });
+                resp.on('error', function () { done(502, 'the site stopped sending'); });
+            });
+            guardSelf(r, function () { done(403, 'not a link a plugin may follow'); });
+            if (!lan) {   // (the address a name leads to, before connecting: not into the home network)
+                r.on('socket', function (sock) {
+                    sock.on('lookup', function (err, addr) { if (!err && isLanName(addr)) { done(403, 'a link into your home network (Local-network links from internet addons: Blocked)'); } });
+                    sock.on('connect', function () { if (isLanName(sock.remoteAddress)) { done(403, 'a link into your home network (Local-network links from internet addons: Blocked)'); } });
+                });
+            }
+            r.on('error', function (e) { done(502, (e && e.message) || 'network error'); });
+            if (body !== null && method !== 'GET' && method !== 'HEAD') { r.write(body); }
+            r.end();
+        } catch (e) { done(400, 'bad request'); }
+    }
+    go(url);
+}
+
+// ---- A file through the relay (/live/file, then /live/<id>/f) ----
+// A video file (not HLS) that needs headers the TV's player can't send (Origin, Accept,
+// Accept-Language; under TizenBrew the page's player sends none), or one asked for (hold OK ›
+// Play through StremioK's service): each of the player's requests passed on with the file's
+// headers and its byte range (seeking works), the answer streamed back as it comes, nothing kept.
+// Shares the relays' count (LIVE_MAX); dropped after LIVE_FILM_IDLE_MS unused. Redirects: the
+// downloads' host rule (never the TV itself), and into the home network only when allowed (lan).
+function liveFileSession(u, who, lan) {
+    var ids = Object.keys(_live);
+    if (ids.length >= LIVE_MAX) {
+        ids.sort(function (x, y) { return _live[x].last - _live[y].last; });
+        if (_live[ids[0]].stop) { _live[ids[0]].stop(); }
+        delete _live[ids[0]];
+    }
+    var s = { id: crypto.randomBytes(16).toString('hex'), file: u, ua: who.ua, ref: who.ref, cookie: who.cookie || '', origin: who.origin || '', accept: who.accept || '', lang: who.lang || '',
+        lan: !!lan, film: true, links: {}, last: Date.now() };
+    _live[s.id] = s;
+    return s;
+}
+// A host in the home network (by its name or address): a private, link-local or carrier-grade
+// address, a name without a dot, or a .local / .lan / .home.arpa / .internal one.
+function isLanName(host) {
+    var h = String(host || '').toLowerCase().replace(/^\[|\]$/g, '').replace(/%.*$/, '').replace(/\.$/, '');
+    if (!h) { return false; }
+    if (isSelfAddr(h)) { return true; }
+    if (h.indexOf(':') !== -1) { var w = ipv6Words(h); return !!w && ((w[0] & 0xfe00) === 0xfc00 || (w[0] & 0xffc0) === 0xfe80); }
+    var n = ipv4Int(h);
+    if (n >= 0) {
+        var a = Math.floor(n / 16777216), b = Math.floor(n / 65536) % 256;
+        return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
+    }
+    return h.indexOf('.') === -1 || /\.(local|lan|home\.arpa|internal|home)$/.test(h);
+}
+// May a redirect go from the file's own host to this one? Not into the home network from a host
+// outside it, unless Local-network links from internet addons allows it.
+function fileHopOk(firstHost, nextHost, lan) { return lan || isLanName(firstHost) || !isLanName(nextHost); }
+function liveFile(s, req, res) {
+    var r = null, gone = false, hops = 0, firstHost = '';
+    var range = /^bytes=\d*-\d*(,\s*\d*-\d*)*$/.test(String(req.headers.range || '')) ? String(req.headers.range) : '';
+    function stop() { gone = true; try { if (r) { r.abort(); } } catch (e) {} }
+    res.on('close', stop);
+    function fail(code, why) { if (gone) { return; } if (!res.headersSent) { send(res, code, 'text/plain', 'failed: ' + why); } else { try { res.end(); } catch (e) {} } stop(); }
+    var timer = setTimeout(function () { if (!res.headersSent) { fail(504, 'timed out'); } }, LIVE_MS);
+    function get(url) {
+        var pu;
+        try { pu = urllib.parse(url); } catch (e) { fail(400, 'bad link'); return; }
+        if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !dlHostOk(pu.hostname)) { fail(400, 'a link it can\'t follow'); return; }
+        if (!hops) { firstHost = pu.hostname; }
+        else if (!fileHopOk(firstHost, pu.hostname, s.lan)) { fail(403, 'a link into your home network'); return; }
+        var h = liveHeaders(s);
+        if (range) { h.Range = range; }
+        var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, headers: h };
+        if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
+        try {
+            r = (pu.protocol === 'https:' ? https : http).get(opts, function (resp) {
+                if (gone) { resp.resume(); return; }
+                var sc = resp.statusCode;
+                if (sc >= 300 && sc < 400 && resp.headers.location && hops < 5) { resp.resume(); hops++; get(urllib.resolve(url, resp.headers.location)); return; }
+                if (sc !== 200 && sc !== 206) { resp.resume(); clearTimeout(timer); fail(sc >= 400 && sc < 600 ? sc : 502, 'HTTP ' + sc); return; }
+                clearTimeout(timer);
+                var out = { 'Content-Type': String(resp.headers['content-type'] || 'application/octet-stream'), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Accept-Ranges': 'bytes' };
+                if (resp.headers['content-length']) { out['Content-Length'] = resp.headers['content-length']; }
+                if (resp.headers['content-range']) { out['Content-Range'] = resp.headers['content-range']; }
+                res.writeHead(sc, out);
+                resp.on('data', function (c) {
+                    if (gone) { return; }
+                    s.last = Date.now();
+                    if (!res.write(c)) { resp.pause(); res.once('drain', function () { if (!gone) { resp.resume(); } }); }
+                });
+                resp.on('end', function () { if (!gone) { try { res.end(); } catch (e) {} } });
+                resp.on('error', function () { fail(502, 'the host stopped sending'); });
+            });
+            guardSelf(r, function () { fail(400, 'a link it can\'t follow'); });
+            r.on('error', function (e) { clearTimeout(timer); fail(502, (e && e.message) || 'network error'); });
+        } catch (e) { clearTimeout(timer); fail(400, 'bad link'); }
+    }
+    get(s.file);
+}
 function liveHeader(v, max) { v = String(v || ''); return v.length <= (max || 300) && /^[\x20-\x7e]+$/.test(v) ? v : ''; }
-function liveWho(q) { return { ua: liveHeader(q.ua), ref: liveHeader(q.ref), cookie: liveHeader(q.cookie, 4096) }; }   // (a stream's own headers, as the app sends them)
+function liveWho(q) {   // (a stream's own headers, as the app sends them)
+    var origin = liveHeader(q.origin, 2048);
+    return { ua: liveHeader(q.ua), ref: liveHeader(q.ref), cookie: liveHeader(q.cookie, 4096), origin: /^https?:\/\/[^\s\/?#]+$/i.test(origin) ? origin : '', accept: liveHeader(q.accept, 512), lang: liveHeader(q.lang, 512) };
+}
+// The request headers a relay sends: the stream's own (the TV's User-Agent when it has none).
+function liveHeaders(who) {
+    var h = { 'User-Agent': who.ua || TV_UA };
+    if (who.ref) { h.Referer = who.ref; }
+    if (who.cookie) { h.Cookie = who.cookie; }
+    if (who.origin) { h.Origin = who.origin; }
+    if (who.accept) { h.Accept = who.accept; }
+    if (who.lang) { h['Accept-Language'] = who.lang; }
+    return h;
+}
 function liveControl(req, res, path, query, leaving) {
     livePurge();
     var q = {};
@@ -2721,6 +2918,22 @@ function liveControl(req, res, path, query, leaving) {
         }, leaving);
         return;
     }
+    if (path === '/live/file') {   // a file through the relay (see liveFile)
+        if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
+        var fu = q.u || '';
+        if (!/^https?:\/\/[^\s]+$/i.test(fu) || fu.length > 2000) { send(res, 400, 'text/plain', 'bad link'); return; }
+        var fsn = liveFileSession(fu, liveWho(q), q.lan === '1');
+        send(res, 200, 'application/json', JSON.stringify({ url: liveBase(fsn) + 'f' }));
+        return;
+    }
+    var rf = /^\/live\/([0-9a-f]{32})\/f$/.exec(path);
+    if (rf) {
+        var fs0 = _live[rf[1]];
+        if (!fs0 || !fs0.file) { send(res, 404, 'text/plain', 'not found'); return; }
+        fs0.last = Date.now();
+        liveFile(fs0, req, res);
+        return;
+    }
     // (m: a playlist; p: the top one under its made-up quality list; s: a segment; c: a caption
     // track's playlist; v: a segment's captions)
     var rt = /^\/live\/([0-9a-f]{32})\/t$/.exec(path);
@@ -2739,7 +2952,7 @@ function liveControl(req, res, path, query, leaving) {
         try { return ccSegment(s.c, body, link.seq); } catch (e) { log('live captions: ' + (e && e.message)); s.c = ccState(); return null; }
     }
     if (kind === 'v' && s.c.segs[link.seq]) { send(res, 200, 'text/vtt; charset=utf-8', ccVtt(s.c.segs[link.seq], link.ch)); return; }
-    var who = link.range ? { ua: s.ua, ref: s.ref, cookie: s.cookie, range: link.range } : s;   // (a byte range: asked as one)
+    var who = link.range ? { ua: s.ua, ref: s.ref, cookie: s.cookie, origin: s.origin, accept: s.accept, lang: s.lang, range: link.range } : s;   // (a byte range: asked as one)
     leaving.push((seg && s.cc ? liveShared : liveGet)(link.url, who, seg ? LIVE_SEG_MAX : LIVE_LIST_MAX, function (err, body, at) {
         if (err) { send(res, err.status || 502, 'text/plain', 'failed: ' + (err.message || 'unknown')); return; }
         if (kind === 'v') { var cs = captions(body); send(res, 200, 'text/vtt; charset=utf-8', cs ? ccVtt(cs, link.ch) : 'WEBVTT\n'); return; }
@@ -4256,7 +4469,8 @@ var CONFIG_MAX = 262144, GIVE_MAX = 262144;
 var ENTRY_OPEN_MAX = 2, ENTRY_OPENS = 12, ENTRY_CONNECTIONS = 8, ENTRY_VISIT_MS = 20000, ENTRY_QUIET_MS = 10000;
 var ENTRY_TITLES = { link: 'Play a link on StremioK', addon: 'Add an addon to StremioK', playlist: 'Add an IPTV playlist to StremioK', config: 'Import a configuration file into StremioK', give: 'Your StremioK configuration',
     search: 'Search on StremioK', youtube: 'Add a YouTube catalog to StremioK', aiom: 'Your AIOManager address for StremioK', aiomkey: 'Your AIOManager API key for StremioK',
-    server: 'Your streaming server’s address for StremioK', mac: 'Your Stalker portal’s MAC address for StremioK', webdav: 'Your network folder’s address for StremioK' };
+    server: 'Your streaming server’s address for StremioK', mac: 'Your Stalker portal’s MAC address for StremioK', webdav: 'Your network folder’s address for StremioK',
+    jellyfin: 'Your media server’s address for StremioK', plugins: 'Add a Nuvio plugin repository to StremioK' };
 var ENTRY_TEXT = { search: 'Words to search for', youtube: 'A channel, a playlist link, or words to search YouTube for', aiomkey: 'Your account API key', mac: 'Its MAC address (00:1A:79:…)' };   // (plain text, not a link)
 var _entries = Object.create(null), _entryServer = null, _entrySockets = [], _entryOpened = [];
 function lanAddress() {

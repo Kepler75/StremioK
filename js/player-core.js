@@ -474,7 +474,10 @@ var PlayerParts = {};
 
         engineFor(ctx);   // (the TV's player, or a ClearKey channel's own: see startShaka)
         // (a TorrServer torrent that doesn't say which of its files: its file list asked for first)
-        var go = function () { if (useAV) { startLive(ctx, settle); } else { startHTML5(ctx.url); } };
+        var go = function () {
+            if (fileViaService(ctx)) { startFileRelay(ctx, settle); return; }
+            if (useAV) { startLive(ctx, settle); } else { startHTML5(ctx.url); }
+        };
         if (ctx.stream && ctx.stream._pickFile && typeof Stremio !== 'undefined' && Stremio.torrentFile) {
             // (the source before stopped first: its callbacks are about it, not this one)
             ++_playToken; _openedAt = 0;
@@ -1462,6 +1465,33 @@ var PlayerParts = {};
             relayed(ctx, r, null, !!(known && known.fix));
             startAV(ctx.url, settle);
         }, function () { if (S.ctx === ctx && S.active) { startAV(ctx.url, settle); } });
+    }
+    // A file (not HLS) through the service's file relay (/live/file): when it needs headers the
+    // TV's player can't send (Origin, Accept, Accept-Language; under TizenBrew the page's player
+    // sends none), or hold OK on it (ctx.viaService). Each request goes on with its headers and the
+    // player's byte range. Not YouTube, DRM, USB files or the service's own links; redirects into
+    // the home network as Local-network links from internet addons says; the service not
+    // answering: as it is.
+    function fileViaService(ctx) {
+        if (!ctx || ctx._relay || ctx.yt || ctx.trailer || ctx.localFile || (ctx.stream && ctx.stream._drm)) { return false; }
+        if (typeof YTPlay === 'undefined' || !YTPlay.fileOpen || YTPlay.installMode() === 'browser') { return false; }
+        var url = ctx.url || '';
+        if (!/^https?:\/\//i.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)[:\/]/i.test(url)) { return false; }
+        if (HLS_LINK.test(url) || (ctx.formatInfo && ctx.formatInfo.container === 'hls') || /\.mpd(?:[?#]|$)/i.test(url)) { return false; }
+        if (ctx.viaService) { return true; }
+        var h = U.sanitizeHeaders(ctx._headers);
+        return !!h && (!useAV || !!(h.origin || h.accept || h.lang));
+    }
+    function startFileRelay(ctx, settle) {
+        var lan = typeof Stremio !== 'undefined' && Stremio.getPrefs ? !!Stremio.getPrefs().allowLocal : false;
+        function go() {
+            if (S.ctx !== ctx || !S.active) { return; }
+            if (useAV) { startLive(ctx, settle); } else { startHTML5(ctx._relay && ctx._relayFor === ctx.url ? ctx._relay : ctx.url); }
+        }
+        YTPlay.fileOpen(ctx.url, U.sanitizeHeaders(ctx._headers), lan).then(function (r) {
+            if (S.ctx === ctx && S.active && relayed(ctx, r, null, false)) { U.log('player', 'Through StremioK\'s service, with the source\'s headers (' + where(ctx.url) + ')'); }
+            go();
+        }, go);
     }
     function startLive(ctx, settle) {
         if (!ctx._relay && viaService(ctx)) { startViaService(ctx, settle); return; }

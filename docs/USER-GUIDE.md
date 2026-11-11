@@ -403,8 +403,8 @@ addons is shown once ("also on …").
 - **Hold OK on a source** to mark it *not suitable* for this title (wrong language, a fake…):
   it moves to the bottom, never picked by ▶ Play best or for the next episode; hold OK
   again to put it back. The mark follows the file. The same menu has *Play from the start*
-  when you've a place to resume, *Play through StremioK's service* (HLS whose host wants
-  headers), and *⬇ Download to USB drive* with a drive plugged in (see [Downloads](#downloads)).
+  when you've a place to resume, *Play through StremioK's service* (a source whose host
+  wants headers), and *⬇ Download to USB drive* with a drive plugged in (see [Downloads](#downloads)).
 - **When a source doesn't start**, the next one is tried ("Didn't start: trying the next
   source (2 of 4)…") at the same place, up to 3 more; when none starts, you're back on the
   list ([how a start is judged](TECHNICAL-REFERENCE.md#starting-and-recovering)). A debrid service's notice instead of the video: StremioK says what it means
