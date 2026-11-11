@@ -55,7 +55,7 @@ var IPTV = (function () {
         var st = _status[p.id];
         if (st && st.title) { return st.title; }
         var u = U.parseUrl(p.url);
-        return u ? u.host : 'Playlist';
+        return u ? u.host : U.t('Playlist');
     }
     function labelOf(id) { var list = getPlaylists(), i = find(list, id); return i === -1 ? '' : label(list[i]); }
     // Your name for it ('' puts back the playlist's own / its server's).
@@ -213,9 +213,9 @@ var IPTV = (function () {
     // and the ones to read (none: as Stalker channels says). Read again by whoever sets them.
     function stalkerGroups(id) {
         var list = getPlaylists(), i = find(list, id);
-        if (i < 0 || typeof YTPlay === 'undefined' || !YTPlay.stalkerGenres) { return Promise.reject(new Error('Stalker portals are read by StremioK’s service (not in a desktop browser)')); }
+        if (i < 0 || typeof YTPlay === 'undefined' || !YTPlay.stalkerGenres) { return Promise.reject(new Error(U.t('Stalker portals are read by StremioK’s service (not in a desktop browser)'))); }
         return YTPlay.stalkerGenres(list[i].url, list[i].mac).then(function (r) {
-            if (!r || !Array.isArray(r.genres)) { throw new Error('Couldn’t read the portal: ' + ((r && r.why) || 'no answer')); }
+            if (!r || !Array.isArray(r.genres)) { throw new Error(U.t('Couldn’t read the portal: {why}', { why: (r && r.why) || U.t('no answer') })); }
             return r.genres;
         });
     }
@@ -421,7 +421,7 @@ var IPTV = (function () {
                 var group = attr(s, /group-title="([^"]*)"/i);
                 var kind = attr(s, /tvg-type="([^"]*)"/i);
                 cur = {
-                    name: (s.slice(s.lastIndexOf(',') + 1).trim()) || 'Channel',
+                    name: (s.slice(s.lastIndexOf(',') + 1).trim()) || U.t('Channel'),
                     logo: attr(s, /tvg-logo="([^"]*)"/i),
                     group: group,
                     tvgId: attr(s, /tvg-id="([^"]*)"/i),
@@ -522,7 +522,7 @@ var IPTV = (function () {
         var at = -1;
         for (var i = 0; i < d.catalogs.length; i++) { if (d.catalogs[i].id === FAV_CAT) { at = i; } }
         var any = favs().some(function (id) { return !!d.byId[id]; });
-        if (any && at === -1) { d.catalogs.unshift({ type: 'tv', id: FAV_CAT, name: '★ Favorites', extra: [{ name: 'search' }], _favs: true, _first: true }); }
+        if (any && at === -1) { d.catalogs.unshift({ type: 'tv', id: FAV_CAT, name: U.t('★ Favorites'), extra: [{ name: 'search' }], _favs: true, _first: true }); }
         if (!any && at !== -1) { d.catalogs.splice(at, 1); }
     }
     function build(channels) {
@@ -596,7 +596,7 @@ var IPTV = (function () {
             st.count = channels.length;
             st.groups = Object.keys(groups).length;
             if (!channels.length && !st.error && !st.vodLines) {
-                st.error = 'No channels parsed (is the URL returning the .m3u file?)';
+                st.error = U.t('No channels parsed (is the URL returning the .m3u file?)');
             }
             return channels;
         }
@@ -608,7 +608,7 @@ var IPTV = (function () {
         });
         // A Stalker portal's channels, from the service (see stalkerCheck): its M3U text.
         function stalkerText() {
-            if (typeof YTPlay === 'undefined' || !YTPlay.stalkerList) { return Promise.reject(new Error('Stalker portals are read by StremioK’s service (not in a desktop browser)')); }
+            if (typeof YTPlay === 'undefined' || !YTPlay.stalkerList) { return Promise.reject(new Error(U.t('Stalker portals are read by StremioK’s service (not in a desktop browser)'))); }
             return YTPlay.stalkerList(playlist.url, playlist.mac, stalkerAll(), playlist.genres).then(function (r) {
                 if (r && typeof r.m3u === 'string') {
                     if (r.cut) {   // (stopped short: said, with what's there)
@@ -617,9 +617,10 @@ var IPTV = (function () {
                     }
                     return r.m3u;
                 }
-                throw new Error((r && r.refused ? 'The portal refused it: ' : 'Couldn’t read the portal: ') + ((r && r.why) || 'no answer'));
+                var why = (r && r.why) || U.t('no answer');
+                throw new Error(r && r.refused ? U.t('The portal refused it: {why}', { why: why }) : U.t('Couldn’t read the portal: {why}', { why: why }));
             }, function (e) {
-                throw new Error(/no service/.test((e && e.message) || '') ? 'Stalker portals are read by StremioK’s service (not in a desktop browser)' : 'Couldn’t reach StremioK’s service: ' + U.problem(e));
+                throw new Error(/no service/.test((e && e.message) || '') ? U.t('Stalker portals are read by StremioK’s service (not in a desktop browser)') : U.t('Couldn’t reach StremioK’s service: {why}', { why: U.problem(e) }));
             });
         }
         function fetchIt() {
@@ -630,12 +631,11 @@ var IPTV = (function () {
                     return finish(text, at);
                 });
             }, function (e) {
-                var msg = (e && e.message) ? e.message : 'Could not fetch the playlist URL';
+                var msg = (e && e.message) ? e.message : U.t('Could not fetch the playlist URL');
                 // status 0 / network error on a URL that opens fine in a browser almost
                 // always means the server sent no Access-Control-Allow-Origin header.
                 if (!isStalker(playlist) && (/HTTP 0\b/.test(msg) || /Network error|^No answer/i.test(msg))) {
-                    msg += ' — the playlist server likely isn\'t sending an ' +
-                        'Access-Control-Allow-Origin header (CORS). Serve the .m3u with CORS enabled.';
+                    msg += U.t(' — the playlist server likely isn\'t sending an Access-Control-Allow-Origin header (CORS). Serve the .m3u with CORS enabled.');
                 }
                 st.error = msg;
                 // Fall back to this playlist's saved copy so a failed refresh doesn't wipe it.
@@ -732,7 +732,7 @@ var IPTV = (function () {
         return {
             id: c.id, type: c.type, name: c.name,
             poster: c.logo || '', background: c.logo || '', logo: c.logo || '',
-            posterShape: 'landscape', description: c.group + (sourceOf(c) ? '  ·  from ' + sourceOf(c) : '')
+            posterShape: 'landscape', description: c.group + (sourceOf(c) ? '  ·  ' + U.t('from {source}', { source: sourceOf(c) }) : '')
         };
     }
 

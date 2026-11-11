@@ -167,30 +167,30 @@ var U = (function () {
     function urlProblem(input) { return parseUrlWhy(input).why; }
     function parseUrlWhy(input) {
         var u = ('' + (input || '')).trim();
-        if (!u || u === 'https://' || u === 'http://') { return { why: 'Enter a URL' }; }
-        if (/\s/.test(u)) { return { why: 'A URL can’t contain spaces' }; }
+        if (!u || u === 'https://' || u === 'http://') { return { why: t('Enter a URL') }; }
+        if (/\s/.test(u)) { return { why: t('A URL can’t contain spaces') }; }
         if (/^stremio:\/\//i.test(u)) { u = 'https://' + u.slice(10); }
         else if (!/^[a-z][a-z0-9+.-]*:/i.test(u)) { u = 'https://' + u.replace(/^\/\//, ''); }
         var m = u.match(/^([a-z][a-z0-9+.-]*):\/\/([^\/?#]*)([^?#]*)(\?[^#]*)?(#.*)?$/i);
-        if (!m) { return { why: 'That isn’t a URL' }; }
+        if (!m) { return { why: t('That isn’t a URL') }; }
         var scheme = m[1].toLowerCase();
-        if (scheme !== 'http' && scheme !== 'https') { return { why: 'Only http:// and https:// URLs are supported' }; }
+        if (scheme !== 'http' && scheme !== 'https') { return { why: t('Only http:// and https:// URLs are supported') }; }
         if (m[2].indexOf('@') !== -1) { return { why: 'Remove the user:password@ part (put credentials where your provider says, e.g. ?username=…&password=…)' }; }
         var hp = m[2].match(/^(\[[0-9a-f:.]+\]|[^\[\]:]+)(?::(\d{1,5}))?$/i);
-        if (!hp) { return { why: 'That address has no valid host' }; }
+        if (!hp) { return { why: t('That address has no valid host') }; }
         var host = canonicalHost(hp[1]);
-        if (host === null) { return { why: 'That address has no valid host' }; }
+        if (host === null) { return { why: t('That address has no valid host') }; }
         if (host.charAt(0) === '[') {
-            if (!v6Words(host.slice(1, -1))) { return { why: 'That address has no valid host' }; }
+            if (!v6Words(host.slice(1, -1))) { return { why: t('That address has no valid host') }; }
         } else {
             if (/[^.]\.$/.test(host)) { host = host.slice(0, -1); }   // "localhost." is localhost
-            if (!/^[a-z0-9\u00a1-\uffff._-]+$/.test(host) || /^[.-]|[.-]$|\.\./.test(host)) { return { why: 'That address has no valid host' }; }
+            if (!/^[a-z0-9\u00a1-\uffff._-]+$/.test(host) || /^[.-]|[.-]$|\.\./.test(host)) { return { why: t('That address has no valid host') }; }
             // an IP address only in its usual form: 127.1, 2130706433, 0x7f.0.0.1, 0177.0.0.1
             // all mean 127.0.0.1 to the browser, and would slip past the checks below
-            if (numericHost(host) && !quad(host)) { return { why: 'Write the IP address the usual way (four numbers 0–255, like 203.0.113.5)' }; }
+            if (numericHost(host) && !quad(host)) { return { why: t('Write the IP address the usual way (four numbers 0–255, like 203.0.113.5)') }; }
         }
         var port = hp[2] ? parseInt(hp[2], 10) : null;
-        if (port !== null && (port < 1 || port > 65535)) { return { why: 'That port isn’t valid' }; }
+        if (port !== null && (port < 1 || port > 65535)) { return { why: t('That port isn’t valid') }; }
         var path = m[3] || '';
         return { url: { href: scheme + '://' + host + (hp[2] ? ':' + hp[2] : '') + path + (m[4] || '') + (m[5] || ''),
             scheme: scheme, host: host, port: port, path: path || '/', query: m[4] ? m[4].slice(1) : '', hash: m[5] || '' } };
@@ -414,16 +414,16 @@ var U = (function () {
     function problem(err) {
         var m = '' + ((err && err.message) || err || '');
         var big = m.match(/^Too large \((over [^)]+)\)/);
-        if (big) { return 'too large (' + big[1] + ')'; }
-        if (/^Bad JSON/.test(m)) { return 'not valid JSON'; }
+        if (big) { return t('too large ({what})', { what: big[1] }); }
+        if (/^Bad JSON/.test(m)) { return t('not valid JSON'); }
         var late = m.match(/^Timed out after (\d+ s)/);
-        if (late) { return 'timed out after ' + late[1]; }
-        if (/^Timeout/.test(m)) { return 'timed out'; }
-        if (/^(No answer|Network error)/.test(m)) { return 'no answer (connection refused, blocked or certificate)'; }
-        if (/^Redirected into the home network/.test(m)) { return 'redirected into the home network'; }
+        if (late) { return t('timed out after {time}', { time: late[1] }); }
+        if (/^Timeout/.test(m)) { return t('timed out'); }
+        if (/^(No answer|Network error)/.test(m)) { return t('no answer (connection refused, blocked or certificate)'); }
+        if (/^Redirected into the home network/.test(m)) { return t('redirected into the home network'); }
         var st = m.match(/^HTTP (\d+)/);
-        if (st) { return st[1] === '0' ? 'no answer (connection refused, blocked or certificate)' : 'HTTP ' + st[1]; }
-        return m.split(':')[0] || 'failed';
+        if (st) { return st[1] === '0' ? t('no answer (connection refused, blocked or certificate)') : 'HTTP ' + st[1]; }
+        return m.split(':')[0] || t('failed');
     }
 
     /* A list from an answer: [] unless it really is one, only its object items (the rest
@@ -966,8 +966,8 @@ var U = (function () {
         // "6 KB; the database: 380 KB used of 15.3 MB; the TV: 225 MB free" (what's known)
         function figures(size, q) {
             return diskInfo().then(function (d) {
-                return fmtSize(size) + (q && q.quota ? '; the database: ' + fmtSize(q.usage || 0) + ' used of ' + fmtSize(q.quota) : '') +
-                    (d ? '; the TV: ' + fmtSize(d.free) + ' free' : '');
+                return fmtSize(size) + (q && q.quota ? '; ' + t('the database: {used} used of {quota}', { used: fmtSize(q.usage || 0), quota: fmtSize(q.quota) }) : '') +
+                    (d ? '; ' + t('the TV: {free} free', { free: fmtSize(d.free) }) : '');
             });
         }
         function fmtSize(n) { return n >= 1048576 ? (n / 1048576).toFixed(1).replace(/\.0$/, '') + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
@@ -1071,7 +1071,7 @@ var U = (function () {
             }
             log('storage', 'TV storage full: could not save ' + key);
             var now = Date.now();
-            if (_fullToldAt === null || now - _fullToldAt > 60000) { _fullToldAt = now; try { toast('The TV’s storage is full: a change couldn’t be saved (Settings › Diagnostics).', 4000); } catch (e2) {} }
+            if (_fullToldAt === null || now - _fullToldAt > 60000) { _fullToldAt = now; try { toast(t('The TV’s storage is full: a change couldn’t be saved (Settings › Diagnostics).'), 4000); } catch (e2) {} }
             return false;
         },
         remove: function (key) {
@@ -1574,18 +1574,29 @@ var U = (function () {
     }
 
     // A day relative to today: "today", "tomorrow", "yesterday", else "Thu 2 Oct" (and the
-    // year when it isn't this one).
+    // year when it isn't this one), in the interface's language.
     var WDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    function weekday(d) { return t(WDAYS[d]); }
+    function month(m) { return t(MONTHS[m]); }
     function dayLabel(ms) {
         var d = new Date(ms), today = new Date(Date.now());
         function startOf(x) { return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime(); }
         var diff = Math.round((startOf(d) - startOf(today)) / 86400000);
-        if (diff === 0) { return 'today'; }
-        if (diff === 1) { return 'tomorrow'; }
-        if (diff === -1) { return 'yesterday'; }
-        return WDAYS[d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()] +
+        if (diff === 0) { return t('today'); }
+        if (diff === 1) { return t('tomorrow'); }
+        if (diff === -1) { return t('yesterday'); }
+        return weekday(d.getDay()) + ' ' + d.getDate() + ' ' + month(d.getMonth()) +
             (d.getFullYear() !== today.getFullYear() ? ' ' + d.getFullYear() : '');
+    }
+    // The interface's language (js/i18n.js): a phrase by its English text, {name}s filled in; a
+    // number's singular or plural form. Without it (a test, a page that didn't load it): English.
+    function t(s, vars) { return (typeof I18N !== 'undefined') ? I18N.t(s, vars) : ('' + s).replace(/\{(\w+)\}/g, function (m, k) { return vars && Object.prototype.hasOwnProperty.call(vars, k) ? '' + vars[k] : m; }); }
+    function tn(n, one, other, vars) {
+        if (typeof I18N !== 'undefined') { return I18N.tn(n, one, other, vars); }
+        var v = { n: n };
+        if (vars) { Object.keys(vars).forEach(function (k) { v[k] = vars[k]; }); }
+        return t(n === 1 ? one : other, v);
     }
 
     /* Run an array of promise-returning fns with limited concurrency; never rejects.
@@ -1686,6 +1697,7 @@ var U = (function () {
         postJSON: postJSON, redactUrl: redactUrl, problem: problem, problemDetail: problemDetail, listOf: listOf, lru: lru, randomHex: randomHex, cachedJSON: cachedJSON,
         parseUrl: parseUrl, urlProblem: urlProblem, isPlaylistUrl: isPlaylistUrl, isManifestUrl: isManifestUrl,
         isPrivateHost: isPrivateHost, urlIsPrivate: urlIsPrivate, setLocalPolicy: setLocalPolicy, sanitizeHeaders: sanitizeHeaders, drawable: drawable,
+        t: t, tn: tn, weekday: weekday, month: month,
         look: look, setLook: setLook, canBlur: canBlur, heroImages: heroImages, log: log, logEntries: logEntries, clearLog: clearLog, bigStore: bigStore, diskInfo: diskInfo,
         store: store, toast: toast, spinner: spinner,
         deferImage: deferImage, deferBg: deferBg, cardImage: cardImage, prioritizeImages: prioritizeImages, requeueImages: requeueImages,

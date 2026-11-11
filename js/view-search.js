@@ -21,14 +21,14 @@
 
     // A link to play: http(s) only (no name:password@), else what's wrong with it.
     function linkProblem(text) {
-        var why = U.urlProblem ? U.urlProblem(text) : (U.parseUrl(text) ? null : 'Not a link');
-        return why ? why + ' (a link starts with https:// or http://)' : null;
+        var why = U.urlProblem ? U.urlProblem(text) : (U.parseUrl(text) ? null : U.t('Not a link'));
+        return why ? why + ' ' + U.t('(a link starts with https:// or http://)') : null;
     }
     // Played as it is (nothing recorded): a YouTube video's page through StremioK's YouTube
     // service, anything else straight to the player.
     function playLink(text) {
         var p = U.parseUrl(text);
-        if (!p) { U.toast('That isn’t a link StremioK can play'); return; }
+        if (!p) { U.toast(U.t('That isn’t a link StremioK can play')); return; }
         var url = p.href, back = function () { var s = scr('search'); Focus.setScope(s, s.querySelector('.play-link') || undefined); };
         var yt = url.match(/^https?:\/\/(?:www\.|m\.)?youtube\.com\/watch\?(?:.*&)?v=([A-Za-z0-9_-]{11})/) || url.match(/^https?:\/\/youtu\.be\/([A-Za-z0-9_-]{11})/);
         if (yt) {
@@ -36,13 +36,13 @@
             YTPlay.ensureService().then(function () {
                 if (gen !== _gen) { return; }   // (Search left, or another search, meanwhile)
                 Player.play({ url: YTPlay.resolverUrl(page, 1080, false, ''), variantUrl: YTPlay.resolverUrl(page), initialQualityHeight: 1080, yt: page,
-                    type: 'movie', id: 'link:yt:' + yt[1], name: 'YouTube video', streams: [], link: true, private: true }, back);
+                    type: 'movie', id: 'link:yt:' + yt[1], name: U.t('YouTube video'), streams: [], link: true, private: true }, back);
             }, function () { if (gen === _gen) { U.toast(YTPlay.unavailableMessage('video'), 6000); } });
             return;
         }
         var name = '';
         try { name = decodeURIComponent((p.path || '').split('/').pop() || ''); } catch (e) { name = ''; }
-        Player.play({ url: url, type: 'movie', id: 'link:' + url.length + ':' + url.slice(-40), name: (name || p.host || 'Link').slice(0, 120), streams: [], link: true, private: true }, back);
+        Player.play({ url: url, type: 'movie', id: 'link:' + url.length + ':' + url.slice(-40), name: (name || p.host || U.t('Link')).slice(0, 120), streams: [], link: true, private: true }, back);
     }
     function searchHistory() { return U.store.get(SEARCH_HIST_KEY, []) || []; }
     function rememberSearch(q) {
@@ -67,9 +67,9 @@
         input.id = 'search-input';
         input.type = 'text';
         input.className = 'focusable';
-        input.placeholder = hasPeople() ? 'Search movies, series & people…' : 'Search movies & series…';
+        input.placeholder = hasPeople() ? U.t('Search movies, series & people…') : U.t('Search movies & series…');
         input.__onselect = function () { input.focus(); };
-        var go = U.el('div', 'pill focusable search-go', 'Search');
+        var go = U.el('div', 'pill focusable search-go', U.t('Search'));
         go.__onselect = function () { runSearch(input.value); };
 
         // Enter runs the search. The keyboard's Done moves focus to Search, so one OK
@@ -89,18 +89,18 @@
         bar.appendChild(input);
         bar.appendChild(go);
         // Search words from the phone: searched as soon as they arrive (Type it: the field)
-        var fromPhone = U.el('div', 'pill focusable search-go search-phone', '▣  From phone');
+        var fromPhone = U.el('div', 'pill focusable search-go search-phone', U.t('▣  From phone'));
         fromPhone.__onselect = function () {
-            V.phoneEntry({ title: 'Search from your phone', what: 'search',
+            V.phoneEntry({ title: U.t('Search from your phone'), what: 'search',
                 onText: function (t) { input.value = t; runSearch(t); },
                 onType: function () { Focus.setFocus(input); } });
         };
         bar.appendChild(fromPhone);
         // ▶ Play a link: typed, or sent from the phone (its QR)
-        var link = U.el('div', 'pill focusable search-go play-link', '▶  Play a link');
+        var link = U.el('div', 'pill focusable search-go play-link', U.t('▶  Play a link'));
         link.__onselect = function () {
-            V.phoneEntry({ title: 'Play a link', what: 'link', typeTitle: 'Play a link', placeholder: 'https://…/film.mkv',
-                hint: 'A video’s direct link (an MKV or MP4 file, an HLS .m3u8) or a YouTube video’s page. It plays as it is, and nothing about it is recorded.',
+            V.phoneEntry({ title: U.t('Play a link'), what: 'link', typeTitle: U.t('Play a link'), placeholder: 'https://…/film.mkv',
+                hint: U.t('A video’s direct link (an MKV or MP4 file, an HLS .m3u8) or a YouTube video’s page. It plays as it is, and nothing about it is recorded.'),
                 validate: linkProblem, onText: playLink });
         };
         bar.appendChild(link);
@@ -108,7 +108,7 @@
 
         var results = U.el('div', 'search-results');
         results.id = 'search-results';
-        results.appendChild(U.el('div', 'search-empty', 'Type a title and press OK on Search. Results come from every addon catalog that supports search.'));
+        results.appendChild(U.el('div', 'search-empty', U.t('Type a title and press OK on Search. Results come from every addon catalog that supports search.')));
         wrap.appendChild(results);
 
         // Recent searches use the space to the right of the results grid.
@@ -136,12 +136,12 @@
         var recent = _search.recent;
         U.clear(recent);
         var list = searchHistory();
-        if (list.length) { recent.appendChild(U.el('div', 'recent-title', 'Recent searches')); }
+        if (list.length) { recent.appendChild(U.el('div', 'recent-title', U.t('Recent searches'))); }
         list.forEach(function (q, i) {
             var it = U.el('div', 'recent-item focusable', q);
             it.__onselect = function () { _search.input.value = q; Focus.setFocus(_search.go); };
             it.__onlongpress = function () {
-                confirm('Remove “' + q + '” from recent searches?', 'Remove', function () {
+                confirm(U.t('Remove “{q}” from recent searches?', { q: q }), U.t('Remove'), function () {
                     forgetSearch(q);
                     renderRecent(i);
                 });
@@ -189,7 +189,7 @@
         // answered, or names the ones that didn't.
         var status = U.el('div', 'search-status');
         status.appendChild(U.el('span', 'spin spin-small'));
-        var statusText = U.el('span', 'search-status-text', 'Searching “' + query + '”…');
+        var statusText = U.el('span', 'search-status-text', U.t('Searching “{q}”…', { q: query }));
         status.appendChild(statusText);
         results.appendChild(status);
         leaveSearch();
@@ -197,7 +197,7 @@
         var gen = ++_gen, focused = false, found = 0, failed = 0, answered = 0, total = 0, silent = [];
         function progress() {
             if (gen !== _gen) { return; }
-            statusText.textContent = 'Searching “' + query + '”…   ' + answered + ' of ' + total + ' source' + (total === 1 ? '' : 's') + ' answered';
+            statusText.textContent = U.t('Searching “{q}”…', { q: query }) + '   ' + U.tn(total, '{answered} of {n} source answered', '{answered} of {n} sources answered', { answered: answered });
         }
         Stremio.searchSourcesForSearch().then(function (defs) {
             if (gen !== _gen) { return; }
@@ -223,7 +223,7 @@
                         var cards = addCards(st, metas);
                         done(true);
                         if (!cards.length) { return; }
-                        var row = buildRow(def.title + (metas.stale ? '  ·  from earlier: the addon sent nothing just now' : ''), cards);
+                        var row = buildRow(def.title + (metas.stale ? '  ·  ' + U.t('from earlier: the addon sent nothing just now') : ''), cards);
                         row.__search = st;
                         slots[i].appendChild(row);
                         shown(cards);
@@ -237,10 +237,10 @@
                     return Stremio.tmdbPeople(query, 1, _searchCancel).then(function (r) {
                         if (gen !== _gen) { return; }
                         done(true);
-                        var st = { def: { people: true, title: 'People' }, query: query, seen: {}, count: 0, page: 1, loading: false, done: r.page >= r.pages };
+                        var st = { def: { people: true, title: U.t('People') }, query: query, seen: {}, count: 0, page: 1, loading: false, done: r.page >= r.pages };
                         var cards = addCards(st, r.people);
                         if (!cards.length) { return; }
-                        var row = buildRow('People', cards);
+                        var row = buildRow(U.t('People'), cards);
                         row.__search = st;
                         people.appendChild(row);
                         if (sameName(r.people[0].name, query)) { results.insertBefore(people, results.firstChild); }
@@ -253,20 +253,20 @@
                 if (silent.length && found) {   // some rows are in: say which sources didn't answer
                     status.className = 'search-status search-status-warn';
                     U.clear(status);
-                    status.appendChild(U.el('span', 'search-status-text', 'No answer from: ' + silent.join(',  ') + '   (try the search again)'));
+                    status.appendChild(U.el('span', 'search-status-text', U.t('No answer from: {who}   (try the search again)', { who: silent.join(',  ') })));
                 } else if (status.parentNode) {
                     status.parentNode.removeChild(status);
                 }
                 if (!found) {
-                    results.appendChild(U.el('div', 'search-empty', (failed && failed === defs.length) ? 'Search failed. Check your network.'
-                        : (!defs.length && !people) ? 'Nothing to search: no addon can, or all are hidden (Settings › Home › Search results).'
-                        : 'No results for “' + query + '”.' + (silent.length ? '  No answer from: ' + silent.join(',  ') + ' (try again).' : '')));
+                    results.appendChild(U.el('div', 'search-empty', (failed && failed === defs.length) ? U.t('Search failed. Check your network.')
+                        : (!defs.length && !people) ? U.t('Nothing to search: no addon can, or all are hidden (Settings › Home › Search results).')
+                        : U.t('No results for “{q}”.', { q: query }) + (silent.length ? '  ' + U.t('No answer from: {who} (try again).', { who: silent.join(',  ') }) : '')));
                 }
             });
         }, function () {
             if (gen !== _gen) { return; }
             if (status.parentNode) { status.parentNode.removeChild(status); }
-            results.appendChild(U.el('div', 'search-empty', 'Search failed. Check your network.'));
+            results.appendChild(U.el('div', 'search-empty', U.t('Search failed. Check your network.')));
         });
     }
     // Cards for the new titles of a row (a title twice in one row shows once); people for

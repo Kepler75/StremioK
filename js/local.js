@@ -236,7 +236,7 @@ var LocalMedia = (function () {
                 }).then(function () {
                     rebuild();
                     emit('drives');
-                    U.toast(s.state === 'MOUNTED' ? 'USB drive connected' : 'USB drive removed', 2500);
+                    U.toast(s.state === 'MOUNTED' ? U.t('USB drive connected') : U.t('USB drive removed'), 2500);
                 });
             }, function () {});
         } catch (e) {}
@@ -749,7 +749,7 @@ var LocalMedia = (function () {
         }).map(function (s) {
             var st = stem(nameOf(s)), rest = st.toLowerCase().indexOf(base) === 0 ? st.slice(base.length) : st;
             var l = langFrom(rest);
-            return subTrack(drive, s, l.lang, 'Next to the file' + (l.forced ? ' (forced)' : ''));
+            return subTrack(drive, s, l.lang, l.forced ? U.t('Next to the file (forced)') : U.t('Next to the file'));
         });
     }
     function subTrack(drive, s, lang, label) {
@@ -786,9 +786,9 @@ var LocalMedia = (function () {
         var net = isNet(drive) ? drive.dav : null;
         var abs = net ? NetFolders.fileUrl(net, file.p) : drive.root + '/' + file.p, name = nameOf(file.p), url = net ? abs : (uri || fileUri(abs));
         var icon = net ? '🌐' : '💾';
-        var st = { name: icon + (net ? ' Network folder' : ' USB drive'), title: name + (file.size ? '\n' + icon + ' ' + humanSize(file.size) : ''), url: url,
+        var st = { name: icon + ' ' + (net ? U.t('Network folder') : U.t('USB drive')), title: name + (file.size ? '\n' + icon + ' ' + humanSize(file.size) : ''), url: url,
             behaviorHints: { filename: name, videoSize: file.size || undefined, bingeGroup: 'stremiok-local' },
-            _addon: net ? 'Your network folder' : 'Your USB drive', _local: MARK, _localSubs: subs || subsInIndex(drive, file.p),
+            _addon: net ? U.t('Your network folder') : U.t('Your USB drive'), _local: MARK, _localSubs: subs || subsInIndex(drive, file.p),
             _localFile: { abs: abs, rel: file.p, size: file.size || 0, name: name } };
         if (net) { st._localFile.dav = net.id; }
         _recent.set(url, st);
@@ -824,14 +824,14 @@ var LocalMedia = (function () {
             subsInIndex(x.drive, x.file.p).forEach(function (t) {
                 if (seen[t.id]) { return; }
                 seen[t.id] = 1;
-                t._addon = isNet(x.drive) ? 'Your network folder' : 'Your USB drive';
+                t._addon = isNet(x.drive) ? U.t('Your network folder') : U.t('Your USB drive');
                 out.push(t);
             });
         });
         (_subsById[id] || []).forEach(function (x) {   // (subtitle files of their own, matched to it)
             if (seen['file:' + x.rel]) { return; }
             seen['file:' + x.rel] = 1;
-            out.push(subTrack(x.drive, x.rel, langOfName(x.rel), isNet(x.drive) ? 'Your network folder' : 'Your USB drive'));
+            out.push(subTrack(x.drive, x.rel, langOfName(x.rel), isNet(x.drive) ? U.t('Your network folder') : U.t('Your USB drive')));
         });
         return out;
     }
@@ -911,14 +911,14 @@ var LocalMedia = (function () {
         var want = parsePlainId(e.id), rel = want.rel, dm = /^@dav:([a-z0-9]+)\/(.+)$/.exec(rel);
         if (dm) {   // a network folder's file
             var nf = typeof NetFolders !== 'undefined' ? NetFolders.get(dm[1]) : null;
-            if (!nf) { U.toast('The network folder with “' + nameOf(dm[2]) + '” was removed', 4000); return Promise.resolve(false); }
-            if (nf.off) { U.toast('“' + nf.name + '” is off: Settings › Content › Network folders', 4000); return Promise.resolve(false); }
+            if (!nf) { U.toast(U.t('The network folder with “{name}” was removed', { name: nameOf(dm[2]) }), 4000); return Promise.resolve(false); }
+            if (nf.off) { U.toast(U.t('“{name}” is off: Settings › Content › Network folders', { name: nf.name }), 4000); return Promise.resolve(false); }
             playPlain(makeStream(NetFolders.driveOf(nf), { p: dm[2], size: want.size }), onExit, e.id, fromStart);
             return Promise.resolve(true);
         }
         return ensure().then(function (ds) {
             ds = ds.filter(function (x) { return !isNet(x); });   // (a USB drive's file)
-            if (!ds.length) { U.toast('Plug in the USB drive with “' + nameOf(rel) + '”', 4000); return false; }
+            if (!ds.length) { U.toast(U.t('Plug in the USB drive with “{name}”', { name: nameOf(rel) }), 4000); return false; }
             var d = null, f = null;
             ds.forEach(function (x) {
                 var idx = _index[x.root], hit = idx && idx.files.filter(function (y) { return y.p === rel && (!want.size || y.size === want.size); })[0];

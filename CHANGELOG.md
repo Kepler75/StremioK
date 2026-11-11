@@ -3,6 +3,15 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.3.5 — 2026-11-11
+- **StremioK in 16 languages** (Settings › Appearance › *Language*): English, Spanish,
+  Portuguese (Brazil), French, German, Italian, Polish, Russian, Hindi, Japanese, Korean, Hebrew,
+  Arabic, Chinese (Simplified), Turkish and Finnish. Automatic follows the TV's language, and
+  StremioK restarts in the one picked. Titles and synopses still come from your addons.
+- **Translations anyone can edit:** each language is a plain file in `translations/`, corrected
+  or added from GitHub ([Translating StremioK](docs/TRANSLATING.md)); one at least 90% translated
+  appears in Settings by itself.
+
 ## 2.3.4 — 2026-11-09
 - **Your Stremio account, kept in step** (Settings › Content › Integrations › *Stremio account*):
   Continue Watching, watched marks and your Library sync with it, both ways; the latest change to

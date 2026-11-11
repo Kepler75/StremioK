@@ -117,7 +117,7 @@ var Jellyfin = (function () {
     }
     function addressProblem(v) {
         var s = normAddress(v), p = /^https?:\/\//i.test(s) ? U.parseUrl(s) : null;
-        return p && p.host ? null : 'An address like http://192.168.0.50:8096';
+        return p && p.host ? null : U.t('An address like http://192.168.0.50:8096');
     }
     // What answers there: a Jellyfin (10.9 or newer) or Emby (4.7 or newer) server, its kind, name
     // and version. Asked at the address, then under /emby (an Emby that answers only there).
@@ -125,20 +125,20 @@ var Jellyfin = (function () {
         var url = normAddress(address);
         function info() { return U.getJSON(url + '/System/Info/Public', 10000, 65536).then(null, function (e) { return U.getJSON(url + '/emby/System/Info/Public', 10000, 65536).then(null, function () { throw e; }); }); }
         return info().then(function (r) {
-            if (!r || typeof r !== 'object' || !r.Id || !r.Version) { throw new Error('That address doesn’t answer as a Jellyfin or Emby server.'); }
+            if (!r || typeof r !== 'object' || !r.Id || !r.Version) { throw new Error(U.t('That address doesn’t answer as a Jellyfin or Emby server.')); }
             // (Jellyfin always names itself, "Jellyfin Server"; Emby usually sends no ProductName at
             // all: one that doesn't say Jellyfin is Emby when it says so or its version is Emby's, 4.x)
             var v = ('' + r.Version).split('.').map(function (x) { return parseInt(x, 10) || 0; }), pn = '' + (r.ProductName || '');
             var kind = /jellyfin/i.test(pn) ? 'jellyfin' : (/emby/i.test(pn) || v[0] < 10) ? 'emby' : 'jellyfin';
-            if (kind === 'jellyfin' && !(v[0] > 10 || (v[0] === 10 && v[1] >= 9))) { throw new Error('Jellyfin ' + r.Version + ' is too old: 10.9 or newer is needed.'); }
-            if (kind === 'emby' && !(v[0] > 4 || (v[0] === 4 && v[1] >= 7))) { throw new Error('Emby ' + r.Version + ' is too old: 4.7 or newer is needed.'); }
+            if (kind === 'jellyfin' && !(v[0] > 10 || (v[0] === 10 && v[1] >= 9))) { throw new Error(U.t('Jellyfin {v} is too old: 10.9 or newer is needed.', { v: r.Version })); }
+            if (kind === 'emby' && !(v[0] > 4 || (v[0] === 4 && v[1] >= 7))) { throw new Error(U.t('Emby {v} is too old: 4.7 or newer is needed.', { v: r.Version })); }
             return { url: url, kind: kind, serverId: '' + r.Id, name: ('' + (r.ServerName || KINDS[kind].name)).replace(/\s+/g, ' ').trim().slice(0, 60) || KINDS[kind].name, version: ('' + r.Version).slice(0, 20) };
-        }, function (e) { throw new Error('No answer from ' + url + ' (' + U.problem(e) + ').'); });
+        }, function (e) { throw new Error(U.t('No answer from {link} ({why}).', { link: url, why: U.problem(e) })); });
     }
     function kindName(s) { return K(s).name; }
     // Signed in: kept (the same server and user again: in its place, its id kept).
     function added(info, r) {
-        if (!r || !r.AccessToken || !r.User || !r.User.Id) { throw new Error(kindName(info) + ' didn’t sign in.'); }
+        if (!r || !r.AccessToken || !r.User || !r.User.Id) { throw new Error(U.t('{server} didn’t sign in.', { server: kindName(info) })); }
         var list = allServers(), old = list.filter(function (s) { return s.serverId === info.serverId && s.userId === '' + r.User.Id; })[0];
         var srv = { id: old ? old.id : 's' + rand(8), url: info.url, kind: kindOf(info), serverId: info.serverId, name: info.name, version: info.version,
             user: ('' + (r.User.Name || '')).slice(0, 60), userId: '' + r.User.Id, token: '' + r.AccessToken, at: Date.now() };
@@ -158,7 +158,7 @@ var Jellyfin = (function () {
         return U.getJSON(api(info) + '/Users/AuthenticateByName', 15000, 1048576, null, headers(info, '', true), JSON.stringify({ Username: '' + user, Pw: '' + pass })).then(function (r) {
             return withLibs(added(info, r));
         }, function (e) {
-            throw new Error(/HTTP 401/.test(e && e.message) ? 'Wrong user name or password.' : 'Couldn’t sign in (' + U.problem(e) + ').');
+            throw new Error(/HTTP 401/.test(e && e.message) ? U.t('Wrong user name or password.') : U.t('Couldn’t sign in ({why}).', { why: U.problem(e) }));
         });
     }
     // Quick Connect: a code for you to enter in Jellyfin, then asked every QC_EVERY whether it
@@ -168,10 +168,10 @@ var Jellyfin = (function () {
         function fail(msg) { if (!stopped) { stopped = true; cb.onError(msg); } }
         U.getJSON(info.url + '/QuickConnect/Enabled', 10000, 4096, null, headers(info, ''), null, true).then(function (on) {
             if (stopped) { return; }
-            if (on !== true) { fail('Quick Connect is off on this server: turn it on in Jellyfin (Dashboard › General), or sign in with a password.'); return; }
+            if (on !== true) { fail(U.t('Quick Connect is off on this server: turn it on in Jellyfin (Dashboard › General), or sign in with a password.')); return; }
             return U.getJSON(info.url + '/QuickConnect/Initiate', 10000, 65536, null, headers(info, '', true), '').then(function (r) {
                 if (stopped) { return; }
-                if (!r || !r.Secret || !r.Code) { fail('Jellyfin didn’t give a code.'); return; }
+                if (!r || !r.Secret || !r.Code) { fail(U.t('Jellyfin didn’t give a code.')); return; }
                 cb.onCode('' + r.Code);
                 function signedIn() {
                     U.getJSON(info.url + '/Users/AuthenticateWithQuickConnect', 15000, 1048576, null, headers(info, '', true), JSON.stringify({ Secret: r.Secret })).then(function (a) {
@@ -181,24 +181,24 @@ var Jellyfin = (function () {
                             stopped = true;
                             cb.onSuccess(srv);
                         });
-                    }).then(null, function (e) { fail('Couldn’t sign in (' + U.problem(e) + ').'); });
+                    }).then(null, function (e) { fail(U.t('Couldn’t sign in ({why}).', { why: U.problem(e) })); });
                 }
                 function poll() {
                     timer = setTimeout(function () {
                         if (stopped) { return; }
-                        if (Date.now() > until) { fail('The code expired: try again.'); return; }
+                        if (Date.now() > until) { fail(U.t('The code expired: try again.')); return; }
                         U.getJSON(info.url + '/QuickConnect/Connect?secret=' + enc(r.Secret), 10000, 65536, null, headers(info, ''), null, true).then(function (s) {
                             if (stopped) { return; }
                             if (s && s.Authenticated) { signedIn(); } else { poll(); }
                         }, function (e) {
                             if (stopped) { return; }
-                            if (/HTTP 404/.test(e && e.message)) { fail('The code expired: try again.'); } else { poll(); }
+                            if (/HTTP 404/.test(e && e.message)) { fail(U.t('The code expired: try again.')); } else { poll(); }
                         });
                     }, QC_EVERY);
                 }
                 poll();
             });
-        }).then(null, function (e) { fail('Couldn’t start Quick Connect (' + U.problem(e) + ').'); });
+        }).then(null, function (e) { fail(U.t('Couldn’t start Quick Connect ({why}).', { why: U.problem(e) })); });
         return function () { stopped = true; clearTimeout(timer); };
     }
     // Sign out and remove: its sign-in ended on the server too (if it answers).
@@ -242,7 +242,7 @@ var Jellyfin = (function () {
             _libsAsked[srv.id] = true;   // (once a launch, unless asked)
             return get(srv, K(srv).views(uid(srv))).then(function (r) {
                 var list = U.listOf(r && r.Items, 50, function (x) { return x.Id && (x.CollectionType === 'movies' || x.CollectionType === 'tvshows'); }).map(function (x) {
-                    return { id: '' + x.Id, name: ('' + (x.Name || '')).replace(/\s+/g, ' ').trim().slice(0, 60) || (x.CollectionType === 'movies' ? 'Movies' : 'Shows'), type: x.CollectionType === 'movies' ? 'movie' : 'series' };
+                    return { id: '' + x.Id, name: ('' + (x.Name || '')).replace(/\s+/g, ' ').trim().slice(0, 60) || (x.CollectionType === 'movies' ? U.t('Movies') : U.t('Shows')), type: x.CollectionType === 'movies' ? 'movie' : 'series' };
                 });
                 if (!server(srv.id)) { return; }   // (removed meanwhile)
                 var all = libsAll(), keep = {}, before = JSON.stringify(all[srv.id] && all[srv.id].list);
@@ -264,8 +264,8 @@ var Jellyfin = (function () {
         servers(kind).forEach(function (srv) {
             var libs = libsOf(srv), on = many ? ' · ' + srv.name : '';   // (Home adds “Jellyfin” / “Emby”)
             if (!libs.length) { return; }   // (its libraries not read yet, or none)
-            if (libs.some(function (l) { return l.type === 'movie'; })) { out.push({ type: 'movie', id: 'jf.' + srv.id + '.resume', name: 'Continue watching' + on, extra: [] }); }
-            if (libs.some(function (l) { return l.type === 'series'; })) { out.push({ type: 'series', id: 'jf.' + srv.id + '.nextup', name: 'Next up' + on, extra: [] }); }
+            if (libs.some(function (l) { return l.type === 'movie'; })) { out.push({ type: 'movie', id: 'jf.' + srv.id + '.resume', name: U.t('Continue watching') + on, extra: [] }); }
+            if (libs.some(function (l) { return l.type === 'series'; })) { out.push({ type: 'series', id: 'jf.' + srv.id + '.nextup', name: U.t('Next up') + on, extra: [] }); }
             libs.forEach(function (lib) {
                 out.push({ type: lib.type, id: 'jf.' + srv.id + '.' + lib.id, name: lib.name + (many ? ' · ' + srv.name : ''), extra: [{ name: 'search' }, { name: 'skip' }] });
             });
@@ -387,12 +387,12 @@ var Jellyfin = (function () {
             if (Array.isArray(it.Genres) && it.Genres.length) { m.genres = it.Genres.slice(0, 12).map(String); }
             if (names(it.People, 'Actor').length) { m.cast = names(it.People, 'Actor'); }
             if (names(it.People, 'Director').length) { m.director = names(it.People, 'Director'); }
-            if (+it.RunTimeTicks > 0) { m.runtime = Math.round(it.RunTimeTicks / TICKS / 60) + ' min'; }
+            if (+it.RunTimeTicks > 0) { m.runtime = U.t('{n} min', { n: Math.round(it.RunTimeTicks / TICKS / 60) }); }
             if (m.releaseInfo) { m.year = m.releaseInfo; }
             if (t === 'movie') { return m; }
             return episodes(srv, it.Id).then(function (eps) {
                 m.videos = eps.map(function (e) {
-                    var v = { id: showId + ':' + e.season + ':' + e.episode, season: e.season, episode: e.episode, title: ('' + (e.it.Name || '')).trim() || 'Episode ' + e.episode };
+                    var v = { id: showId + ':' + e.season + ':' + e.episode, season: e.season, episode: e.episode, title: ('' + (e.it.Name || '')).trim() || U.t('Episode {n}', { n: e.episode }) };
                     if (e.it.Overview) { v.overview = ('' + e.it.Overview).slice(0, 1000); }
                     if (e.it.ImageTags && e.it.ImageTags.Primary) { v.thumbnail = img(srv, e.it.Id, 'Primary', e.it.ImageTags.Primary, 'maxWidth=640'); }
                     var rel = Date.parse(e.it.PremiereDate || '');
@@ -815,7 +815,7 @@ var Jellyfin = (function () {
             var ch = jf.ch || {}, more = [];
             out = out || { intro: [], recap: [], credits: [], preview: [], from: {} };
             ['intro', 'recap', 'credits', 'preview'].forEach(function (k) {
-                if (!out[k].length && U.listOf(ch[k], 10).length) { out[k] = U.listOf(ch[k], 10); out.from[k] = name + '’s chapters'; more.push(k); }
+                if (!out[k].length && U.listOf(ch[k], 10).length) { out[k] = U.listOf(ch[k], 10); out.from[k] = U.t('{server}’s chapters', { server: name }); more.push(k); }
             });
             if (asked) { asked.push(name + ': ' + (has.length ? has.join(', ') : why) + (more.length ? '; its chapters: ' + more.join(', ') : '')); }
             return has.length || more.length ? out : null;

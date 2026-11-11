@@ -15,7 +15,7 @@ var StremioAccount = (function () {
     function start() {
         return U.getJSON(LINK + 'create?type=Create', 15000, 65536).then(function (r) {
             var x = (r && r.result) || r || {};
-            if (!/^[A-Za-z0-9]{2,16}$/.test(x.code || '') || !U.parseUrl(x.link)) { throw new Error('Stremio didn’t give a code'); }
+            if (!/^[A-Za-z0-9]{2,16}$/.test(x.code || '') || !U.parseUrl(x.link)) { throw new Error(U.t('Stremio didn’t give a code')); }
             return { code: x.code, link: x.link };
         });
     }
@@ -26,7 +26,7 @@ var StremioAccount = (function () {
         return new Promise(function (resolve, reject) {
             function ask() {
                 if (stopped && stopped()) { reject(new Error('stopped')); return; }
-                if (Date.now() > until) { reject(new Error('The code expired: try again')); return; }
+                if (Date.now() > until) { reject(new Error(U.t('The code expired: try again'))); return; }
                 U.getJSON(LINK + 'read?type=Read&code=' + encodeURIComponent(code), 15000, 65536).then(function (r) {
                     var key = r && r.result && r.result.authKey;
                     if (typeof key === 'string' && key && key.length < 200) { if (stopped && stopped()) { signOut(key); reject(new Error('stopped')); return; } resolve(key); return; }
@@ -42,26 +42,26 @@ var StremioAccount = (function () {
         max = max || MAX_BYTES;
         return new Promise(function (resolve, reject) {
             var xhr = new XMLHttpRequest(), done = false;
-            try { xhr.open('POST', API + method, true); } catch (e) { reject(new Error('couldn’t reach Stremio')); return; }
+            try { xhr.open('POST', API + method, true); } catch (e) { reject(new Error(U.t('couldn’t reach Stremio'))); return; }
             xhr.timeout = 20000;
             xhr.setRequestHeader('Content-Type', 'application/json');
             xhr.onprogress = function (ev) {   // (an answer over MAX_BYTES: stopped as it arrives, as every other request is)
-                if (!done && ev && ev.loaded > max) { done = true; try { xhr.abort(); } catch (e) {} reject(new Error('too large an answer')); }
+                if (!done && ev && ev.loaded > max) { done = true; try { xhr.abort(); } catch (e) {} reject(new Error(U.t('too large an answer'))); }
             };
             xhr.onreadystatechange = function () {
                 if (xhr.readyState !== 4 || done) { return; }
                 done = true;
                 var text = '' + (xhr.responseText || ''), data = null;
-                if (text.length > max) { reject(new Error('too large an answer')); return; }
+                if (text.length > max) { reject(new Error(U.t('too large an answer'))); return; }
                 try { data = JSON.parse(text); } catch (e2) { data = null; }
                 if (xhr.status >= 200 && xhr.status < 300 && data && data.result) { resolve(data.result); return; }
                 var err = new Error((data && data.error && data.error.message) || ('HTTP ' + xhr.status));
                 err.code = (data && data.error && typeof data.error.code === 'number') ? data.error.code : 0;
                 reject(err);
             };
-            xhr.ontimeout = function () { if (!done) { done = true; reject(new Error('Stremio didn’t answer')); } };
-            xhr.onerror = function () { if (!done) { done = true; reject(new Error('couldn’t reach Stremio')); } };
-            try { xhr.send(JSON.stringify(body)); } catch (e3) { reject(new Error('couldn’t reach Stremio')); }
+            xhr.ontimeout = function () { if (!done) { done = true; reject(new Error(U.t('Stremio didn’t answer'))); } };
+            xhr.onerror = function () { if (!done) { done = true; reject(new Error(U.t('couldn’t reach Stremio'))); } };
+            try { xhr.send(JSON.stringify(body)); } catch (e3) { reject(new Error(U.t('couldn’t reach Stremio'))); }
         });
     }
     // The account's addons StremioK can use: [{ url, name, description }] (a link on the

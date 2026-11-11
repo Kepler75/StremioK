@@ -111,7 +111,7 @@ var Trakt = (function () {
     function lostSignIn() {   // (401 / 403, or the token can't be renewed: nothing more is sent until you connect again)
         if (!isConnected()) { return; }
         if (!needsReconnect()) { setSyncState({ reconnect: true }); }
-        if (!_toldReconnect) { _toldReconnect = true; U.toast('Trakt needs reconnecting: Settings › Content › Integrations', 6000); U.log('trakt', 'Trakt sign-in no longer works: reconnect in Settings'); }
+        if (!_toldReconnect) { _toldReconnect = true; U.toast(U.t('Trakt needs reconnecting: Settings › Content › Integrations'), 6000); U.log('trakt', 'Trakt sign-in no longer works: reconnect in Settings'); }
     }
 
     // Renew the access token when it's near expiry. A renewal Trakt refuses means the sign-in
@@ -156,19 +156,19 @@ var Trakt = (function () {
         cb = cb || {};
         var canceled = false, timer = null, g0 = _gen;
         var c = getCreds();
-        if (!c.id) { if (cb.onError) { cb.onError('Enter your Trakt Client ID first.'); } return function () {}; }
+        if (!c.id) { if (cb.onError) { cb.onError(U.t('Enter your Trakt Client ID first.')); } return function () {}; }
 
         req('POST', '/oauth/device/code', { client_id: c.id }, false).then(function (r) {
             if (canceled) { return; }
             var d = r.data || {};
-            if (!d.device_code) { if (cb.onError) { cb.onError('Trakt did not return a device code.'); } return; }
+            if (!d.device_code) { if (cb.onError) { cb.onError(U.t('Trakt did not return a device code.')); } return; }
             if (cb.onCode) { cb.onCode(d.user_code, d.verification_url || 'https://trakt.tv/activate'); }
             var interval = (d.interval || 5) * 1000;
             var deadline = Date.now() + ((d.expires_in || 600) * 1000);
 
             function pollOnce() {
                 if (canceled) { return; }
-                if (Date.now() > deadline) { if (cb.onError) { cb.onError('Code expired — try again.'); } return; }
+                if (Date.now() > deadline) { if (cb.onError) { cb.onError(U.t('Code expired — try again.')); } return; }
                 req('POST', '/oauth/device/token', client({ code: d.device_code }), false)
                     .then(function (tr) {
                         if (canceled || !current(g0)) { return; }
@@ -188,15 +188,15 @@ var Trakt = (function () {
                         var s = err && err.status;
                         if (s === 400) { timer = setTimeout(pollOnce, interval); return; }   // authorization pending
                         if (s === 429) { timer = setTimeout(pollOnce, interval + 1000); return; } // slow down
-                        if (s === 418) { if (cb.onError) { cb.onError('Sign-in was denied.'); } return; }
-                        if (s === 410) { if (cb.onError) { cb.onError('Code expired — try again.'); } return; }
-                        if (s === 409) { if (cb.onError) { cb.onError('Code already used.'); } return; }
+                        if (s === 418) { if (cb.onError) { cb.onError(U.t('Sign-in was denied.')); } return; }
+                        if (s === 410) { if (cb.onError) { cb.onError(U.t('Code expired — try again.')); } return; }
+                        if (s === 409) { if (cb.onError) { cb.onError(U.t('Code already used.')); } return; }
                         if (cb.onPending) { cb.onPending(); }
                         timer = setTimeout(pollOnce, interval);
                     });
             }
             timer = setTimeout(pollOnce, interval);
-        }, function () { if (cb.onError) { cb.onError('Could not reach Trakt (or CORS blocked on desktop).'); } });
+        }, function () { if (cb.onError) { cb.onError(U.t('Could not reach Trakt (or CORS blocked on desktop).')); } });
 
         return function cancel() { canceled = true; if (timer) { clearTimeout(timer); } };
     }
@@ -507,16 +507,16 @@ var Trakt = (function () {
         }
         return Promise.resolve(list.map(function (x) {
             return { id: x.imdb, type: x.type, name: x.title || x.imdb, poster: poster(x.imdb), posterShape: 'poster',
-                releaseInfo: x.year ? '' + x.year : '', description: x.next ? 'Up next: ' + x.next : '' };
+                releaseInfo: x.year ? '' + x.year : '', description: x.next ? U.t('Up next: {ep}', { ep: x.next }) : '' };
         }));
     }
     function synthAddon() {
         return {
             __local: true, __impl: { catalog: synthCatalog }, url: 'local:trakt', base: 'local:trakt',
             manifest: { id: 'org.stremiok.trakt', name: 'Trakt', version: '1.0.0', types: ['movie', 'series'], resources: ['catalog'],
-                catalogs: [{ type: 'series', id: 'trakt_upnext', name: 'Up next', extra: [{ name: 'skip' }] },
-                    { type: 'movie', id: 'trakt_watchlist_movies', name: 'Watchlist', extra: [{ name: 'skip' }] },
-                    { type: 'series', id: 'trakt_watchlist_shows', name: 'Watchlist', extra: [{ name: 'skip' }] }] }
+                catalogs: [{ type: 'series', id: 'trakt_upnext', name: U.t('Up next'), extra: [{ name: 'skip' }] },
+                    { type: 'movie', id: 'trakt_watchlist_movies', name: U.t('Watchlist'), extra: [{ name: 'skip' }] },
+                    { type: 'series', id: 'trakt_watchlist_shows', name: U.t('Watchlist'), extra: [{ name: 'skip' }] }] }
         };
     }
 
@@ -535,7 +535,7 @@ var Trakt = (function () {
         (U.store.get(UPNEXT_KEY, []) || []).forEach(function (u) {
             if (!u || !u.imdb || paused[u.imdb]) { return; }
             var e = { id: u.imdb + ':' + u.season + ':' + u.episode, type: 'series', parent: u.imdb,
-                name: (u.title || 'Show') + '  S' + u.season + 'E' + u.episode, poster: poster(u.imdb),
+                name: (u.title || U.t('Show')) + '  S' + u.season + 'E' + u.episode, poster: poster(u.imdb),
                 position: 0, duration: 0, updated: u.at || 0, _trakt: true, upNext: u.epTitle || '' };
             if (kept(e)) { list.push(e); }
         });
@@ -563,13 +563,13 @@ var Trakt = (function () {
                 if (it.type === 'movie' && it.movie) {
                     var mi = imdbOf(it.movie.ids);
                     if (!mi) { return; }
-                    out.push({ id: mi, type: 'movie', name: str(it.movie.title, 200) || 'Movie', poster: poster(mi),
+                    out.push({ id: mi, type: 'movie', name: str(it.movie.title, 200) || U.t('Movie'), poster: poster(mi),
                         position: prog, duration: 100, updated: updated, _trakt: true });
                 } else if (it.type === 'episode' && it.show && it.episode) {
                     var si = imdbOf(it.show.ids), sn = num(it.episode.season, 1000), en = num(it.episode.number, 10000);
                     if (!si || sn === null || en === null) { return; }
                     out.push({ id: si + ':' + sn + ':' + en, type: 'series',
-                        name: (str(it.show.title, 200) || 'Show') + '  S' + sn + 'E' + en,
+                        name: (str(it.show.title, 200) || U.t('Show')) + '  S' + sn + 'E' + en,
                         poster: poster(si), position: prog, duration: 100, updated: updated, _trakt: true });
                 }
             });
@@ -644,12 +644,12 @@ var Trakt = (function () {
     function saveOutbox(b) {
         if (b.length > OUTBOX_MAX) {
             U.log('trakt', (b.length - OUTBOX_MAX) + ' older change(s) dropped, not sent to Trakt: more than ' + OUTBOX_MAX + ' waiting');
-            if (!_toldFull) { _toldFull = true; U.toast('Trakt: too many changes waiting, the oldest were dropped', 6000); }
+            if (!_toldFull) { _toldFull = true; U.toast(U.t('Trakt: too many changes waiting, the oldest were dropped'), 6000); }
             b = b.slice(-OUTBOX_MAX);
         }
         if (U.store.set(OUTBOX_KEY, b) === false) {
             U.log('trakt', 'The changes waiting for Trakt couldn’t be saved on the TV (its storage is full): they’re lost if StremioK closes');
-            if (!_toldUnsaved) { _toldUnsaved = true; U.toast('Trakt: the changes waiting couldn’t be saved on the TV (storage full)', 6000); }
+            if (!_toldUnsaved) { _toldUnsaved = true; U.toast(U.t('Trakt: the changes waiting couldn’t be saved on the TV (storage full)'), 6000); }
         }
     }
     function newId() { return Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36); }
@@ -695,15 +695,15 @@ var Trakt = (function () {
         var soonest = Math.min.apply(null, waiting.map(function (x) { return x.next || 0; }));
         flushSoon(Math.max(1000, soonest - Date.now()));
     }
-    function what(x) { return x.kind === 'add' ? 'watched' : x.kind === 'remove' ? 'not watched' : x.kind === 'stop' ? 'watched (finished)' : x.kind === 'rate' ? 'rated ' + x.rating : x.kind === 'unrate' ? 'rating removed' : 'where you stopped'; }
+    function what(x) { return x.kind === 'add' ? U.t('watched') : x.kind === 'remove' ? U.t('not watched') : x.kind === 'stop' ? U.t('watched (finished)') : x.kind === 'rate' ? U.t('rated {n}', { n: x.rating }) : x.kind === 'unrate' ? U.t('rating removed') : U.t('where you stopped'); }
     // The change's title: its name when it has one, else its IMDb id (and episode), or how many.
     function titleOf(x) {
         var keys = x.keys || [];
         if (x.name) { return x.name; }
-        if (keys.length > 1) { return keys.length + ' titles / episodes'; }
+        if (keys.length > 1) { return U.t('{n} titles / episodes', { n: keys.length }); }
         var m = ('' + (keys[0] || '')).match(/^(?:movie|series):(tt\d+)(?::(\d+):(\d+))?$/);
         var s = ('' + (keys[0] || '')).match(/^season:(tt\d+):(\d+)$/);
-        if (s) { return s[1] + ' Season ' + s[2]; }
+        if (s) { return U.t('{show} Season {n}', { show: s[1], n: s[2] }); }
         return m ? m[1] + (m[2] ? ' S' + m[2] + 'E' + m[3] : '') : '';
     }
     function describe(x) { var t = titleOf(x); return what(x) + (t ? ', ' + t : ''); }
@@ -742,8 +742,8 @@ var Trakt = (function () {
     // that isn't is retried, not taken as done).
     function ackProblem(r) {
         var d = r && r.data;
-        if (r && r.bad) { return 'an answer that isn’t Trakt’s JSON'; }
-        if (!d || typeof d !== 'object' || Array.isArray(d)) { return 'an unexpected answer'; }
+        if (r && r.bad) { return U.t('an answer that isn’t Trakt’s JSON'); }
+        if (!d || typeof d !== 'object' || Array.isArray(d)) { return U.t('an unexpected answer'); }
         return '';
     }
     function update(due, fn) {
@@ -791,7 +791,7 @@ var Trakt = (function () {
             var refused = st >= 400 && st < 500 && st !== 408 && st !== 429;
             if (refused || x.tries >= TRIES_MAX) {
                 var said = err && err.data && typeof err.data.message === 'string' ? err.data.message.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
-                x.failed = true; x.err = st ? 'HTTP ' + st + (said ? ': ' + said : '') : (err && err.unexpected) || (err && err.tooBig ? 'answer too large' : 'no answer');
+                x.failed = true; x.err = st ? 'HTTP ' + st + (said ? ': ' + said : '') : (err && err.unexpected) || (err && err.tooBig ? U.t('answer too large') : U.t('no answer'));
                 U.log('trakt', 'Not sent to Trakt: ' + describe(x) + ' (' + x.err + ')');
             } else {
                 x.next = Date.now() + Math.max(((err && err.retryAfter) || 0) * 1000, Math.min(30000 * Math.pow(2, x.tries - 1), 3600000));

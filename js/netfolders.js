@@ -38,7 +38,7 @@ var NetFolders = (function () {
     function nameOf(url) {
         var m = /^https?:\/\/([^\/:]+)(?::\d+)?(\/.*)?$/i.exec(url) || [], segs = (m[2] || '/').split('/').filter(Boolean), last = segs.length ? segs[segs.length - 1] : '';
         try { last = decodeURIComponent(last); } catch (e) {}
-        return (last ? last + ' on ' : '') + (m[1] || url);
+        return last ? U.t('{folder} on {host}', { folder: last, host: m[1] || url }) : (m[1] || url);
     }
 
     // ---- through StremioK's service ----
@@ -51,23 +51,23 @@ var NetFolders = (function () {
     }
     function query(f, rel) { return '?u=' + encodeURIComponent(f.url) + (rel != null ? '&p=' + encodeURIComponent(rel) : ''); }
     var WHY = {
-        auth: 'It refused the user name or password',
-        untrusted: 'Its certificate isn’t from a known authority',
-        unreachable: 'Couldn’t reach it',
-        notdav: 'Not a WebDAV folder',
-        missing: 'No such folder there',
-        elsewhere: 'It sent StremioK to another address (not followed)',
-        toolarge: 'Its answer was too large',
-        busy: 'Another folder is being indexed: try again when it’s done'
+        auth: U.t('It refused the user name or password'),
+        untrusted: U.t('Its certificate isn’t from a known authority'),
+        unreachable: U.t('Couldn’t reach it'),
+        notdav: U.t('Not a WebDAV folder'),
+        missing: U.t('No such folder there'),
+        elsewhere: U.t('It sent StremioK to another address (not followed)'),
+        toolarge: U.t('Its answer was too large'),
+        busy: U.t('Another folder is being indexed: try again when it’s done')
     };
     // The service's answer, or what went wrong: an Error with why (and, untrusted, the
     // certificate: cert, fp, name, until).
     function ask(f, path, rel, timeout, max, cancel) {
-        if (typeof LocalMedia === 'undefined' || !LocalMedia.askService) { return Promise.reject(new Error('no StremioK service here')); }
+        if (typeof LocalMedia === 'undefined' || !LocalMedia.askService) { return Promise.reject(new Error(U.t('no StremioK service here'))); }
         return LocalMedia.askService('/dav/' + path + query(f, rel), timeout, max, cancel, headers(f)).then(function (r) {
-            if (!r || typeof r !== 'object') { throw new Error('No answer from StremioK’s service'); }
+            if (!r || typeof r !== 'object') { throw new Error(U.t('No answer from StremioK’s service')); }
             if (r.why) {
-                var e = new Error((WHY[r.why] || 'It failed') + (r.message && r.why !== 'auth' && r.why !== 'busy' ? ' (' + r.message + ')' : ''));
+                var e = new Error((WHY[r.why] || U.t('It failed')) + (r.message && r.why !== 'auth' && r.why !== 'busy' ? ' (' + r.message + ')' : ''));
                 e.why = r.why;
                 if (r.why === 'untrusted' && typeof r.cert === 'string') { e.cert = r.cert; e.fp = '' + (r.fp || ''); e.name = '' + (r.name || ''); e.until = '' + (r.until || ''); }
                 throw e;
@@ -128,7 +128,7 @@ var NetFolders = (function () {
     // Keep a folder probe() found (the same address again: replaced).
     function add(p) {
         var l = all().filter(function (f) { return f.url !== p.url; });
-        if (l.length >= MAX) { throw new Error('Up to ' + MAX + ' network folders'); }
+        if (l.length >= MAX) { throw new Error(U.t('Up to {n} network folders', { n: MAX })); }
         var f = { id: newId(), name: p.name || nameOf(p.url), url: p.url, user: p.user || '', pass: p.pass || '', cert: p.cert || '', at: Date.now() };
         l.push(f);
         save(l);

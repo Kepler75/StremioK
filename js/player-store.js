@@ -81,13 +81,13 @@
 
     // ---------- subtitle look, audio language ----------
     // Look: color, background, edge and height on screen.
-    var SUB_COLORS = [['white', 'White', '#ffffff'], ['yellow', 'Yellow', '#ffe14d'], ['cyan', 'Cyan', '#7fe7ff'], ['green', 'Green', '#9cff8a']];
-    var SUB_BGS = [['none', 'None', 'transparent'], ['light', 'See-through box', 'rgba(0,0,0,0.55)'], ['solid', 'Solid box', 'rgba(0,0,0,0.9)']];
-    var SUB_EDGES = [['shadow', 'Drop shadow', '0 2px 3px #000'],
-        ['outline', 'Outline', '-2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 -2px 0 #000, 0 2px 0 #000, -2px 0 0 #000, 2px 0 0 #000'],
-        ['none', 'None', 'none']];
+    var SUB_COLORS = [['white', U.t('White'), '#ffffff'], ['yellow', U.t('Yellow'), '#ffe14d'], ['cyan', U.t('Cyan'), '#7fe7ff'], ['green', U.t('Green'), '#9cff8a']];
+    var SUB_BGS = [['none', U.t('None'), 'transparent'], ['light', U.t('See-through box'), 'rgba(0,0,0,0.55)'], ['solid', U.t('Solid box'), 'rgba(0,0,0,0.9)']];
+    var SUB_EDGES = [['shadow', U.t('Drop shadow'), '0 2px 3px #000'],
+        ['outline', U.t('Outline'), '-2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 -2px 0 #000, 0 2px 0 #000, -2px 0 0 #000, 2px 0 0 #000'],
+        ['none', U.t('None'), 'none']];
     // bottom offset: above the black bars of a widescreen film when raised
-    var SUB_POSITIONS = [['lower', 'Lower', 60], ['bottom', 'Bottom', 130], ['raised', 'Raised', 210], ['higher', 'Higher', 290]];   // (Lower: near the screen's edge)
+    var SUB_POSITIONS = [['lower', U.t('Lower'), 60], ['bottom', U.t('Bottom'), 130], ['raised', U.t('Raised'), 210], ['higher', U.t('Higher'), 290]];   // (Lower: near the screen's edge)
     function pick3(list, id) { for (var i = 0; i < list.length; i++) { if (list[i][0] === id) { return list[i]; } } return list[0]; }
     function getSubCfg() {
         var d = U.store.get(SUBCFG_KEY, {}) || {};
@@ -109,11 +109,11 @@
     // css/fonts (see style.css); each falls back to a TV font for scripts it lacks.
     // 'default' leaves the subtitle in the app font (Arial / Tizen Sans).
     var SUB_FONTS = [
-        ['default', 'TV default', ''],
+        ['default', U.t('TV default'), ''],
         ['roboto', 'Roboto', "'SK Roboto', Arial, sans-serif"],
-        ['atkinson', 'Atkinson Hyperlegible (easy reading)', "'SK Atkinson Hyperlegible', Arial, sans-serif"],
-        ['nunito', 'Nunito (rounded)', "'SK Nunito', Arial, sans-serif"],
-        ['cousine', 'Cousine (closed-caption style)', "'SK Cousine', 'Courier New', monospace"]
+        ['atkinson', U.t('Atkinson Hyperlegible (easy reading)'), "'SK Atkinson Hyperlegible', Arial, sans-serif"],
+        ['nunito', U.t('Nunito (rounded)'), "'SK Nunito', Arial, sans-serif"],
+        ['cousine', U.t('Cousine (closed-caption style)'), "'SK Cousine', 'Courier New', monospace"]
     ];
     function subFontFamily(id) {
         for (var i = 0; i < SUB_FONTS.length; i++) { if (SUB_FONTS[i][0] === id) { return SUB_FONTS[i][2]; } }
@@ -247,9 +247,9 @@
     // [id, label, AVPlay display method, CSS object-fit for the desktop <video>]; remembered.
     var PLAYERCFG_KEY = 'stremiok.playercfg';
     var ASPECTS = [
-        ['fit', 'Fit (whole picture)', 'PLAYER_DISPLAY_MODE_LETTER_BOX', 'contain'],
-        ['zoom', 'Zoom (fill the screen, trims edges)', 'PLAYER_DISPLAY_MODE_CROPPED_FULL', 'cover'],
-        ['stretch', 'Stretch', 'PLAYER_DISPLAY_MODE_FULL_SCREEN', 'fill']
+        ['fit', U.t('Fit (whole picture)'), 'PLAYER_DISPLAY_MODE_LETTER_BOX', 'contain'],
+        ['zoom', U.t('Zoom (fill the screen, trims edges)'), 'PLAYER_DISPLAY_MODE_CROPPED_FULL', 'cover'],
+        ['stretch', U.t('Stretch'), 'PLAYER_DISPLAY_MODE_FULL_SCREEN', 'fill']
     ];
     // + seek: how far LEFT / RIGHT jump (s); buffer: 'normal' (the TV's own) | 'more' | 'most';
     // reconnect: a live channel that drops, 'off' | 'few' | 'always' (see player-core's liveDropped)

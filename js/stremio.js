@@ -16,7 +16,7 @@ var Stremio = (function () {
     ];
     // Addons whose operator limits who may use them: what Settings says about one you add.
     var RESTRICTED = {
-        'org.stremio.watchhub': 'Third-party service: its operator says it’s only for apps Stremio authorizes in writing, and StremioK isn’t one. Use it at your own discretion.'
+        'org.stremio.watchhub': U.t('Third-party service: its operator says it’s only for apps Stremio authorizes in writing, and StremioK isn’t one. Use it at your own discretion.')
     };
     var RESTRICTED_HOSTS = { 'watchhub.strem.io': 'org.stremio.watchhub' };
     // The note for an addon (its manifest id, or its URL before it has loaded), or ''.
@@ -125,7 +125,7 @@ var Stremio = (function () {
     function refreshAddon(url) {
         return fetchManifests([url]).then(function (got) {
             var m = got[url];
-            if (!m) { throw new Error('Could not refresh ' + U.redactUrl(url)); }
+            if (!m) { throw new Error(U.t('Could not refresh {link}', { link: U.redactUrl(url) })); }
             if (_loaded) { _loaded.forEach(function (a) { if (a.url === url) { a.manifest = m; } }); }
             var kept = _loaded;
             configChanged();   // (its sources may differ now; fetched again as titles open)
@@ -161,7 +161,8 @@ var Stremio = (function () {
     function addonMs(ms) { var w = getPrefs().addonWait * 1000; return w > ms ? w : ms; }
     function getPrefs() {
         var p = U.store.get(PREFS_KEY, {}) || {};
-        return { posterShape: p.posterShape || 'portrait', accent: p.accent || 'indigo', bg: p.bg || 'dark',
+        return { lang: typeof p.lang === 'string' && p.lang ? p.lang : 'auto',   // Settings > Appearance > Language (js/i18n.js: 'auto', 'en', 'es', 'pt-BR')
+            posterShape: p.posterShape || 'portrait', accent: p.accent || 'indigo', bg: p.bg || 'dark',
             look: p.look === 'modern' ? 'modern' : 'classic',   // Settings > Appearance: Classic, or Modern (a backdrop behind Home, the title's logo, rounder posters)
             effects: p.effects === 'light' || p.effects === 'full' ? p.effects : 'auto',   // ...Modern's blur and motion: by the TV (auto), off (light) or on (full)
             zoom: [110, 120, 130, 140].indexOf(p.zoom) !== -1 ? p.zoom : 100,   // Settings > Appearance: everything bigger (percent)
@@ -210,11 +211,11 @@ var Stremio = (function () {
         var bytes = (info && info.size) || sizeBytes(st);
         if (!(bytes > 0)) { return ''; }
         var g = bytes / 1073741824;
-        if (L.max && g > L.max) { return 'over ' + gbText(L.max); }
-        if (L.min && g < L.min) { return 'under ' + gbText(L.min); }
+        if (L.max && g > L.max) { return U.t('over {size}', { size: gbText(L.max) }); }
+        if (L.min && g < L.min) { return U.t('under {size}', { size: gbText(L.min) }); }
         if (L.perHour && minutes > 0) {
             var ph = g / (minutes / 60);
-            if (ph > L.perHour) { return (Math.round(ph * 10) / 10) + ' GB an hour, over ' + gbText(L.perHour); }
+            if (ph > L.perHour) { return U.t('{size} GB an hour, over {limit}', { size: Math.round(ph * 10) / 10, limit: gbText(L.perHour) }); }
         }
         return '';
     }
@@ -518,7 +519,7 @@ var Stremio = (function () {
     function iptvRefreshEvery() { return _hasIptv && IPTV.refreshEvery ? IPTV.refreshEvery() : 0; }
     function iptvSetRefreshEvery(h) { if (_hasIptv && IPTV.setRefreshEvery) { IPTV.setRefreshEvery(h); } }
     function iptvReadAt() { return _hasIptv && IPTV.readAt ? IPTV.readAt() : Infinity; }
-    function iptvStatus(id) { return _hasIptv ? IPTV.status(id) : { error: 'IPTV unavailable' }; }
+    function iptvStatus(id) { return _hasIptv ? IPTV.status(id) : { error: U.t('IPTV unavailable') }; }
     // Force a re-fetch of one playlist (Settings → Reload) and rebuild the addon list.
     // An Xtream account turned out to have films and series, or none (XtVod.onVodChange): the IPTV
     // rows made again from the saved copies (its film and episode lines in or out), not downloaded.
@@ -556,7 +557,7 @@ var Stremio = (function () {
     // A configuration file's lines (Settings › Import configuration file), read but not yet
     // imported: { items: [{ kind: 'addon' | 'playlist' | 'omdb' | 'tmdb' | 'mdblist', value,
     // label, have (already yours), note }], ignored }. Blank lines and # comments skipped.
-    var KEY_NAMES = { omdb: 'OMDb key', tmdb: 'TMDB key', mdblist: 'MDBList key' };
+    var KEY_NAMES = { omdb: U.t('OMDb key'), tmdb: U.t('TMDB key'), mdblist: U.t('MDBList key') };
     function shortLink(u) {
         var p = U.parseUrl(u);
         if (!p) { return ('' + u).slice(0, 60); }
@@ -583,11 +584,11 @@ var Stremio = (function () {
         var lists = iptvLists(), integ = getIntegrations(), out = [], n = getAddonUrls().length;
         var pl = lists.filter(function (p) { return !p.mac; }).length, st = lists.length - pl;
         var keys = Object.keys(KEY_NAMES).filter(function (k) { return integ[k]; }).map(function (k) { return KEY_NAMES[k].replace(/ key$/, ''); });
-        if (n) { out.push({ key: 'addons', label: plural(n, 'addon') + ', in your order' }); }
-        if (pl) { out.push({ key: 'playlists', label: plural(pl, 'IPTV playlist') + ' (their logins too)' }); }
-        if (st) { out.push({ key: 'stalker', label: plural(st, 'Stalker portal') + ' (their MAC addresses)' }); }
-        if (keys.length) { out.push({ key: 'keys', label: 'API keys: ' + keys.join(', ') }); }
-        out.push({ key: 'settings', label: 'Your settings: look, Home, playback, subtitles, sources, streaming server, YouTube…' });
+        if (n) { out.push({ key: 'addons', label: U.tn(n, '{n} addon, in your order', '{n} addons, in your order') }); }
+        if (pl) { out.push({ key: 'playlists', label: U.tn(pl, '{n} IPTV playlist (their logins too)', '{n} IPTV playlists (their logins too)') }); }
+        if (st) { out.push({ key: 'stalker', label: U.tn(st, '{n} Stalker portal (their MAC addresses)', '{n} Stalker portals (their MAC addresses)') }); }
+        if (keys.length) { out.push({ key: 'keys', label: U.t('API keys: {keys}', { keys: keys.join(', ') }) }); }
+        out.push({ key: 'settings', label: U.t('Your settings: look, Home, playback, subtitles, sources, streaming server, YouTube…') });
         return out;
     }
     function settingsValue(key) {
@@ -645,7 +646,7 @@ var Stremio = (function () {
             if (m[1] === 'playlist' && typeof o.url === 'string') { details[o.url] = o; return; }
             if (m[1] === 'stalker' && typeof o.url === 'string' && _hasIptv && IPTV.macOf && IPTV.macOf(o.mac)) {
                 var mac = IPTV.macOf(o.mac);
-                push({ kind: 'stalker', value: o.url + '|' + mac, info: o, label: 'Stalker portal  ·  ' + (typeof o.name === 'string' && o.name ? o.name.slice(0, 60) : shortLink(o.url)),
+                push({ kind: 'stalker', value: o.url + '|' + mac, info: o, label: U.t('Stalker portal') + '  ·  ' + (typeof o.name === 'string' && o.name ? o.name.slice(0, 60) : shortLink(o.url)),
                     have: have.some(function (p) { return p.url === o.url && p.mac === mac; }), note: '' });
                 return;
             }
@@ -661,21 +662,21 @@ var Stremio = (function () {
             else if (/^[A-Za-z0-9]{25}$/.test(value)) { key = 'mdblist'; }
             if (key) {
                 push({ kind: key, value: value, label: KEY_NAMES[key] + '  ·  …' + value.slice(-4), have: integ[key] === value,
-                    note: (integ[key] && integ[key] !== value) ? 'replaces yours' : '' });
+                    note: (integ[key] && integ[key] !== value) ? U.t('replaces yours') : '' });
             } else if (U.isPlaylistUrl(U.parseUrl(value))) {   // …m3u / .m3u8 (a query after it too), Xtream get.php?…type=m3u_plus
-                push({ kind: 'playlist', value: value, label: 'IPTV playlist  ·  ' + shortLink(value), have: lists.indexOf(value) !== -1, note: '' });
+                push({ kind: 'playlist', value: value, label: U.t('IPTV playlist') + '  ·  ' + shortLink(value), have: lists.indexOf(value) !== -1, note: '' });
             } else if (value.indexOf('://') !== -1 && normalizeManifestUrl(value)) {
                 var url = normalizeManifestUrl(value);
-                push({ kind: 'addon', value: url, label: 'Addon  ·  ' + shortLink(url), have: mine.indexOf(url) !== -1, note: '' });
+                push({ kind: 'addon', value: url, label: U.t('Addon') + '  ·  ' + shortLink(url), have: mine.indexOf(url) !== -1, note: '' });
             } else {
                 out.ignored++;
             }
         });
         out.items.forEach(function (it) {   // (a playlist's name, guide link, off: with it)
             var d = it.kind === 'playlist' && details[it.value];
-            if (d) { it.info = d; if (typeof d.name === 'string' && d.name) { it.label = 'IPTV playlist  ·  ' + d.name.slice(0, 60); } }
+            if (d) { it.info = d; if (typeof d.name === 'string' && d.name) { it.label = U.t('IPTV playlist') + '  ·  ' + d.name.slice(0, 60); } }
         });
-        if (store.length) { push({ kind: 'settings', value: 'settings', entries: store, label: 'Your settings (' + plural(store.length, 'part') + ')', have: false, note: 'replaces yours' }); }
+        if (store.length) { push({ kind: 'settings', value: 'settings', entries: store, label: U.tn(store.length, 'Your settings ({n} part)', 'Your settings ({n} parts)'), have: false, note: U.t('replaces yours') }); }
         return out;
     }
     function playlistDetails(id, d) {
@@ -774,7 +775,8 @@ var Stremio = (function () {
 
     // ---- Catalogs ----
     // Returns list of {addon, type, id, name} across all addons.
-    var TYPE_LABELS = { movie: 'Movies', series: 'Series', tv: 'IPTV', radio: 'Radio', channel: 'Channels', people: 'People' };
+    var TYPE_LABELS = { movie: U.t('Movies'), series: U.t('Series'), tv: 'IPTV', radio: U.t('Radio'), channel: U.t('Channels'), people: U.t('People'), sport: U.t('Sports'), sports: U.t('Sports'),
+        anime: U.t('Anime'), events: U.t('Events'), other: U.t('Other'), documentary: U.t('Documentary'), music: U.t('Music') };
     function prettyType(t) {
         if (TYPE_LABELS[t]) { return TYPE_LABELS[t]; }
         return t ? (t.charAt(0).toUpperCase() + t.slice(1)) : '';
@@ -791,7 +793,7 @@ var Stremio = (function () {
                     // Include the type so per-type catalogs sharing a name (e.g. Cinemeta's
                     // "Popular" for both movie & series) don't look like duplicates.
                     cats.push({ addon: addon, type: c.type, id: c.id, def: c, label: label,
-                        name: prettyType(c.type) + ' · ' + label + '  ·  ' + (addon.manifest.name || 'Addon') });
+                        name: prettyType(c.type) + ' · ' + label + '  ·  ' + (addon.manifest.name || U.t('Addon')) });
                 });
             });
             return cats;
@@ -933,14 +935,14 @@ var Stremio = (function () {
     // whether sources played before go first. Stored as { order: [keys], off: [keys], played }.
     var RANKING_KEY = 'stremiok.ranking';
     var RANK_CRITERIA = [
-        ['res', 'Resolution (high to low)', '4K, 1440p, 1080p, 720p, SD, then unknown; at the top, the sources are grouped by resolution'],
-        ['uncached', 'Not yet cached last', 'sources an addon marks as not cached on your debrid service yet (they can’t start right away)'],
-        ['kind', 'Release type', 'remux > Blu-ray > web > unknown > TV rip, CAM rips far below'],
-        ['hdr', 'HDR before SDR', 'HDR10 / HDR10+ / Dolby Vision first'],
-        ['seeds', 'Seeders (high to low)', 'torrent sources with more people sharing them first, by the count they state (👤 123, or Seeders: 123); the others keep their order'],
-        ['addon', 'Feed sources order', 'your order of the addons (at the bottom of this page)'],
-        ['within', 'Each addon\'s own order', 'the order an addon lists its sources in (its first, then its second…); right after Feed sources order: each addon\'s list as it gives it'],
-        ['cached', 'Cached before unknown', 'sources an addon marks as cached ahead of ones with no mark']
+        ['res', U.t('Resolution (high to low)'), U.t('4K, 1440p, 1080p, 720p, SD, then unknown; at the top, the sources are grouped by resolution')],
+        ['uncached', U.t('Not yet cached last'), U.t('sources an addon marks as not cached on your debrid service yet (they can’t start right away)')],
+        ['kind', U.t('Release type'), U.t('remux > Blu-ray > web > unknown > TV rip, CAM rips far below')],
+        ['hdr', U.t('HDR before SDR'), U.t('HDR10 / HDR10+ / Dolby Vision first')],
+        ['seeds', U.t('Seeders (high to low)'), U.t('torrent sources with more people sharing them first, by the count they state (👤 123, or Seeders: 123); the others keep their order')],
+        ['addon', U.t('Feed sources order'), U.t('your order of the addons (at the bottom of this page)')],
+        ['within', U.t('Each addon\'s own order'), U.t('the order an addon lists its sources in (its first, then its second…); right after Feed sources order: each addon\'s list as it gives it')],
+        ['cached', U.t('Cached before unknown'), U.t('sources an addon marks as cached ahead of ones with no mark')]
     ];
     var RANK_OFF_DEFAULT = ['cached'];
     var RANK_AFTER = { seeds: 'hdr' };   // (added in 2.2.1.13)
@@ -1026,23 +1028,23 @@ var Stremio = (function () {
     function isErrorMeta(m) { return /^(aiostreamserror\.|aiom\.error\.)/.test('' + (m && m.id)); }
     function getMeta(type, id, cancel) {
         if (/^ytk:/.test(id) && typeof YouTube !== 'undefined') {
-            return YouTube.meta(id).then(function (m) { if (!m) { throw new Error('Not found on YouTube'); } return m; });
+            return YouTube.meta(id).then(function (m) { if (!m) { throw new Error(U.t('Not found on YouTube')); } return m; });
         }
         if (/^xv[ms]\./.test(id) && typeof XtVod !== 'undefined') {
-            return XtVod.meta(type, id).then(function (m) { if (!m) { throw new Error('Not found on the Xtream server'); } return m; });
+            return XtVod.meta(type, id).then(function (m) { if (!m) { throw new Error(U.t('Not found on the Xtream server')); } return m; });
         }
         if (/^sv[ms]\./.test(id) && typeof StVod !== 'undefined') {
-            return StVod.meta(type, id).then(function (m) { if (!m) { throw new Error('Not found on the Stalker portal'); } return m; });
+            return StVod.meta(type, id).then(function (m) { if (!m) { throw new Error(U.t('Not found on the Stalker portal')); } return m; });
         }
         if (/^jf[ms]\./.test(id) && typeof Jellyfin !== 'undefined') {
-            return Jellyfin.meta(type, id).then(function (m) { if (!m) { throw new Error('Not found on the ' + Jellyfin.nameOfId(id) + ' server'); } return m; });
+            return Jellyfin.meta(type, id).then(function (m) { if (!m) { throw new Error(U.t('Not found on the {server} server', { server: Jellyfin.nameOfId(id) })); } return m; });
         }
         if (/^px[ms]\./.test(id) && typeof Plex !== 'undefined') {
-            return Plex.meta(type, id).then(function (m) { if (!m) { throw new Error('Not found on the Plex server'); } return m; });
+            return Plex.meta(type, id).then(function (m) { if (!m) { throw new Error(U.t('Not found on the Plex server')); } return m; });
         }
         if (/^iptv:/.test(id)) {
             return IPTV.meta(id).then(function (m) {
-                if (!m) { throw new Error('IPTV channel not found'); }
+                if (!m) { throw new Error(U.t('IPTV channel not found')); }
                 return m;
             });
         }
@@ -1058,10 +1060,10 @@ var Stremio = (function () {
                 providers = addons.filter(function (a) { return !a.__local && ownsId(a, 'meta', id); });
                 providers.forEach(function (a) { asType[a.url] = ownType(a, 'meta'); });
             }
-            if (!providers.length) { return Promise.reject(new Error('No meta addon for ' + type)); }
+            if (!providers.length) { return Promise.reject(new Error(U.t('No meta addon for {type}', { type: type }))); }
             var i = 0;
             function tryNext() {
-                if (i >= providers.length) { return Promise.reject(new Error('Meta not found')); }
+                if (i >= providers.length) { return Promise.reject(new Error(U.t('Meta not found'))); }
                 var a = providers[i++];
                 var url = a.base + '/meta/' + encodeURIComponent(asType[a.url] || type) + '/' + encodeURIComponent(id) + '.json';
                 return U.getJSON(url, addonMs(12000), META_MAX, cancel).then(function (res) {
@@ -1158,18 +1160,18 @@ var Stremio = (function () {
                             var arr = U.listOf(a.__impl ? res.streams : fromAddon(a, res, 'sources').streams, MAX_STREAMS).map(youTubeSource).map(torrentSource), said = notes.length;
                             arr = arr.filter(function (s) {   // (an addon's notices: what it removed and why, its errors; not sources)
                                 if (!isNotice(s)) { return true; }
-                                notes.push({ addon: a.manifest.name || 'Addon', title: ('' + (s.name || '')).replace(/\s+/g, ' ').trim().slice(0, 120),
+                                notes.push({ addon: a.manifest.name || U.t('Addon'), title: ('' + (s.name || '')).replace(/\s+/g, ' ').trim().slice(0, 120),
                                     text: ('' + (s.description || s.title || '')).split('\n').map(function (l) { return l.trim(); }).filter(Boolean).join('   ·   ').slice(0, 400) });
                                 return false;
                             });
                             arr.forEach(function (s, n) {
-                                s._addon = a.manifest.name || 'Addon'; s._addonRank = i; s._addonPos = n;
+                                s._addon = a.manifest.name || U.t('Addon'); s._addonRank = i; s._addonPos = n;
                                 // (a source that needs its own player settings: its User-Agent and Referer, as an IPTV channel's)
                                 var ph = s.behaviorHints && s.behaviorHints.proxyHeaders, h = ph && ph.request ? U.sanitizeHeaders(ph.request) : null;
                                 if (h) { s._headers = h; }
                             });
                             slots[i] = arr; okCount++;
-                            if (!arr.length && notes.length === said) { note(a, i, 'no sources for this'); }   // (its notices say why, when it sent any)
+                            if (!arr.length && notes.length === said) { note(a, i, U.t('no sources for this')); }   // (its notices say why, when it sent any)
                         }).then(function () { done(); }, function (err) {
                             // (no answer in time: what you played from it before, marked so — see keptSources)
                             if (isTimeout(err) && !slots[i].length) { slots[i] = keptSources(type, id, a, i); }
@@ -1180,7 +1182,7 @@ var Stremio = (function () {
                 }), 4);
             }
             // Why an addon gave nothing ("No sources found" shows it), in your addon order
-            function note(a, i, why) { notes.push({ addon: a.manifest.name || 'Addon', title: why, text: '', rank: i }); }
+            function note(a, i, why) { notes.push({ addon: a.manifest.name || U.t('Addon'), title: why, text: '', rank: i }); }
             function done() {
                 e.pending--;
                 e.list = local.concat([].concat.apply([], slots));
@@ -1226,11 +1228,11 @@ var Stremio = (function () {
     // "refused (HTTP 429 · rate_limited)", "didn't answer in time", "couldn't be reached"…
     function whyNone(err) {
         var m = String((err && err.message) || ''), h = /^HTTP (\d{3}) for \S+(?::\s+(.+))?$/.exec(m);   // (its message after ": ", not the link's "://")
-        if (h) { return 'refused (HTTP ' + h[1] + (h[2] ? ' · ' + h[2].replace(/https?:\/\/\S+/g, '…').slice(0, 80) : '') + ')'; }
-        if (isTimeout(err)) { return 'didn’t answer in time'; }
-        if (/^(No answer|Network error)/.test(m)) { return 'couldn’t be reached'; }
-        if (/^Too large/.test(m)) { return 'sent too much (' + (/\(([^)]+)\)/.exec(m) || ['', 'too large'])[1] + ')'; }
-        return 'failed (' + m.replace(/https?:\/\/\S+/g, '…').slice(0, 80) + ')';
+        if (h) { return U.t('refused ({why})', { why: 'HTTP ' + h[1] + (h[2] ? ' · ' + h[2].replace(/https?:\/\/\S+/g, '…').slice(0, 80) : '') }); }
+        if (isTimeout(err)) { return U.t('didn’t answer in time'); }
+        if (/^(No answer|Network error)/.test(m)) { return U.t('couldn’t be reached'); }
+        if (/^Too large/.test(m)) { return U.t('sent too much ({why})', { why: (/\(([^)]+)\)/.exec(m) || ['', U.t('too large')])[1] }); }
+        return U.t('failed ({why})', { why: m.replace(/https?:\/\/\S+/g, '…').slice(0, 80) });
     }
 
     // The debrid service a source comes through, from its tag ("[TB⚡]", "[RD+]"): { tag, name } or null.
@@ -1289,7 +1291,7 @@ var Stremio = (function () {
         U.store.set(KEPT_KEY, all);
     }
     function keptSources(type, id, addon, rank) {
-        var name = (addon && addon.manifest && addon.manifest.name) || 'Addon', list = keptAll()[type + ':' + id];
+        var name = (addon && addon.manifest && addon.manifest.name) || U.t('Addon'), list = keptAll()[type + ':' + id];
         return (Array.isArray(list) ? list : []).filter(function (x) { return x && x.st && x.st._addon === name; }).map(function (x, n) {
             var s = {};
             Object.keys(x.st).forEach(function (k) { s[k] = x.st[k]; });
@@ -1350,7 +1352,7 @@ var Stremio = (function () {
                     var url = a.base + '/subtitles/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + (args.length ? '/' + args.join('&') : '') + '.json';
                     return U.getJSON(url, addonMs(15000)).then(function (res) {   // (15 s: a subtitle addon may fetch them from elsewhere first)
                         var arr = U.listOf(fromAddon(a, res, 'subtitles').subtitles, MAX_SUBTITLES);
-                        arr.forEach(function (s) { s._addon = a.manifest.name || 'Addon'; });
+                        arr.forEach(function (s) { s._addon = a.manifest.name || U.t('Addon'); });
                         return arr;
                     });
                 };
@@ -1397,7 +1399,7 @@ var Stremio = (function () {
     // Cached TMDB GET.
     function tmdbGet(path, extra, cancel) {
         var key = tmdbKey();
-        if (!key) { return Promise.reject(new Error('no TMDB key')); }
+        if (!key) { return Promise.reject(new Error(U.t('no TMDB key'))); }
         return U.cachedJSON(_tmdbCache, 'https://api.themoviedb.org/3' + path + '?api_key=' + encodeURIComponent(key) + (extra || ''), 12000, cancel);
     }
 
@@ -1477,12 +1479,12 @@ var Stremio = (function () {
                         out.push({ id: p.id, name: p.name || '', character: role || '', photo: photo !== undefined ? photo : tmdbImg(p.profile_path, 'w185') });
                     }
                     var crew = (ep && ep.crew) || [];
-                    crew.filter(function (c) { return c.job === 'Director'; }).forEach(function (c) { add(c, 'Director'); });
+                    crew.filter(function (c) { return c.job === 'Director'; }).forEach(function (c) { add(c, U.t('Director')); });
                     crew.filter(function (c) { return EP_CREW.test(c.job || ''); }).forEach(function (c) { add(c, c.job); });
                     ((ep && ep.cast) || []).forEach(function (c) { add(c, c.character); });
                     ((ep && ep.guest_stars) || []).forEach(function (c) { add(c, (c.character ? c.character + ' · ' : '') + 'guest'); });
                     if (out.length) {
-                        ((sh && sh.cast) || []).forEach(function (c) { if (c.character === 'Creator') { add(c, 'Creator', c.photo); } });
+                        ((sh && sh.cast) || []).forEach(function (c) { if (c.character === 'Creator') { add(c, U.t('Creator'), c.photo); } });
                         return out;
                     }
                     return (sh && sh.cast) || [];   // (nothing for the episode: the show's)
@@ -1495,7 +1497,7 @@ var Stremio = (function () {
     // official ones first, a trailer before a teaser; never a clip (a scene from the episode),
     // bloopers or behind the scenes. imdbId: the show's (tt…).
     // -> { ytId, season: true when it's the season's } or null (none, no TMDB key, no answer).
-    var TRAILER_TYPES = ['Trailer', 'Teaser'];
+    var TRAILER_TYPES = ['Trailer', 'Teaser'];   // (TMDB's video types: not words shown)
     function bestTrailer(r) {
         var vids = U.listOf(r && r.results, 100, function (v) {
             return v.site === 'YouTube' && typeof v.key === 'string' && /^[A-Za-z0-9_-]{11}$/.test(v.key) && TRAILER_TYPES.indexOf(v.type) !== -1;
@@ -1536,7 +1538,7 @@ var Stremio = (function () {
                 var here = r && r.results && r.results[watchRegion()];
                 if (!here) { return []; }
                 var out = [], seen = {};
-                [['flatrate', 'Subscription'], ['free', 'Free'], ['ads', 'Free with ads']].forEach(function (k) {
+                [['flatrate', U.t('Subscription')], ['free', U.t('Free')], ['ads', U.t('Free with ads')]].forEach(function (k) {
                     U.listOf(here[k[0]], 30).forEach(function (p) {
                         if (!p || !p.provider_name || seen[p.provider_name]) { return; }
                         seen[p.provider_name] = true;
@@ -1571,7 +1573,7 @@ var Stremio = (function () {
             });
             var bits = [];
             if (p.known_for_department) { bits.push(p.known_for_department); }
-            if (p.birthday) { bits.push('Born ' + p.birthday.slice(0, 4) + (p.deathday ? ' – ' + p.deathday.slice(0, 4) : '')); }
+            if (p.birthday) { bits.push(U.t('Born {years}', { years: p.birthday.slice(0, 4) + (p.deathday ? ' – ' + p.deathday.slice(0, 4) : '') })); }
             if (p.place_of_birth) { bits.push(p.place_of_birth); }
             return { name: p.name || '', photo: tmdbImg(p.profile_path, 'w342'), bio: p.biography || '', meta: bits.join('   ·   '),
                 movies: credits.filter(function (c) { return c.kind === 'movie'; }).sort(byVotes).slice(0, PERSON_MAX),
@@ -1603,10 +1605,10 @@ var Stremio = (function () {
     // ---- Browse (Discover, with a TMDB key): Trending, Popular, and each streaming service in
     // your country, TMDB's, with its genres. ----
     var TMDB_GENRES = {
-        movie: [['Action', 28], ['Adventure', 12], ['Animation', 16], ['Comedy', 35], ['Crime', 80], ['Documentary', 99], ['Drama', 18], ['Family', 10751],
-            ['Fantasy', 14], ['History', 36], ['Horror', 27], ['Music', 10402], ['Mystery', 9648], ['Romance', 10749], ['Science Fiction', 878], ['Thriller', 53], ['War', 10752], ['Western', 37]],
-        tv: [['Action & Adventure', 10759], ['Animation', 16], ['Comedy', 35], ['Crime', 80], ['Documentary', 99], ['Drama', 18], ['Family', 10751], ['Kids', 10762],
-            ['Mystery', 9648], ['Reality', 10764], ['Sci-Fi & Fantasy', 10765], ['Soap', 10766], ['Talk', 10767], ['War & Politics', 10768], ['Western', 37]]
+        movie: [[U.t('Action'), 28], [U.t('Adventure'), 12], [U.t('Animation'), 16], [U.t('Comedy'), 35], [U.t('Crime'), 80], [U.t('Documentary'), 99], [U.t('Drama'), 18], [U.t('Family'), 10751],
+            [U.t('Fantasy'), 14], [U.t('History'), 36], [U.t('Horror'), 27], [U.t('Music'), 10402], [U.t('Mystery'), 9648], [U.t('Romance'), 10749], [U.t('Science Fiction'), 878], [U.t('Thriller'), 53], [U.t('War'), 10752], [U.t('Western'), 37]],
+        tv: [[U.t('Action & Adventure'), 10759], [U.t('Animation'), 16], [U.t('Comedy'), 35], [U.t('Crime'), 80], [U.t('Documentary'), 99], [U.t('Drama'), 18], [U.t('Family'), 10751], [U.t('Kids'), 10762],
+            [U.t('Mystery'), 9648], [U.t('Reality'), 10764], [U.t('Sci-Fi & Fantasy'), 10765], [U.t('Soap'), 10766], [U.t('Talk'), 10767], [U.t('War & Politics'), 10768], [U.t('Western'), 37]]
     };
     function tmdbGenres(kind) { return (TMDB_GENRES[kind] || []).map(function (g) { return g[0]; }); }
     // The streaming services in your country (the biggest first, PROVIDERS_MAX), kept a week:
@@ -1728,7 +1730,7 @@ var Stremio = (function () {
 
     // ---- MDBList ratings (Settings > Integrations > MDBList) ----
     // -> [{ key, label, text }] in a fixed order, only the ones the title has.
-    var MDB_SOURCES = [['imdb', 'IMDb'], ['tomatoes', 'Rotten Tomatoes'], ['popcorn', 'Audience'],
+    var MDB_SOURCES = [['imdb', 'IMDb'], ['tomatoes', 'Rotten Tomatoes'], ['popcorn', U.t('Audience')],
         ['metacritic', 'Metacritic'], ['letterboxd', 'Letterboxd'], ['tmdb', 'TMDB']];
     function mdblistRatings(type, imdbId, cancel) {
         var key = getIntegrations().mdblist;
@@ -2033,13 +2035,13 @@ var Stremio = (function () {
                 if (c.addon && c.addon.__local) {
                     if (!local[c.type]) {
                         local[c.type] = { key: 'iptv-search|' + c.type, cats: [], title: prettyType(c.type),
-                            name: prettyType(c.type) + ' · every group  ·  your playlists', pages: false };
+                            name: prettyType(c.type) + ' · ' + U.t('every group  ·  your playlists'), pages: false };
                         out.push(local[c.type]);
                     }
                     local[c.type].cats.push(c);
                     return;
                 }
-                var def = c.def || {}, label = def.name || c.id, addonName = (c.addon.manifest && c.addon.manifest.name) || 'Addon';
+                var def = c.def || {}, label = def.name || c.id, addonName = (c.addon.manifest && c.addon.manifest.name) || U.t('Addon');
                 var title = prettyType(c.type) + '  ·  ' + (/^search$/i.test(('' + label).trim()) ? '' : label + '  ·  ') + addonName;
                 out.push({ key: catalogKey(c), cats: [c], title: title, name: title.replace(/  ·  /g, ' · '),
                     pages: (def.extra || []).some(function (e) { return e && e.name === 'skip'; }) || (def.extraSupported || []).indexOf('skip') !== -1 });
@@ -2095,16 +2097,16 @@ var Stremio = (function () {
     // Does it answer? { ok, text } — Stremio's /settings (its version in it), TorrServer's /echo.
     function testServer() {
         var sv = server();
-        if (!sv.kind || !sv.url) { return Promise.resolve({ ok: false, text: 'No server set' }); }
+        if (!sv.kind || !sv.url) { return Promise.resolve({ ok: false, text: U.t('No server set') }); }
         var p = sv.kind === 'stremio'
             ? U.getJSON(sv.url + '/settings', 8000).then(function (r) {
-                if (!r || typeof r !== 'object') { throw new Error('Not a Stremio streaming server'); }
+                if (!r || typeof r !== 'object') { throw new Error(U.t('Not a Stremio streaming server')); }
                 var v = r.values && r.values.serverVersion;
-                return 'Stremio server answers' + (v ? ' (' + ('' + v).slice(0, 20) + ')' : '');
+                return v ? U.t('Stremio server answers ({v})', { v: ('' + v).slice(0, 20) }) : U.t('Stremio server answers');
             })
-            : U.getText(sv.url + '/echo', 8000).then(function (t) { return 'TorrServer answers (' + ('' + t).trim().slice(0, 30) + ')'; });
+            : U.getText(sv.url + '/echo', 8000).then(function (t) { return U.t('TorrServer answers ({v})', { v: ('' + t).trim().slice(0, 30) }); });
         return p.then(function (text) { return { ok: true, text: text }; },
-            function (e) { return { ok: false, text: 'The server didn’t answer: ' + U.problem(e) }; });
+            function (e) { return { ok: false, text: U.t('The server didn’t answer: {why}', { why: U.problem(e) }) }; });
     }
     // Made again each time it's asked (a page kept from before, just before playing): from the
     // server set now, or no link when there's none.
@@ -2168,13 +2170,13 @@ var Stremio = (function () {
     }
 
     function streamLabel(stream) {
-        var t = stream.title || stream.name || stream.description || 'Stream';
+        var t = stream.title || stream.name || stream.description || U.t('Stream');
         return ('' + t).replace(/\n/g, ' ');
     }
 
     // Short first-line label (quality / addon tag), e.g. "MediaFusion 2160p".
     function streamName(stream) {
-        var t = stream.name || stream.title || stream.description || 'Source';
+        var t = stream.name || stream.title || stream.description || U.t('Source');
         return U.drawable(('' + t).split('\n')[0]).trim();   // (without characters the TV can't draw)
     }
 
@@ -2273,15 +2275,15 @@ var Stremio = (function () {
     // different files, at least once as the only suspect. You can set any either way.
     var FORMATS_KEY = 'stremiok.formats';
     var FORMAT_LABELS = {
-        'v:h264': ['Video', 'H.264 (AVC)'], 'v:hevc': ['Video', 'HEVC (H.265)'], 'v:av1': ['Video', 'AV1'], 'v:10bit': ['Video', '10-bit color'],
-        'h:hdr': ['HDR', 'HDR10 / HLG'], 'h:hdr10p': ['HDR', 'HDR10+'], 'h:dv': ['HDR', 'Dolby Vision (with HDR fallback)'], 'h:dv-only': ['HDR', 'Dolby Vision only'],
+        'v:h264': ['Video', 'H.264 (AVC)'], 'v:hevc': ['Video', 'HEVC (H.265)'], 'v:av1': ['Video', 'AV1'], 'v:10bit': ['Video', U.t('10-bit color')],
+        'h:hdr': ['HDR', 'HDR10 / HLG'], 'h:hdr10p': ['HDR', 'HDR10+'], 'h:dv': ['HDR', U.t('Dolby Vision (with HDR fallback)')], 'h:dv-only': ['HDR', U.t('Dolby Vision only')],
         'a:atmos': ['Audio', 'Dolby Atmos'], 'a:truehd': ['Audio', 'Dolby TrueHD'], 'a:dtshd': ['Audio', 'DTS-HD / DTS:X'], 'a:dts': ['Audio', 'DTS'],
         'a:eac3': ['Audio', 'Dolby Digital Plus (EAC3)'], 'a:ac3': ['Audio', 'Dolby Digital (AC3)'], 'a:aac': ['Audio', 'AAC'], 'a:opus': ['Audio', 'Opus'], 'a:flac': ['Audio', 'FLAC'],
-        'c:mkv': ['File', 'MKV'], 'c:mp4': ['File', 'MP4'], 'c:avi': ['File', 'AVI'], 'c:webm': ['File', 'WebM'], 'c:ts': ['File', 'MPEG-TS'], 'c:hls': ['File', 'HLS stream']
+        'c:mkv': ['File', 'MKV'], 'c:mp4': ['File', 'MP4'], 'c:avi': ['File', 'AVI'], 'c:webm': ['File', 'WebM'], 'c:ts': ['File', 'MPEG-TS'], 'c:hls': ['File', U.t('HLS stream')]
     };
-    var PROFILE_RES = { 2160: '4K', 1440: '1440p', 1080: '1080p', 720: '720p', 480: 'SD', 0: 'Unknown resolution' };
-    var PROFILE_CODEC = { h264: 'H.264', hevc: 'HEVC', av1: 'AV1', '?': 'unknown codec' };
-    var PROFILE_HDR = { hdr: 'HDR10', hdr10p: 'HDR10+', dv: 'Dolby Vision + HDR', 'dv-only': 'Dolby Vision only', sdr: 'SDR' };
+    var PROFILE_RES = { 2160: '4K', 1440: '1440p', 1080: '1080p', 720: '720p', 480: 'SD', 0: U.t('Unknown resolution') };
+    var PROFILE_CODEC = { h264: 'H.264', hevc: 'HEVC', av1: 'AV1', '?': U.t('unknown codec') };
+    var PROFILE_HDR = { hdr: 'HDR10', hdr10p: 'HDR10+', dv: 'Dolby Vision + HDR', 'dv-only': U.t('Dolby Vision only'), sdr: 'SDR' };
     // "p:<res>|<codec>|<bits>|<hdr>", or null when neither resolution nor codec is known.
     // HDR is 10-bit even when the name doesn't say so.
     function profileKey(info) {
@@ -2314,7 +2316,7 @@ var Stremio = (function () {
         if (heard && aud.indexOf(heard) === -1) { aud = aud.filter(function (x) { return x === 'atmos'; }).concat([heard]); }
         aud.slice(0, 2).forEach(function (x) { out.push(SHORT_AUDIO[x] || x); });
         var ch = +actual.channels || 0;
-        if (ch) { out.push(ch === 6 ? '5.1' : ch === 8 ? '7.1' : ch === 2 ? 'Stereo' : ch === 1 ? 'Mono' : ch + 'ch'); }
+        if (ch) { out.push(ch === 6 ? '5.1' : ch === 8 ? '7.1' : ch === 2 ? U.t('Stereo') : ch === 1 ? U.t('Mono') : ch + 'ch'); }
         if (info.container && info.container !== 'hls') { out.push(info.container.toUpperCase()); }
         return out.join(' · ');
     }
@@ -2369,7 +2371,7 @@ var Stremio = (function () {
     // Allowed resolutions: yours to set (all allowed to begin with). A source at one that
     // isn't goes with the "Not working" ones: bottom of the list, never Play best / Next.
     var RES_KEY = 'stremiok.resblock';
-    var RES_CHOICES = [[2160, '4K'], [1440, '1440p'], [1080, '1080p'], [720, '720p'], [480, 'SD'], [0, 'Unknown']];
+    var RES_CHOICES = [[2160, '4K'], [1440, '1440p'], [1080, '1080p'], [720, '720p'], [480, 'SD'], [0, U.t('Unknown')]];
     function resBucket(res) { return res >= 2160 ? 2160 : res >= 1440 ? 1440 : res >= 1080 ? 1080 : res >= 720 ? 720 : res > 0 ? 480 : 0; }
     function resList() {
         var off = U.store.get(RES_KEY, {}) || {};

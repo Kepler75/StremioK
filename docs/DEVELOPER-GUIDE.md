@@ -35,6 +35,7 @@ locally, use a wrapper package, or use the
 |------|----------------|
 | `index.html` | Layout, video planes (`<object avplayer>` + `<video>` fallback), OSD, overlays |
 | `js/polyfills.js` | Feature-guarded shims for Chromium 47 (`Array.find`, `Object.assign`, …) |
+| `js/i18n.js`, `js/lang/` | The interface's language and its translations |
 | `js/qrcode.js` | qrcode-generator (Kazuhiko Arase, MIT), unchanged: every QR code the TV draws (Trakt and Stremio sign-in, From your phone, Continue on phone, an addon's Share and Configure) |
 | `js/util.js` | DOM helpers, XHR (text / JSON), bounded caches, `localStorage`, toast / spinner, image queue, appearance themes, QR codes drawn on a canvas |
 | `js/iptv.js` | M3U parsing, TV / radio classification, the synthetic IPTV addon |
@@ -45,6 +46,7 @@ locally, use a wrapper package, or use the
 | `js/youtube.js` | StremioK's own YouTube: your YouTube catalogs (Settings › Content › YouTube), YouTube in Search, the built-in YouTube addon (catalogs, channel / playlist / video pages, streams), SponsorBlock and DeArrow settings and lookups |
 | `js/stremio.js` | Addon client (manifests, catalog / meta / stream / subtitles), source cache and de-duplication, source details (resolution, codec, HDR, audio…), Formats (learning, allowed resolutions), TMDB / OMDb / MDBList / TheIntroDB / SkipDB / IntroDB |
 | `js/stremio-account.js` | Importing addons from your Stremio account: the link.stremio.com sign-in code, reading the account's addons, signing out at once |
+| `js/stremio-sync.js` | Stremio account sync (Continue Watching, watched, Library) |
 | `js/trakt.js` | Trakt: device-code sign-in (StremioK's built-in Client ID, no secret), watched marks and Continue Watching from Trakt, progress and watched sent to it |
 | `js/keys.js` | Registers TV media and channel keys; maps key codes to actions |
 | `js/focus.js` | Geometry-based spatial (D-pad) focus engine |
@@ -93,6 +95,10 @@ template literals, classes, destructuring, default parameters, spread or `async`
 `Promise` is available, and `polyfills.js` adds the few newer array / object helpers used.
 The app ships as written, not minified, so the line numbers in Diagnostics' script errors
 match the source.
+
+### Text on screen
+Shown text goes through `U.t('Whole English phrase', { name: value })` or `U.tn(n, 'one',
+'other')`; [Translating StremioK](TRANSLATING.md) covers the language files.
 
 ### The version
 `package.json`'s. `config.xml` (the widget's `version`) and `index.html` (every `?v=` on the

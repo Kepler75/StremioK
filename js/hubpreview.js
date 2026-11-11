@@ -25,7 +25,7 @@ var HubPreview = (function () {
     }
     function payload() {
         var tiles = (Stremio.getPrefs().homePreview && Views.previewTiles) ? Views.previewTiles() : [];
-        return { sections: tiles.length ? [{ title: 'Continue Watching', tiles: tiles }] : [] };
+        return { sections: tiles.length ? [{ title: U.t('Continue Watching'), tiles: tiles }] : [] };
     }
     // now: on / off just switched (sent whatever the wait). Else only a change, 10 minutes apart.
     function send(now) {

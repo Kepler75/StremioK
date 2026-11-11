@@ -158,7 +158,7 @@
         var list = U.listOf(info && info.captions, 60, function (t) { return typeof t.lang === 'string' && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8}){0,2}$/.test(t.lang); });
         list = list.filter(function (t) { return !t.auto; }).concat(list.filter(function (t) { return t.auto; }));
         return list.map(function (t) {
-            return { id: 'yt:' + t.lang + (t.auto ? ':auto' : ''), lang: t.lang, url: YTPlay.subsUrl(ctx.yt, t.lang, !!t.auto), _addon: t.auto ? 'YouTube (automatic)' : 'YouTube' };
+            return { id: 'yt:' + t.lang + (t.auto ? ':auto' : ''), lang: t.lang, url: YTPlay.subsUrl(ctx.yt, t.lang, !!t.auto), _addon: t.auto ? U.t('YouTube (automatic)') : 'YouTube' };
         });
     }
 
@@ -191,7 +191,7 @@
     }
     // Stream info's "Subtitles" line.
     function subtitleSummary() {
-        return _subOn ? (_subLabel + (_subDelay ? '  (' + fmtDelay(_subDelay) + ')' : '')) : (_embSub != null ? (_embLang || 'on') + '  (built-in)' : 'Off');
+        return _subOn ? (_subLabel + (_subDelay ? '  (' + fmtDelay(_subDelay) + ')' : '')) : (_embSub != null ? (_embLang || U.t('on')) + '  ' + U.t('(built-in)') : U.t('Off'));
     }
 
     // ---------- subtitles ----------
@@ -311,11 +311,11 @@
         return U.getText(track.url, SUB_FILE_MS, undefined, cancel || null, false, track.headers || null).then(function (text) { keepSubFile(track.url, text); return text; });   // (a USB file's: the service's header where there's no token)
     }
     function loadTrack(track, onDone) {
-        if (!U.parseUrl(track.url)) { U.toast('That subtitle track has no usable link'); return; }   // (http(s) only)
+        if (!U.parseUrl(track.url)) { U.toast(U.t('That subtitle track has no usable link')); return; }   // (http(s) only)
         var l = _subLoad;
         if (l && l.url === track.url && l.ctx === S.ctx) {   // (still coming: waited for, not asked for again)
             if (onDone) { l.done.push(onDone); }
-            U.toast('Still loading subtitles… ' + l.secs + ' s', 1500);
+            U.toast(U.t('Still loading subtitles… {n} s', { n: l.secs }), 1500);
             return;
         }
         stopSubLoad();
@@ -324,8 +324,8 @@
         var cancel = U.cancelToken(), mine = { url: track.url, ctx: forCtx, cancel: cancel, secs: 0, done: onDone ? [onDone] : [], timer: null };
         if (subFile(track.url) === null) {   // (a download: how long it's been, every second, till it's in)
             _subLoad = mine;
-            U.toast('Loading subtitles…', 1500);
-            mine.timer = setInterval(function () { mine.secs++; if (_subLoad === mine) { U.toast('Loading subtitles… ' + mine.secs + ' s', 1500); } }, 1000);
+            U.toast(U.t('Loading subtitles…'), 1500);
+            mine.timer = setInterval(function () { mine.secs++; if (_subLoad === mine) { U.toast(U.t('Loading subtitles… {n} s', { n: mine.secs }), 1500); } }, 1000);
         }
         function finished() { clearInterval(mine.timer); if (_subLoad === mine) { _subLoad = null; } }
         onDone = function () { mine.done.forEach(function (f) { try { f(); } catch (e) {} }); };
@@ -333,14 +333,14 @@
             finished();
             if (stale()) { return; }
             var cues = parseCues(text);
-            if (!cues.length) { U.toast('Could not parse subtitles'); return; }
+            if (!cues.length) { U.toast(U.t('Could not parse subtitles')); return; }
             embOff();   // an addon track replaces a built-in one
             _cues = cues; _cueIdx = 0; _cueT = 0; _subOn = true; _subLabel = track.lang || 'on'; _subTrackUrl = track.url;
             _subTrackId = (track.id != null) ? track.id : null; _subDelay = 0;
             renderSubs();
-            U.toast('Subtitles: ' + (track.lang || 'on'));
+            U.toast(U.t('Subtitles: {what}', { what: track.lang || U.t('on') }));
             onDone();
-        }, function () { finished(); if (!stale()) { U.toast('Failed to download subtitles'); } });
+        }, function () { finished(); if (!stale()) { U.toast(U.t('Failed to download subtitles')); } });
     }
 
     // ---------- the second subtitle ----------
@@ -402,7 +402,7 @@
     function secondMenu() {
         var keys = [], cur = getSubCfg().second;
         _subTracks.forEach(function (t) { var k = langKey(t.lang); if (t.url && k && keys.indexOf(k) === -1) { keys.push(k); } });
-        var items = [{ label: 'Off', sel: cur === 'off', run: function () { var c = getSubCfg(); c.second = 'off'; setSubCfg(c); secondOff(); popMenu(); } }];
+        var items = [{ label: U.t('Off'), sel: cur === 'off', run: function () { var c = getSubCfg(); c.second = 'off'; setSubCfg(c); secondOff(); popMenu(); } }];
         keys.forEach(function (k) {
             items.push({ label: langName(k), sel: langKey(cur) === k, run: function () {
                 var c = getSubCfg(); c.second = /^[a-z]{2,3}$/.test(k) ? k : 'off'; setSubCfg(c); secondOff(); startSecond(); popMenu();
@@ -410,7 +410,7 @@
         });
         var idx = 0;
         items.forEach(function (it, i) { if (it.sel) { idx = i; } });
-        return { title: 'Second subtitle (at the top)', items: items, idx: idx };
+        return { title: U.t('Second subtitle (at the top)'), items: items, idx: idx };
     }
 
     function subsOff() {
@@ -459,7 +459,7 @@
         try { avplay.setSelectTrack('TEXT', tr.index); }
         catch (e2) { try { avplay.setSelectTrack('TEXT', '' + tr.index); } catch (e3) {} }
         _embSub = tr.index; _embLang = textLang(tr);
-        U.toast('Subtitles: ' + (_embLang || 'on') + (S.ctx && S.ctx._relayCc ? ' (closed captions)' : ' (built-in)'), 1800);
+        U.toast(U.t('Subtitles: {what}', { what: (_embLang || U.t('on')) + ' ' + (S.ctx && S.ctx._relayCc ? U.t('(closed captions)') : U.t('(built-in)')) }), 1800);
     }
     function embOff() {
         if (_embSub != null) { try { avplay.setSilentSubtitle(true); } catch (e) {} }
@@ -524,18 +524,18 @@
 
     function subConfigMenu() {
         var items = [
-            { label: 'Language', run: function () { pushMenu(langMenu()); } },
-            { label: 'Size', run: function () { pushMenu(sizeMenu()); } },
-            { label: 'Color', run: function () { pushMenu(optionMenu('Subtitle color', 'color', P.SUB_COLORS)); } },
-            { label: 'Background', run: function () { pushMenu(optionMenu('Subtitle background', 'bg', P.SUB_BGS)); } },
-            { label: 'Edge', run: function () { pushMenu(optionMenu('Subtitle edge', 'edge', P.SUB_EDGES)); } },
-            { label: 'Position', run: function () { pushMenu(optionMenu('Subtitle position', 'pos', P.SUB_POSITIONS)); } },
-            { label: 'Font', run: function () { pushMenu(fontMenu()); } }
+            { label: U.t('Language'), run: function () { pushMenu(langMenu()); } },
+            { label: U.t('Size'), run: function () { pushMenu(sizeMenu()); } },
+            { label: U.t('Color'), run: function () { pushMenu(optionMenu(U.t('Subtitle color'), 'color', P.SUB_COLORS)); } },
+            { label: U.t('Background'), run: function () { pushMenu(optionMenu(U.t('Subtitle background'), 'bg', P.SUB_BGS)); } },
+            { label: U.t('Edge'), run: function () { pushMenu(optionMenu(U.t('Subtitle edge'), 'edge', P.SUB_EDGES)); } },
+            { label: U.t('Position'), run: function () { pushMenu(optionMenu(U.t('Subtitle position'), 'pos', P.SUB_POSITIONS)); } },
+            { label: U.t('Font'), run: function () { pushMenu(fontMenu()); } }
         ];
         // timing applies to addon subtitles (built-in ones are timed by the player)
-        if (_subOn) { items.splice(1, 0, { label: 'Timing', detail: fmtDelay(_subDelay), run: function () { pushMenu(timingMenu(5)); } }); }   // (opens on the small steps)
-        else if (_embSub != null) { items.splice(1, 0, { label: 'Timing', detail: fmtDelay(_embDelay) + '  ·  built-in: later only', run: function () { pushMenu(embTimingMenu(0)); } }); }
-        return { title: 'Subtitles', idx: 0, items: items, rebuild: subConfigMenu };
+        if (_subOn) { items.splice(1, 0, { label: U.t('Timing'), detail: fmtDelay(_subDelay), run: function () { pushMenu(timingMenu(5)); } }); }   // (opens on the small steps)
+        else if (_embSub != null) { items.splice(1, 0, { label: U.t('Timing'), detail: fmtDelay(_embDelay) + '  ·  ' + U.t('built-in: later only'), run: function () { pushMenu(embTimingMenu(0)); } }); }
+        return { title: U.t('Subtitles'), idx: 0, items: items, rebuild: subConfigMenu };
     }
 
     function fmtDelay(d) { return (d > 0 ? '+' : d < 0 ? '−' : '') + Math.abs(d).toFixed(1) + ' s'; }
@@ -547,23 +547,23 @@
                 rememberSub(S.ctx.id, { lang: _subLabel, url: _subTrackUrl, trackId: _subTrackId, delay: _subDelay });
                 renderSubs();
                 replaceTop(timingMenu(topMenu().idx));
-                U.toast('Subtitles: ' + fmtDelay(_subDelay) + (_subDelay > 0 ? ' (later)' : _subDelay < 0 ? ' (earlier)' : ' (as in the file)'), 1500);
+                U.toast(U.t('Subtitles: {what}', { what: fmtDelay(_subDelay) + ' ' + (_subDelay > 0 ? U.t('(later)') : _subDelay < 0 ? U.t('(earlier)') : U.t('(as in the file)')) }), 1500);
             };
         }
-        return { title: 'Subtitle timing: ' + fmtDelay(_subDelay), idx: idx || 0, items: [
+        return { title: U.t('Subtitle timing: {delay}', { delay: fmtDelay(_subDelay) }), idx: idx || 0, items: [
             // by ear: the moment you hear a line sets the timing (then the steps fine-tune it)
-            { label: 'Press when you hear it', detail: 'the next line: OK the moment it’s said', run: function () { pushMenu(earMenu()); } },
-            { label: 'Pick the line being said', detail: 'from the lines around now', run: function () { pushMenu(lineMenu()); } },
+            { label: U.t('Press when you hear it'), detail: U.t('the next line: OK the moment it’s said'), run: function () { pushMenu(earMenu()); } },
+            { label: U.t('Pick the line being said'), detail: U.t('from the lines around now'), run: function () { pushMenu(lineMenu()); } },
             // (a file made for another release can be seconds off: the big steps get there)
-            { label: 'Earlier  −5 s', run: to(function () { return _subDelay - 5; }) },
-            { label: 'Earlier  −1 s', run: to(function () { return _subDelay - 1; }) },
-            { label: 'Earlier  −0.5 s', run: to(function () { return _subDelay - 0.5; }) },
-            { label: 'Earlier  −0.1 s', run: to(function () { return _subDelay - 0.1; }) },
-            { label: 'Later  +0.1 s', run: to(function () { return _subDelay + 0.1; }) },
-            { label: 'Later  +0.5 s', run: to(function () { return _subDelay + 0.5; }) },
-            { label: 'Later  +1 s', run: to(function () { return _subDelay + 1; }) },
-            { label: 'Later  +5 s', run: to(function () { return _subDelay + 5; }) },
-            { label: 'Reset', run: to(function () { return 0; }) }
+            { label: U.t('Earlier  −5 s'), run: to(function () { return _subDelay - 5; }) },
+            { label: U.t('Earlier  −1 s'), run: to(function () { return _subDelay - 1; }) },
+            { label: U.t('Earlier  −0.5 s'), run: to(function () { return _subDelay - 0.5; }) },
+            { label: U.t('Earlier  −0.1 s'), run: to(function () { return _subDelay - 0.1; }) },
+            { label: U.t('Later  +0.1 s'), run: to(function () { return _subDelay + 0.1; }) },
+            { label: U.t('Later  +0.5 s'), run: to(function () { return _subDelay + 0.5; }) },
+            { label: U.t('Later  +1 s'), run: to(function () { return _subDelay + 1; }) },
+            { label: U.t('Later  +5 s'), run: to(function () { return _subDelay + 5; }) },
+            { label: U.t('Reset'), run: to(function () { return 0; }) }
         ] };
     }
 
@@ -574,24 +574,24 @@
         renderSubs();
         popMenu();
         replaceTop(timingMenu(topMenu().idx));
-        U.toast('Subtitles: ' + fmtDelay(_subDelay) + (_subDelay > 0 ? ' (later)' : _subDelay < 0 ? ' (earlier)' : ' (as in the file)'), 1800);
+        U.toast(U.t('Subtitles: {what}', { what: fmtDelay(_subDelay) + ' ' + (_subDelay > 0 ? U.t('(later)') : _subDelay < 0 ? U.t('(earlier)') : U.t('(as in the file)')) }), 1800);
     }
     function lineText(c) { return '“' + noTags('' + c.text).replace(/\s+/g, ' ').trim().slice(0, 70) + '”'; }
     // The next line coming up (as timed now): OK the moment it's said.
     function earMenu() {
         var t = S.cur - _subDelay, next = null;
         for (var i = 0; _cues && i < _cues.length; i++) { if (_cues[i].start > t + 0.3) { next = _cues[i]; break; } }
-        if (!next) { return { title: 'Press when you hear it', idx: 0, items: [{ label: 'No line coming up', run: function () { popMenu(); } }] }; }
-        return { title: 'Press OK when you hear it', idx: 0, items: [{ label: lineText(next), detail: 'OK the moment it’s said   ·   BACK: never mind', run: function () { syncTo(next.start); } }] };
+        if (!next) { return { title: U.t('Press when you hear it'), idx: 0, items: [{ label: U.t('No line coming up'), run: function () { popMenu(); } }] }; }
+        return { title: U.t('Press OK when you hear it'), idx: 0, items: [{ label: lineText(next), detail: U.t('OK the moment it’s said   ·   BACK: never mind'), run: function () { syncTo(next.start); } }] };
     }
     // The lines around now (as timed now): pick the one being said, or just said.
     function lineMenu() {
         var t = S.cur - _subDelay, at = 0;
         for (var i = 0; _cues && i < _cues.length; i++) { if (_cues[i].start <= t) { at = i; } }
         var from = Math.max(0, at - 4), list = (_cues || []).slice(from, at + 4);
-        if (!list.length) { return { title: 'Pick the line being said', idx: 0, items: [{ label: 'No lines in this file', run: function () { popMenu(); } }] }; }
-        return { title: 'Pick the line being said', idx: at - from, items: list.map(function (c) {
-            return { label: lineText(c), detail: 'at ' + U.fmtTime(c.start) + ' in the file', run: function () { syncTo(c.start); } };
+        if (!list.length) { return { title: U.t('Pick the line being said'), idx: 0, items: [{ label: U.t('No lines in this file'), run: function () { popMenu(); } }] }; }
+        return { title: U.t('Pick the line being said'), idx: at - from, items: list.map(function (c) {
+            return { label: lineText(c), detail: U.t('at {at} in the file', { at: U.fmtTime(c.start) }), run: function () { syncTo(c.start); } };
         }) };
     }
 
@@ -605,17 +605,17 @@
                 _embQueue = [];
                 rememberSub(S.ctx.id, { embedded: true, index: _embSub, lang: _embLang, delay: _embDelay });
                 replaceTop(embTimingMenu(topMenu().idx));
-                U.toast(want < 0 ? 'Built-in subtitles can\'t come earlier than the file has them' : 'Subtitles: ' + fmtDelay(_embDelay) + (_embDelay ? ' (later)' : ' (as in the file)'), 1800);
+                U.toast(want < 0 ? U.t('Built-in subtitles can\'t come earlier than the file has them') : U.t('Subtitles: {what}', { what: fmtDelay(_embDelay) + ' ' + (_embDelay ? U.t('(later)') : U.t('(as in the file)')) }), 1800);
             };
         }
-        return { title: 'Built-in subtitle timing: ' + fmtDelay(_embDelay), idx: idx || 0, items: [
-            { label: 'Later  +0.1 s', run: to(function () { return _embDelay + 0.1; }) },
-            { label: 'Later  +0.5 s', run: to(function () { return _embDelay + 0.5; }) },
-            { label: 'Later  +1 s', run: to(function () { return _embDelay + 1; }) },
-            { label: 'Later  +5 s', run: to(function () { return _embDelay + 5; }) },
-            { label: 'Back  −0.5 s', run: to(function () { return _embDelay - 0.5; }) },
-            { label: 'Back  −1 s', run: to(function () { return _embDelay - 1; }) },
-            { label: 'Reset (as in the file)', run: to(function () { return 0; }) }
+        return { title: U.t('Built-in subtitle timing: {delay}', { delay: fmtDelay(_embDelay) }), idx: idx || 0, items: [
+            { label: U.t('Later  +0.1 s'), run: to(function () { return _embDelay + 0.1; }) },
+            { label: U.t('Later  +0.5 s'), run: to(function () { return _embDelay + 0.5; }) },
+            { label: U.t('Later  +1 s'), run: to(function () { return _embDelay + 1; }) },
+            { label: U.t('Later  +5 s'), run: to(function () { return _embDelay + 5; }) },
+            { label: U.t('Back  −0.5 s'), run: to(function () { return _embDelay - 0.5; }) },
+            { label: U.t('Back  −1 s'), run: to(function () { return _embDelay - 1; }) },
+            { label: U.t('Reset (as in the file)'), run: to(function () { return 0; }) }
         ] };
     }
 
@@ -655,23 +655,23 @@
             var na = langName(a), nb = langName(b);
             return na < nb ? -1 : na > nb ? 1 : 0;
         });
-        var items = [{ label: 'Off', sel: !_subOn && _embSub == null, run: function () { subsOff(); secondOff(); rememberSub(S.ctx.id, { off: true }); closeMenu(); } }];
+        var items = [{ label: U.t('Off'), sel: !_subOn && _embSub == null, run: function () { subsOff(); secondOff(); rememberSub(S.ctx.id, { off: true }); closeMenu(); } }];
         order.forEach(function (k) {
             var list = groups[k], n = list.length, emb = list.filter(function (x) { return x.emb; }).length;
             items.push({ label: langName(k),
-                detail: n + ' option' + (n > 1 ? 's' : '') + (emb ? (emb === n ? ', ' + inFile() : ', ' + emb + ' ' + inFile()) : ''),
+                detail: U.tn(n, '{n} option', '{n} options') + (emb ? ', ' + (emb === n ? inFile() : emb + ' ' + inFile()) : ''),
                 sel: (k === curKey),
                 run: function () { pushMenu(langTracksMenu(k, list)); } });
         });
-        if (hidden) { items.push({ label: 'Other languages', detail: hidden + ' more', run: function () { pushMenu(langMenu(true)); } }); }
+        if (hidden) { items.push({ label: U.t('Other languages'), detail: U.t('{n} more', { n: hidden }), run: function () { pushMenu(langMenu(true)); } }); }
         var sec = getSubCfg().second;
-        if (_subTracks.length) { items.push({ label: 'Second subtitle: ' + (sec === 'off' ? 'Off' : langName(sec)), detail: 'At the top, at the same time', run: function () { pushMenu(secondMenu()); } }); }
+        if (_subTracks.length) { items.push({ label: U.t('Second subtitle:') + ' ' + (sec === 'off' ? U.t('Off') : langName(sec)), detail: U.t('At the top, at the same time'), run: function () { pushMenu(secondMenu()); } }); }
         var idx = 0;
         for (var i = 0; i < items.length; i++) { if (items[i].sel) { idx = i; break; } }
-        return { title: all ? 'All subtitle languages' : 'Subtitle language', items: items, idx: idx, rebuild: function () { return langMenu(all); } };
+        return { title: all ? U.t('All subtitle languages') : U.t('Subtitle language'), items: items, idx: idx, rebuild: function () { return langMenu(all); } };
     }
 
-    function inFile() { return S.ctx && (S.ctx._relayCc || S.ctx._ccOffer) ? 'closed captions' : 'in the file'; }
+    function inFile() { return S.ctx && (S.ctx._relayCc || S.ctx._ccOffer) ? U.t('closed captions') : U.t('in the file'); }
     // Level 2: the tracks in one language: the file's own first, then each addon's.
     // Picking a track keeps the menu open, the checkmark on it (an addon's once it loads), so
     // several can be tried in a row: the file's own the same as an addon's.
@@ -681,13 +681,13 @@
         var items = list.map(function (x, i) {
             if (x.cc) {   // (turning a live channel's closed captions on: it restarts with them)
                 var c = x.cc;
-                return { label: 'Closed captions (' + c.ch + ')', detail: 'The channel restarts with them',
+                return { label: U.t('Closed captions ({ch})', { ch: c.ch }), detail: U.t('The channel restarts with them'),
                     run: function () { closeMenu(); rememberSub(S.ctx.id, { embedded: true, nth: x.n, lang: c.lang }); P.ccOn(c); } };
             }
             if (x.emb) {
                 var tr = x.emb, l = textLang(tr);
                 if (_embSub === tr.index) { idx = i; }
-                return { label: (S.ctx && S.ctx._relayCc ? 'Closed captions' : 'Built into the file') + (l ? '  (' + l + ')' : '  ·  track ' + (x.n + 1)), sel: _embSub === tr.index,
+                return { label: (S.ctx && S.ctx._relayCc ? U.t('Closed captions') : U.t('Built into the file')) + (l ? '  (' + l + ')' : '  ·  ' + U.t('track {n}', { n: x.n + 1 })), sel: _embSub === tr.index,
                     run: function () {
                         _embDelay = 0; _embQueue = []; _embNudge = null; selectEmbeddedSub(tr); rememberSub(S.ctx.id, { embedded: true, index: tr.index, lang: l });
                         if (menuOpen()) { replaceTop(langTracksMenu(key, list)); }
@@ -696,7 +696,7 @@
             var t = x.track;
             nAddon++;
             if (_subTrackUrl === t.url) { idx = i; }
-            return { label: t._file ? t._addon + '  ·  ' + t._file : (t._addon || 'Source') + '  ·  option ' + nAddon +
+            return { label: t._file ? t._addon + '  ·  ' + t._file : (t._addon || U.t('Source')) + '  ·  ' + U.t('option {n}', { n: nAddon }) +
                     (t.lang && langName(t.lang).toLowerCase() !== ('' + t.lang).toLowerCase() ? '  (' + t.lang + ')' : ''),
                 sel: (_subTrackUrl === t.url),
                 run: function () {
@@ -706,7 +706,7 @@
                     rememberSub(S.ctx.id, { lang: t.lang, url: t.url, trackId: t.id });
                 } };
         });
-        return { title: langName(key) + ' subtitles', items: items, idx: idx };
+        return { title: U.t('{language} subtitles', { language: langName(key) }), items: items, idx: idx };
     }
 
     function optionMenu(title, key, opts) {
@@ -722,17 +722,17 @@
         return { title: title, items: items, idx: idx };
     }
     function sizeMenu() {
-        return optionMenu('Subtitle size', 'size',
-            [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large'], ['xlarge', 'Extra Large']]);
+        return optionMenu(U.t('Subtitle size'), 'size',
+            [['small', U.t('Small')], ['medium', U.t('Medium')], ['large', U.t('Large')], ['xlarge', U.t('Extra Large')]]);
     }
-    function fontMenu() { return optionMenu('Subtitle font', 'font', P.SUB_FONTS); }
+    function fontMenu() { return optionMenu(U.t('Subtitle font'), 'font', P.SUB_FONTS); }
 
     // ----- for the other parts (and js/player.js) -----
     // The player's number keys (player-controls' numberKey): 1 / 2 / 3 timing (an addon track's
     // earlier / as the file / later, kept for the title as the Timing menu's; a built-in track's
     // later only), 4 / 5 / 6 position, 7 / 8 / 9 size. Each says what it did.
-    var KEY_POS = { 4: ['lower', 'Lower'], 5: ['bottom', 'Bottom'], 6: ['raised', 'Raised'] };
-    var KEY_SIZE = { 7: ['medium', 'Medium'], 8: ['large', 'Large'], 9: ['xlarge', 'Extra Large'] };
+    var KEY_POS = { 4: ['lower', U.t('Lower')], 5: ['bottom', U.t('Bottom')], 6: ['raised', U.t('Raised')] };
+    var KEY_SIZE = { 7: ['medium', U.t('Medium')], 8: ['large', U.t('Large')], 9: ['xlarge', U.t('Extra Large')] };
     function subsKey(n) {
         if (n >= 1 && n <= 3) {
             var step = n === 1 ? -0.1 : n === 3 ? 0.1 : 0;
@@ -740,14 +740,14 @@
                 _subDelay = step ? Math.round((_subDelay + step) * 10) / 10 : 0;
                 rememberSub(S.ctx.id, { lang: _subLabel, url: _subTrackUrl, trackId: _subTrackId, delay: _subDelay });
                 renderSubs();
-                U.toast('Subtitles: ' + fmtDelay(_subDelay) + (_subDelay > 0 ? ' (later)' : _subDelay < 0 ? ' (earlier)' : ' (as in the file)'), 1500);
+                U.toast(U.t('Subtitles: {what}', { what: fmtDelay(_subDelay) + ' ' + (_subDelay > 0 ? U.t('(later)') : _subDelay < 0 ? U.t('(earlier)') : U.t('(as in the file)')) }), 1500);
             } else if (_embSub != null) {
                 var was = _embDelay;
                 _embDelay = step ? Math.max(0, Math.round((_embDelay + step) * 10) / 10) : 0;
                 rememberSub(S.ctx.id, { embedded: true, index: _embSub, lang: _embLang, delay: _embDelay });
-                U.toast('Subtitles: ' + fmtDelay(_embDelay) + (step < 0 && was === 0 ? ' (built-in: later only)' : ''), 1500);
+                U.toast(U.t('Subtitles: {what}', { what: fmtDelay(_embDelay) + (step < 0 && was === 0 ? ' ' + U.t('(built-in: later only)') : '') }), 1500);
             } else {
-                U.toast('No subtitles on', 1500);
+                U.toast(U.t('No subtitles on'), 1500);
             }
             return;
         }
@@ -758,7 +758,7 @@
         setSubCfg(cfg);
         var span = S.subsEl && S.subsEl.firstChild;
         if (span) { styleSpan(span); }
-        U.toast('Subtitles: ' + look[1][1] + (look[0] === 'size' ? ' size' : ''), 1500);
+        U.toast(U.t('Subtitles: {what}', { what: look[0] === 'size' ? U.t('{size} size', { size: look[1][1] }) : look[1][1] }), 1500);
     }
     // The subtitle that's on, for a download (player-controls): an addon's file { url, lang },
     // { embedded: true } (built into the video: it comes with it), or null (off).

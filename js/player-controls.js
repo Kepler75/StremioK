@@ -84,14 +84,14 @@
         if (type === 'sb') {   // (SponsorBlock: "Skip Sponsor")
             buttons.push({ label: seg.label + '  ▸', run: function () { seekTo(seg.end); hideSkip(); } });
         } else if (type === 'intro' || type === 'recap' || type === 'preview') {
-            var base = type === 'intro' ? 'Skip Intro' : type === 'recap' ? 'Skip Recap' : 'Skip Preview';
+            var base = type === 'intro' ? U.t('Skip Intro') : type === 'recap' ? U.t('Skip Recap') : U.t('Skip Preview');
             buttons.push({ label: base, run: function () { if (seg.end != null) { seekTo(seg.end); } hideSkip(); } });
             // Skipping on its own (Settings › Playback › Skipping): a countdown in video time (it
             // waits while paused), and Cancel; see skipTick.
             var auto = autoSkipSecs();
             if (auto && seg.end != null) {
                 buttons[0].label = base + ' · ' + auto;
-                buttons.push({ label: 'Cancel', run: function () { hideSkip(); } });
+                buttons.push({ label: U.t('Cancel'), run: function () { hideSkip(); } });
                 _skip = { type: type, buttons: buttons, idx: 0, timer: null, countdown: { secs: auto, from: S.cur, seg: seg, base: base } };
                 renderSkip();
                 return;
@@ -102,14 +102,14 @@
                 hideSkip();
                 if (S.ctx.nextEpisode && S.ctx.playNext) { S.ctx.playNext(); } else { exit(); }
             };
-            buttons.push({ label: S.ctx.nextEpisode ? 'Skip Credits → Next' : 'Skip Credits', run: goOn });
-            buttons.push({ label: 'Watch Credits', run: function () { hideSkip(); } });
+            buttons.push({ label: S.ctx.nextEpisode ? U.t('Skip Credits → Next') : U.t('Skip Credits'), run: goOn });
+            buttons.push({ label: U.t('Watch Credits'), run: function () { hideSkip(); } });
             // The next episode on its own (Settings › Playback › Skipping): a countdown in video
             // time, as the intro's; Watch Credits stays. Without a next episode: the prompt.
             var next = autoNextSecs();
             if (next && S.ctx.nextEpisode && S.ctx.playNext) {
-                buttons[0].label = 'Next episode · ' + next;
-                _skip = { type: type, buttons: buttons, idx: 0, timer: null, countdown: { secs: next, from: S.cur, base: 'Next episode', run: goOn } };
+                buttons[0].label = U.t('Next episode') + ' · ' + next;
+                _skip = { type: type, buttons: buttons, idx: 0, timer: null, countdown: { secs: next, from: S.cur, base: U.t('Next episode'), run: goOn } };
                 renderSkip();
                 return;
             }
@@ -183,7 +183,7 @@
     var _scrub = null;   // { target, from, dir, presses, timer }
 
     function scrub(delta) {
-        if (S.isLive) { showOSD(false); U.toast('Live — seeking unavailable', 1500); return; }
+        if (S.isLive) { showOSD(false); U.toast(U.t('Live — seeking unavailable'), 1500); return; }
         if (!_scrub) { _scrub = { target: S.cur, from: S.cur, dir: 0, presses: 0, timer: null }; }
         var dir = delta > 0 ? 1 : -1;
         if (dir !== _scrub.dir) { _scrub.dir = dir; _scrub.presses = 0; }
@@ -322,26 +322,26 @@
     function barButtons() {
         // Glyphs kept to the old Geometric-Shapes/Arrows blocks — the media-control
         // symbols (⏵ ⏸ ⏮ ⏭ ⤶) don't render on Tizen 3.0's fonts.
-        var b = [{ label: isPaused() ? '▶ Play' : '‖ Pause', run: togglePlay }];
-        if (!S.isLive) { b.push({ label: '↺ Restart', run: function () { seekTo(0); closeBar(); } }); }
-        if (chapters().length) { b.push({ label: '≡ Chapters', run: function () { closeBar(); openMenu(chaptersMenu()); } }); }
+        var b = [{ label: isPaused() ? U.t('▶ Play') : U.t('‖ Pause'), run: togglePlay }];
+        if (!S.isLive) { b.push({ label: U.t('↺ Restart'), run: function () { seekTo(0); closeBar(); } }); }
+        if (chapters().length) { b.push({ label: U.t('≡ Chapters'), run: function () { closeBar(); openMenu(chaptersMenu()); } }); }
         var hl = sponsorHighlight();
-        if (hl !== null && !S.isLive) { b.push({ label: '◆ Highlight', run: function () { closeBar(); seekTo(hl); } }); }
-        if (S.ctx.hasPrev) { b.push({ label: '◀◀ Previous', run: function () { closeBar(); S.ctx.playPrev(); } }); }
-        if (S.ctx.hasNext) { b.push({ label: '▶▶ Next', run: function () { closeBar(); S.ctx.playNext(); } }); }
-        if (castTitle()) { b.push({ label: 'ⓘ Cast & more', run: function () { closeBar(); openCast(); } }); }
+        if (hl !== null && !S.isLive) { b.push({ label: U.t('◆ Highlight'), run: function () { closeBar(); seekTo(hl); } }); }
+        if (S.ctx.hasPrev) { b.push({ label: U.t('◀◀ Previous'), run: function () { closeBar(); S.ctx.playPrev(); } }); }
+        if (S.ctx.hasNext) { b.push({ label: U.t('▶▶ Next'), run: function () { closeBar(); S.ctx.playNext(); } }); }
+        if (castTitle()) { b.push({ label: U.t('ⓘ Cast & more'), run: function () { closeBar(); openCast(); } }); }
         // continue on phone (its QR, in the menu's panel), and private viewing from now on
-        if (phoneLink()) { b.push({ label: '▣ Phone', run: function () { closeBar(); openMenu(phoneMenu()); } }); }
-        if (canDownload()) { b.push({ label: '⬇ Download', run: function () { closeBar(); downloadPlaying(); } }); }
+        if (phoneLink()) { b.push({ label: U.t('▣ Phone'), run: function () { closeBar(); openMenu(phoneMenu()); } }); }
+        if (canDownload()) { b.push({ label: U.t('⬇ Download'), run: function () { closeBar(); downloadPlaying(); } }); }
         if (!S.ctx.trailer && !S.isLive) {
             var priv = !!S.ctx.private;
-            b.push({ label: '◐ Private: ' + (priv ? 'On' : 'Off'), run: function () {
+            b.push({ label: '◐ ' + U.t('Private:') + ' ' + (priv ? U.t('On') : U.t('Off')), run: function () {
                 P.setPrivate(!priv);
-                U.toast(!priv ? 'Private viewing: not tracked from now on' : 'Private viewing off: tracked again', 2500);
+                U.toast(!priv ? U.t('Private viewing: not tracked from now on') : U.t('Private viewing off: tracked again'), 2500);
                 closeBar();
             } });
         }
-        b.push({ label: '← Back', run: function () { exit(); } });   // stop playback, return to the previous page
+        b.push({ label: U.t('← Back'), run: function () { exit(); } });   // stop playback, return to the previous page
         return b;
     }
     // The bar closes by itself after BAR_IDLE_MS without a key on it (Cast & more doesn't).
@@ -433,10 +433,10 @@
         drawCast();
         level.load().then(function (items) {
             level.items = items || [];
-            if (!level.items.length) { level.note = level.kind === 'cast' ? 'TMDB has no cast for this title.' : 'TMDB has no movies or series for them.'; }
+            if (!level.items.length) { level.note = level.kind === 'cast' ? U.t('TMDB has no cast for this title.') : U.t('TMDB has no movies or series for them.'); }
             if (_cast === me && topCast() === level) { drawCast(); }
         }, function () {
-            level.items = []; level.note = 'Couldn\'t reach TMDB.';
+            level.items = []; level.note = U.t('Couldn\'t reach TMDB.');
             if (_cast === me && topCast() === level) { drawCast(); }
         });
     }
@@ -453,7 +453,7 @@
             card.appendChild(U.el('div', 'cs-photo cs-none', (it.name || '?').charAt(0)));
         }
         card.appendChild(U.el('div', 'cs-name', it.name || ''));
-        var sub = level.kind === 'cast' ? (it.character || '') : [it.kind === 'tv' ? 'Series' : 'Movie', it.year].filter(Boolean).join(' · ');
+        var sub = level.kind === 'cast' ? (it.character || '') : [it.kind === 'tv' ? U.t('Series') : U.t('Movie'), it.year].filter(Boolean).join(' · ');
         if (sub) { card.appendChild(U.el('div', 'cs-role', sub)); }
         return card;
     }
@@ -462,13 +462,13 @@
         var lv = topCast();
         if (!lv) { return; }
         U.clear(_cast.head);
-        var path = _cast.levels.map(function (l) { return l.name + (l.kind === 'cast' ? '  ·  cast & more' : '  ·  movies & series'); });
+        var path = _cast.levels.map(function (l) { return l.name + '  ·  ' + (l.kind === 'cast' ? U.t('cast & more') : U.t('movies & series')); });
         _cast.head.appendChild(U.el('div', 'cs-title', (path.length > 3 ? '…  ›  ' : '') + path.slice(-3).join('   ›   ')));
-        var deeper = lv.kind === 'cast' ? 'OK: their movies & series' : 'OK: its cast & more     Hold OK: more';
-        _cast.head.appendChild(U.el('div', 'cs-hint', deeper + '     BACK: ' + (_cast.levels.length > 1 ? 'up a level' : 'close')));
+        var deeper = lv.kind === 'cast' ? U.t('OK: their movies & series') : U.t('OK: its cast & more     Hold OK: more');
+        _cast.head.appendChild(U.el('div', 'cs-hint', deeper + '     ' + (_cast.levels.length > 1 ? U.t('BACK: up a level') : U.t('BACK: close'))));
         U.clear(_cast.strip);
         _cast.strip.style.marginLeft = '0px';
-        if (!lv.items) { _cast.strip.appendChild(U.el('div', 'cs-note', 'Loading…')); return; }
+        if (!lv.items) { _cast.strip.appendChild(U.el('div', 'cs-note', U.t('Loading…'))); return; }
         if (!lv.items.length) { _cast.strip.appendChild(U.el('div', 'cs-note', lv.note)); return; }
         lv.items.forEach(function (it) { _cast.strip.appendChild(castCard(lv, it)); });
         renderCast();
@@ -491,21 +491,21 @@
         if (!V || !V.titleActions || !Stremio.tmdbImdbId) { return; }
         var type = it.kind === 'tv' ? 'series' : 'movie', name = it.name || '', me = _cast;
         Stremio.tmdbImdbId(it.kind, it.tmdbId).then(function (imdb) {
-            if (!imdb) { U.toast('“' + name + '” has no IMDb id, so the addons can\'t open it.', 3500); return null; }
+            if (!imdb) { U.toast(U.t('“{name}” has no IMDb id, so the addons can\'t open it.', { name: name }), 3500); return null; }
             var meta = { id: imdb, type: type, name: name, poster: it.poster };
             return V.titleActions(meta, type).then(function (act) {
                 if (_cast !== me || !S.active) { return; }   // (the strip closed, or playback ended, meanwhile)
                 // (Details last: the one that stops what's playing)
                 var opts = act.items.filter(function (o) { return o[0] !== 'details'; }).concat(act.items.filter(function (o) { return o[0] === 'details'; }));
                 openMenu({ title: name, idx: 0, items: opts.map(function (o) {
-                    return { label: o[0] === 'details' ? 'Details (stops playing)' : o[1], run: function () {
+                    return { label: o[0] === 'details' ? U.t('Details (stops playing)') : o[1], run: function () {
                         closeMenu();
                         if (o[0] === 'details') { exit(); App.openDetail(type, imdb, meta); return; }
                         act.run(o[0]);
                     } };
                 }) });
             });
-        }, function () { U.toast('Couldn\'t reach TMDB.'); });
+        }, function () { U.toast(U.t('Couldn\'t reach TMDB.')); });
     }
     function closeCast(quiet) {   // quiet: playback is stopping (the progress bar stays down)
         if (!_cast) { return; }
@@ -580,7 +580,7 @@
         img.onerror = function () { img.style.visibility = 'hidden'; };
         card.appendChild(img);
         U.deferImage(img, 'https://i.ytimg.com/vi/' + l.id + '/mqdefault.jpg');
-        card.appendChild(U.el('div', 'yl-title', l.title || 'YouTube video'));
+        card.appendChild(U.el('div', 'yl-title', l.title || U.t('YouTube video')));
         return card;
     }
     function showEnd(items) {
@@ -588,8 +588,8 @@
         if (!el) { el = U.el('div', 'hidden'); el.id = 'yt-links'; document.body.appendChild(el); }
         U.clear(el);
         var head = U.el('div', 'yl-head');
-        head.appendChild(U.el('div', 'yl-heading', 'Up next on YouTube'));
-        head.appendChild(U.el('div', 'yl-hint', 'UP: choose     BACK: hide'));
+        head.appendChild(U.el('div', 'yl-heading', U.t('Up next on YouTube')));
+        head.appendChild(U.el('div', 'yl-hint', U.t('UP: choose     BACK: hide')));
         el.appendChild(head);
         var row = U.el('div', 'yl-row');
         items.forEach(function (l) { row.appendChild(linkCard(l)); });
@@ -601,7 +601,7 @@
         if (!_yl) { return; }
         var cards = _yl.row.children;
         for (var i = 0; i < cards.length; i++) { cards[i].className = 'yl-card' + (_yl.active && i === _yl.idx ? ' sel' : ''); }
-        _yl.head.children[1].textContent = _yl.active ? 'OK: play     BACK: back' : 'UP: choose     BACK: hide';
+        _yl.head.children[1].textContent = _yl.active ? U.t('OK: play     BACK: back') : U.t('UP: choose     BACK: hide');
     }
     function hideEnd() {
         if (!_yl) { return; }
@@ -614,9 +614,9 @@
         var el = U.byId('yt-card');
         if (!el) { el = U.el('div', 'hidden'); el.id = 'yt-card'; document.body.appendChild(el); }
         U.clear(el);
-        el.appendChild(U.el('div', 'yc-teaser', 'ⓘ  ' + (l.teaser || 'Watch')));
+        el.appendChild(U.el('div', 'yc-teaser', 'ⓘ  ' + (l.teaser || U.t('Watch'))));
         el.appendChild(U.el('div', 'yc-title', l.title || ''));
-        el.appendChild(U.el('div', 'yc-hint', 'UP: watch'));
+        el.appendChild(U.el('div', 'yc-hint', U.t('UP: watch')));
         el.className = '';
         var me = _card = { el: el, link: l, timer: setTimeout(function () { if (_card === me) { hideCard(); } }, 8000) };
     }
@@ -644,42 +644,42 @@
     function rootMenu() {
         // Order per spec: Subtitles, Audio Track, Select Source, Playback
         var items = [];
-        items.push({ label: 'Subtitles', run: function () { pushMenu(subConfigMenu()); } });
+        items.push({ label: U.t('Subtitles'), run: function () { pushMenu(subConfigMenu()); } });
         if (getAudioTracks().length > 1 || (P.liveSound && P.liveSound())) {   // (a live channel: its sound's choice too)
-            items.push({ label: 'Audio track', run: function () { pushMenu(audioMenu()); } });
+            items.push({ label: U.t('Audio track'), run: function () { pushMenu(audioMenu()); } });
         }
         if (hasYtLanguages()) {   // (a YouTube video with dubs: each is a stream of its own)
-            items.push({ label: 'Audio language', detail: ytLanguageLabel(), run: function () { pushMenu(ytLanguageMenu()); } });
+            items.push({ label: U.t('Audio language'), detail: ytLanguageLabel(), run: function () { pushMenu(ytLanguageMenu()); } });
         }
         if (S.ctx.streams && S.ctx.streams.length) {
-            items.push({ label: 'Select source', run: function () { pushMenu(sourceMenu()); } });
+            items.push({ label: U.t('Select source'), run: function () { pushMenu(sourceMenu()); } });
         }
         if (hasQualities()) {
-            items.push({ label: 'Video quality', detail: qualityLabel(), run: function () { pushMenu(qualityMenu()); } });
+            items.push({ label: U.t('Video quality'), detail: qualityLabel(), run: function () { pushMenu(qualityMenu()); } });
         } else if (qualityUnread()) {
-            items.push({ label: 'Video quality', detail: 'Auto: this stream’s qualities couldn’t be read', run: function () { U.toast('This stream’s qualities couldn’t be read: it plays on Auto', 4000); } });
+            items.push({ label: U.t('Video quality'), detail: U.t('Auto: this stream’s qualities couldn’t be read'), run: function () { U.toast(U.t('This stream’s qualities couldn’t be read: it plays on Auto'), 4000); } });
         }
         if (chapters().length) {
             var ci = chapterAt(S.cur);
-            items.push({ label: 'Chapters', detail: ci >= 0 ? chapters()[ci].title : '', run: function () { pushMenu(chaptersMenu()); } });
+            items.push({ label: U.t('Chapters'), detail: ci >= 0 ? chapters()[ci].title : '', run: function () { pushMenu(chaptersMenu()); } });
         }
         if (!S.isLive) {
-            items.push({ label: 'Playback', run: function () { pushMenu(playbackMenu()); } });
+            items.push({ label: U.t('Playback'), run: function () { pushMenu(playbackMenu()); } });
         }
-        items.push({ label: 'Picture', detail: aspectDef(P.aspectNow())[1].split(' (')[0], run: function () { pushMenu(pictureMenu()); } });
-        if (P.liveFormat()) { items.push({ label: 'Format', detail: P.liveFormat() === 'hls' ? 'HLS' : 'MPEG-TS', run: function () { pushMenu(formatMenu()); } }); }
-        items.push({ label: streamInfoOn() ? 'Hide stream info' : 'Stream info', run: function () { toggleStreamInfo(); closeMenu(); } });
-        items.push({ label: 'Reload', detail: S.isLive ? 'Open the channel again' : 'Open it again, where it is', run: function () { closeMenu(); P.reload(); } });
-        items.push({ label: 'Sleep timer', detail: sleepLeft(), run: function () { pushMenu(sleepMenu()); } });
-        return { title: 'Menu', items: items, idx: 0 };
+        items.push({ label: U.t('Picture'), detail: aspectDef(P.aspectNow())[1].split(' (')[0], run: function () { pushMenu(pictureMenu()); } });
+        if (P.liveFormat()) { items.push({ label: U.t('Format'), detail: P.liveFormat() === 'hls' ? 'HLS' : 'MPEG-TS', run: function () { pushMenu(formatMenu()); } }); }
+        items.push({ label: streamInfoOn() ? U.t('Hide stream info') : U.t('Stream info'), run: function () { toggleStreamInfo(); closeMenu(); } });
+        items.push({ label: U.t('Reload'), detail: S.isLive ? U.t('Open the channel again') : U.t('Open it again, where it is'), run: function () { closeMenu(); P.reload(); } });
+        items.push({ label: U.t('Sleep timer'), detail: sleepLeft(), run: function () { pushMenu(sleepMenu()); } });
+        return { title: U.t('Menu'), items: items, idx: 0 };
     }
 
     // ---- Sleep timer: playback stops after 30, 60 or 90 minutes (said, then the player closes);
     // for this playback session, cleared when the player closes ----
     var SLEEP_MINUTES = [30, 60, 90], _sleep = null;   // { at, timer }
     function sleepLeft() {
-        if (!_sleep) { return 'Off'; }
-        return Math.max(1, Math.ceil((_sleep.at - Date.now()) / 60000)) + ' min left';
+        if (!_sleep) { return U.t('Off'); }
+        return U.t('{n} min left', { n: Math.max(1, Math.ceil((_sleep.at - Date.now()) / 60000)) });
     }
     function sleepClear() { if (_sleep) { clearTimeout(_sleep.timer); _sleep = null; } }
     function sleepSet(min) {
@@ -689,16 +689,16 @@
         _sleep = { at: at, timer: setTimeout(function () {
             _sleep = null;
             if (!S.active) { return; }
-            U.toast('Sleep timer: playback stopped', 5000);
+            U.toast(U.t('Sleep timer: playback stopped'), 5000);
             exit();
         }, min * 60000) };
     }
     function sleepMenu() {
-        var items = [{ label: 'Off', sel: !_sleep, run: function () { sleepSet(0); closeMenu(); U.toast('Sleep timer off', 2000); } }];
+        var items = [{ label: U.t('Off'), sel: !_sleep, run: function () { sleepSet(0); closeMenu(); U.toast(U.t('Sleep timer off'), 2000); } }];
         SLEEP_MINUTES.forEach(function (m) {
-            items.push({ label: m + ' minutes', run: function () { sleepSet(m); closeMenu(); U.toast('Sleep timer: playback stops in ' + m + ' minutes', 3000); } });
+            items.push({ label: U.t('{n} minutes', { n: m }), run: function () { sleepSet(m); closeMenu(); U.toast(U.t('Sleep timer: playback stops in {n} minutes', { n: m }), 3000); } });
         });
-        return { title: 'Sleep timer', items: items, idx: 0 };
+        return { title: U.t('Sleep timer'), items: items, idx: 0 };
     }
     P.sleepClear = sleepClear;
 
@@ -713,7 +713,7 @@
     // …as the QR opens it: in VLC or Infuse (a phone's browser downloads a file it can't play,
     // an MKV, HEVC, surround sound), or the direct link; a YouTube video's page as it is (the
     // YouTube app opens it).
-    var PHONE_APPS = [['vlc', 'VLC'], ['infuse', 'Infuse'], ['link', 'Direct link']];
+    var PHONE_APPS = [['vlc', 'VLC'], ['infuse', 'Infuse'], ['link', U.t('Direct link')]];
     function phoneLink() {
         var u = streamLink(), app = playerCfg().phone;
         if (!u || S.ctx.yt || app === 'link') { return u; }
@@ -725,8 +725,8 @@
         var link = phoneLink(), box = U.el('div', 'phone-qr'), spot = U.el('div', 'phone-qr-spot');
         box.appendChild(spot);
         var host = (streamLink().match(/^https?:\/\/([^\/?#]+)/i) || [])[1] || '';
-        box.appendChild(U.el('div', 'sm-detail', 'Scan it with your phone to open the link there (' + host + ')' + (S.ctx.yt || S.isLive ? '.' : ': it starts from the beginning; you\'re at ' + U.fmtTime(S.cur) + '.')));
-        box.appendChild(U.el('div', 'sm-detail', 'Anyone who scans it can play it; a debrid link carries your account’s access.' + (S.ctx._headers ? ' This channel needs its own player settings, so it may not open elsewhere.' : '')));
+        box.appendChild(U.el('div', 'sm-detail', S.ctx.yt || S.isLive ? U.t('Scan it with your phone to open the link there ({host}).', { host: host }) : U.t('Scan it with your phone to open the link there ({host}): it starts from the beginning; you\'re at {at}.', { host: host, at: U.fmtTime(S.cur) })));
+        box.appendChild(U.el('div', 'sm-detail', U.t('Anyone who scans it can play it; a debrid link carries your account’s access.') + (S.ctx._headers ? U.t(' This channel needs its own player settings, so it may not open elsewhere.') : '')));
         (typeof qrcode !== 'undefined' ? Promise.resolve() : U.loadScript('js/qrcode.js')).then(function () {
             var cv = U.qrCanvas(link, 0, { level: 'L', quiet: 2, fit: 200 });   // (small: about 200 px)
             if (cv) { spot.appendChild(cv); } else { spot.appendChild(U.el('div', 'sm-detail', link)); }
@@ -734,10 +734,10 @@
         var items = S.ctx.yt ? [] : PHONE_APPS.map(function (a) {
             return { label: a[1], sel: playerCfg().phone === a[0], run: function () { setPlayerCfg({ phone: a[0] }); replaceTop(phoneMenu()); } };
         });
-        items.push({ label: 'Close', run: function () { closeMenu(); } });
+        items.push({ label: U.t('Close'), run: function () { closeMenu(); } });
         var at = 0;
         items.forEach(function (it, i) { if (it.sel) { at = i; } });
-        return { title: 'Continue on phone', idx: at, wide: true, node: box, items: items };
+        return { title: U.t('Continue on phone'), idx: at, wide: true, node: box, items: items };
     }
 
     // ⬇ Download: the source playing to a USB drive (js/downloads.js), with the subtitle that's
@@ -756,11 +756,11 @@
         Downloads.start(S.ctx.stream, t, {
             pick: function (title, options, fn) {
                 show({ title: title, idx: 0, items: options.map(function (o) { return { label: o[1], run: function () { fn(o[0]); } }; })
-                    .concat([{ label: 'Cancel', run: function () { closeMenu(); } }]) });
+                    .concat([{ label: U.t('Cancel'), run: function () { closeMenu(); } }]) });
             },
             confirm: function (msg, ok, fn) {
-                show({ title: 'Download to USB drive', idx: 0, wide: true, node: U.el('div', 'sm-detail', msg),
-                    items: [{ label: ok, run: function () { closeMenu(); fn(); } }, { label: 'Cancel', run: function () { closeMenu(); } }] });
+                show({ title: U.t('Download to USB drive'), idx: 0, wide: true, node: U.el('div', 'sm-detail', msg),
+                    items: [{ label: ok, run: function () { closeMenu(); fn(); } }, { label: U.t('Cancel'), run: function () { closeMenu(); } }] });
             }
         });
     }
@@ -769,10 +769,10 @@
     function chaptersMenu() {
         var cur = chapterAt(S.cur);
         var items = chapters().map(function (c, i) {
-            return { label: c.title || 'Chapter ' + (i + 1), detail: U.fmtTime(c.t), sel: i === cur,
+            return { label: c.title || U.t('Chapter {n}', { n: i + 1 }), detail: U.fmtTime(c.t), sel: i === cur,
                 run: function () { closeMenu(); seekTo(c.t); } };
         });
-        return { title: 'Chapters', items: items, idx: Math.max(0, cur) };
+        return { title: U.t('Chapters'), items: items, idx: Math.max(0, cur) };
     }
 
     // ---------- picture mode ----------
@@ -783,7 +783,7 @@
         if (!P.useAV) { if (S.videoEl) { S.videoEl.style.objectFit = a[3]; } return true; }
         try { avplay.setDisplayMethod(a[2]); return true; } catch (e) {
             try { avplay.setDisplayMethod(aspectDef('fit')[2]); } catch (e2) {}
-            if (!quiet) { U.toast(a[1].split(' (')[0] + ' isn\'t available on this TV', 2500); }
+            if (!quiet) { U.toast(U.t('{mode} isn\'t available on this TV', { mode: a[1].split(' (')[0] }), 2500); }
             return false;
         }
     }
@@ -798,7 +798,7 @@
                 replaceTop(pictureMenu());
             } };
         });
-        return { title: S.isLive && S.ctx && S.ctx.id ? 'Picture (this channel)' : 'Picture', items: items, idx: idx };
+        return { title: S.isLive && S.ctx && S.ctx.id ? U.t('Picture (this channel)') : U.t('Picture'), items: items, idx: idx };
     }
 
     // An Xtream channel's format (player-core's setLiveFormat): it opens again the other way.
@@ -807,7 +807,7 @@
         var items = [['ts', 'MPEG-TS'], ['hls', 'HLS']].map(function (f) {
             return { label: f[1], sel: f[0] === now, run: function () { closeMenu(); if (f[0] !== now) { P.setLiveFormat(f[0]); } } };
         });
-        return { title: 'Format (this channel)', items: items, idx: now === 'hls' ? 1 : 0 };
+        return { title: U.t('Format (this channel)'), items: items, idx: now === 'hls' ? 1 : 0 };
     }
 
     // ---------- stream info overlay ----------
@@ -835,25 +835,25 @@
             var bh = st.behaviorHints || {}, path = ('' + (st.url || '')).split(/[?#]/)[0], file = bh.filename || '';
             if (!file && /\.(mkv|mp4|m4v|avi|ts|webm|mov)$/i.test(path)) { try { file = decodeURIComponent(path.split('/').pop()); } catch (e) { file = path.split('/').pop(); } }
             var name = (Stremio.streamName ? Stremio.streamName(st) : st.name || '').replace(/\s+/g, ' ').trim();
-            lines.push(['Source', [st._addon, name].filter(Boolean).join('  ·  ') || '—']);
-            if (file) { lines.push(['File', file]); }
+            lines.push([U.t('Source'), [st._addon, name].filter(Boolean).join('  ·  ') || '—']);
+            if (file) { lines.push([U.t('File'), file]); }
             var size = Stremio.streamSize ? Stremio.streamSize(st) : '';
-            if (size) { lines.push(['Size', size]); }
+            if (size) { lines.push([U.t('Size'), size]); }
             var desc = (Stremio.streamDescription ? Stremio.streamDescription(st) : '').replace(/\s*\n\s*/g, '  ·  ').replace(/\s+/g, ' ').trim();
-            if (desc) { lines.push(['Details', desc.length > 170 ? desc.slice(0, 167) + '…' : desc]); }
+            if (desc) { lines.push([U.t('Details'), desc.length > 170 ? desc.slice(0, 167) + '…' : desc]); }
         }
         var info = S.ctx.formatInfo || (typeof Stremio !== 'undefined' && Stremio.streamInfo ? Stremio.streamInfo({ url: S.ctx.url, name: S.ctx.name }) : null);
         var tags = (info && Stremio.formatTags) ? Stremio.formatTags(info, S.actual) : '';
-        if (tags) { lines.push(['Format', tags]); }
+        if (tags) { lines.push([U.t('Format'), tags]); }
     }
     // How it reaches the player (no link): straight from its server, or through StremioK's service.
     function howItPlays() {
         var c = S.ctx;
-        if (c.yt) { return 'Through YouTube’s service (on the TV)'; }
-        if (c._relay) { return 'Through StremioK’s service: the sound repacked'; }
-        if (c.localFile && c.localFile.dav) { return 'From your network folder'; }
-        if (c.localFile) { return /^http:\/\/localhost/.test(typeof LocalMedia !== 'undefined' && LocalMedia.openUrl ? LocalMedia.openUrl(c.url, c.localFile.size) : '') ? 'From the USB drive, through StremioK’s service (over 2 GB)' : 'From the USB drive'; }
-        return 'Straight from the server';
+        if (c.yt) { return U.t('Through YouTube’s service (on the TV)'); }
+        if (c._relay) { return U.t('Through StremioK’s service: the sound repacked'); }
+        if (c.localFile && c.localFile.dav) { return U.t('From your network folder'); }
+        if (c.localFile) { return /^http:\/\/localhost/.test(typeof LocalMedia !== 'undefined' && LocalMedia.openUrl ? LocalMedia.openUrl(c.url, c.localFile.size) : '') ? U.t('From the USB drive, through StremioK’s service (over 2 GB)') : U.t('From the USB drive'); }
+        return U.t('Straight from the server');
     }
     function renderStreamInfo() {
         var el = U.byId('stream-info');
@@ -873,27 +873,27 @@
         }
         if (video) {
             var w = video.Width || video.width, h = video.Height || video.height;
-            lines.push(['Video', [w && h ? w + '×' + h : '', video.fourCC || video.codec || ''].filter(Boolean).join('  ·  ') || '—']);
+            lines.push([U.t('Video'), [w && h ? w + '×' + h : '', video.fourCC || video.codec || ''].filter(Boolean).join('  ·  ') || '—']);
         }
         if (audio) {
-            lines.push(['Audio', [infoLang(audio), audio.channels ? audio.channels + 'ch' : '', audio.fourCC || audio.codec || '']
+            lines.push([U.t('Audio'), [infoLang(audio), audio.channels ? audio.channels + 'ch' : '', audio.fourCC || audio.codec || '']
                 .filter(function (x) { return x && x !== 'und'; }).join('  ·  ') || '—']);
         }
-        lines.push(['Subtitles', subtitleSummary()]);
-        if (hasQualities()) { lines.push(['Quality', qualityLabel() + '  (' + qualityCount() + ' available)']); }
-        else if (qualityUnread()) { lines.push(['Quality', 'Auto (this stream’s qualities couldn’t be read)']); }
+        lines.push([U.t('Subtitles'), subtitleSummary()]);
+        if (hasQualities()) { lines.push([U.t('Quality'), qualityLabel() + '  ' + U.t('({n} available)', { n: qualityCount() })]); }
+        else if (qualityUnread()) { lines.push([U.t('Quality'), U.t('Auto (this stream’s qualities couldn’t be read)')]); }
         if (P.useAV) {
             try {
                 var bw = +avplay.getStreamingProperty('CURRENT_BANDWIDTH');
-                if (bw > 0) { lines.push(['Bandwidth', (bw / 1e6).toFixed(1) + ' Mbps']); }
+                if (bw > 0) { lines.push([U.t('Bandwidth'), (bw / 1e6).toFixed(1) + ' Mbps']); }
             } catch (e2) {}
         }
         var host = (('' + (S.ctx.url || '')).match(/^https?:\/\/([^\/:?#]+)/) || [])[1];
-        if (host) { lines.push(['Server', host === 'localhost' ? 'YouTube (built-in service)' : host]); }
-        lines.push(['Plays', howItPlays()]);
+        if (host) { lines.push([U.t('Server'), host === 'localhost' ? U.t('YouTube (built-in service)') : host]); }
+        lines.push([U.t('Plays'), howItPlays()]);
         var buf = playerCfg().buffer;
-        if (buf && buf !== 'normal') { lines.push(['Buffer', buf === 'most' ? 'Most' : 'More']); }
-        lines.push(['Position', S.isLive ? 'Live' : U.fmtTime(S.cur) + ' / ' + U.fmtTime(S.dur)]);
+        if (buf && buf !== 'normal') { lines.push([U.t('Buffer'), buf === 'most' ? U.t('Most') : U.t('More')]); }
+        lines.push([U.t('Position'), S.isLive ? U.t('Live') : U.fmtTime(S.cur) + ' / ' + U.fmtTime(S.dur)]);
         U.clear(el);
         lines.forEach(function (l) {
             var row = U.el('div', 'si-row');
@@ -904,12 +904,12 @@
     }
 
     function playbackMenu() {
-        return { title: 'Playback', idx: 0, items: [
-            { label: 'Restart', run: function () { seekTo(0); closeMenu(); } },
-            { label: 'Rewind 10′', run: function () { seekBy(-600); closeMenu(); } },
-            { label: 'Rewind 5′', run: function () { seekBy(-300); closeMenu(); } },
-            { label: 'Forward 5′', run: function () { seekBy(300); closeMenu(); } },
-            { label: 'Forward 10′', run: function () { seekBy(600); closeMenu(); } }
+        return { title: U.t('Playback'), idx: 0, items: [
+            { label: U.t('Restart'), run: function () { seekTo(0); closeMenu(); } },
+            { label: U.t('Rewind 10′'), run: function () { seekBy(-600); closeMenu(); } },
+            { label: U.t('Rewind 5′'), run: function () { seekBy(-300); closeMenu(); } },
+            { label: U.t('Forward 5′'), run: function () { seekBy(300); closeMenu(); } },
+            { label: U.t('Forward 10′'), run: function () { seekBy(600); closeMenu(); } }
         ] };
     }
 
@@ -919,10 +919,10 @@
         var items = S.ctx.streams.map(function (s, i) {
             var sel = s.url === S.ctx.url && JSON.stringify(U.sanitizeHeaders(s.headers)) === now;
             if (sel) { idx = i; }
-            return { label: s.label || 'Source', detail: s.detail || '', sel: sel,
+            return { label: s.label || U.t('Source'), detail: s.detail || '', sel: sel,
                 run: function () { switchSource(s); closeMenu(); } };
         });
-        return { title: 'Select source', items: items, idx: idx, wide: true };
+        return { title: U.t('Select source'), items: items, idx: idx, wide: true };
     }
 
     // ---------- the colored keys ----------
@@ -935,11 +935,11 @@
         if (key === 'RED') {
             if (getAudioTracks().length > 1 || (P.liveSound && P.liveSound())) { m = audioMenu(); }
             else if (hasYtLanguages()) { m = ytLanguageMenu(); }
-            else { U.toast('Only one audio track', 1800); return; }
+            else { U.toast(U.t('Only one audio track'), 1800); return; }
         } else if (key === 'GREEN') {
             m = langMenu();
         } else {
-            if (!(S.ctx && S.ctx.streams && S.ctx.streams.length)) { U.toast('No other source for this', 1800); return; }
+            if (!(S.ctx && S.ctx.streams && S.ctx.streams.length)) { U.toast(U.t('No other source for this'), 1800); return; }
             m = sourceMenu();
         }
         if (_barOpen) { closeBar(); }
@@ -967,7 +967,7 @@
             if (_chTimer) { clearTimeout(_chTimer); _chTimer = null; }
             function go() { var k = +_chDigits; _chDigits = ''; if (_chTimer) { clearTimeout(_chTimer); _chTimer = null; } if (k > 0 && S.ctx && S.ctx.zapTo) { S.ctx.zapTo(k); } }
             if (_chDigits.length >= 2) { go(); return; }
-            U.toast('Channel ' + _chDigits + '_', CH_WAIT_MS);
+            U.toast(U.t('Channel {n}', { n: _chDigits + '_' }), CH_WAIT_MS);
             _chTimer = setTimeout(go, CH_WAIT_MS);
             return;
         }
@@ -995,7 +995,7 @@
                 var fwd = action === 'NEXT';
                 if (S.ctx && S.ctx.zap) { S.ctx.zap(fwd ? 1 : -1); return true; }
                 if (S.ctx && (fwd ? S.ctx.hasNext : S.ctx.hasPrev)) { closeControls(); if (fwd) { S.ctx.playNext(); } else { S.ctx.playPrev(); } return true; }
-                if (S.ctx && S.ctx.type === 'series') { U.toast(fwd ? 'No next episode' : 'No previous episode', 1800); }
+                if (S.ctx && S.ctx.type === 'series') { U.toast(fwd ? U.t('No next episode') : U.t('No previous episode'), 1800); }
                 return true;
         }
         // A held OK: a title's menu in Cast & more; anywhere else, OK.

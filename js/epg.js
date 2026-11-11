@@ -128,7 +128,7 @@ var EPG = (function () {
             }, function () {
                 g.asking = false;
                 if (_guides[url] !== g) { return; }
-                g.state = 'failed'; g.error = 'StremioK’s service didn’t answer';
+                g.state = 'failed'; g.error = U.t('StremioK’s service didn’t answer');
                 changed();
             });
         })(0);
@@ -287,13 +287,12 @@ var EPG = (function () {
     }
 
     // 20:30, or with the day when it isn't today (Tue 01:00).
-    var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     function two(n) { return (n < 10 ? '0' : '') + n; }
     function hhmm(sec) { var d = new Date(sec * 1000); return two(d.getHours()) + ':' + two(d.getMinutes()); }
     function dayTime(sec) {
         var d = new Date(sec * 1000), today = new Date(Date.now());
         var same = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
-        return (same ? '' : DAYS[d.getDay()] + ' ') + hhmm(sec);
+        return (same ? '' : U.weekday(d.getDay()) + ' ') + hhmm(sec);
     }
 
     // Told when a guide is read or programs arrive (once for a burst).

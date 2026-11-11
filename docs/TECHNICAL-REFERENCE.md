@@ -27,6 +27,9 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
 
 ## Starting up and Home rows
 
+- **Interface language** is picked before anything loads (Settings › Appearance ›
+  *Language*, else the TV's; existing installs stay English); untranslated phrases and logs stay
+  [English](TRANSLATING.md).
 - **Which tab a row is on** goes by its catalog: movies, series, sports (`sport` / `sports`)
   and radio to their tabs; StremioK's own YouTube catalogs, and other addons' YouTube or
   channel catalogs (YouTubio's), to **YouTube**; live ones (`tv`, `events`, `live`, `iptv`, your

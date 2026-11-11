@@ -73,17 +73,17 @@
                 var why = list.length ? '' : (Stremio.streamNotes ? Stremio.streamNotes(type, id) : []).slice(0, 3).map(function (n) { return n.addon + ' ' + n.title; }).join('; ');
                 U.log('sources', 'No playable source for “' + ((_d.meta && _d.meta.name) || id) + '” (' + type + ' ' + id + '): ' +
                     (list.length ? list.length + ' source(s), none playable here' : 'no addon sent any') + (why ? ' (' + why + ')' : ''));
-                U.toast('No playable source for this channel' + (why ? ': ' + why : ''), why ? 6000 : 3000); App.back(); return;
+                U.toast(why ? U.t('No playable source for this channel: {why}', { why: why }) : U.t('No playable source for this channel'), why ? 6000 : 3000); App.back(); return;
             }
             if (playable.length === 1) {
-                startPlayback(playable[0], id, _d.streamLabel || _d.meta.name || 'Live');
+                startPlayback(playable[0], id, _d.streamLabel || _d.meta.name || U.t('Live'));
             } else if ((opts && opts.playBest) || _d.autoBest) {   // (the remote's Play key)
                 var top = bestRow(rankRowsFor(list));
-                startPlayback(top ? top.st : playable[0], id, _d.streamLabel || _d.meta.name || 'Live');
+                startPlayback(top ? top.st : playable[0], id, _d.streamLabel || _d.meta.name || U.t('Live'));
             } else {
                 drawDetail();   // multiple sources → straight to the source list
             }
-        }, function () { if (!still()) { return; } U.spinner(false); U.toast('Could not load sources'); App.back(); });
+        }, function () { if (!still()) { return; } U.spinner(false); U.toast(U.t('Could not load sources')); App.back(); });
     }
 
     // opts.resume: a Continue Watching entry to play straight away (see startResume).
@@ -116,7 +116,7 @@
                 _d.meta = Object.assign({ id: id, type: type }, _d.preview);
                 afterMeta();
             } else {
-                U.toast('Could not load details');
+                U.toast(U.t('Could not load details'));
                 App.back();
             }
         });
@@ -207,14 +207,14 @@
     }
     // A season's name: a year ("2026"), "Videos" (a YouTube channel's undated list), or "Season 2".
     function seasonName(sn) {
-        if (_d && _d.collection) { return 'Titles'; }
-        if (_d && _d.addonType) { return _d.yearSeasons ? '' + sn : 'Videos'; }
-        return sn >= 1900 && sn <= 2200 ? '' + sn : 'Season ' + sn;
+        if (_d && _d.collection) { return U.t('Titles'); }
+        if (_d && _d.addonType) { return _d.yearSeasons ? '' + sn : U.t('Videos'); }
+        return sn >= 1900 && sn <= 2200 ? '' + sn : U.t('Season {n}', { n: sn });
     }
     // An episode as it's named on its own (the Play button, the player, Continue Watching): a
     // YouTube channel's video by its title, an episode by its code ("S2E5").
     function epName(v) {
-        return (_d && _d.addonType) ? (v.title || 'Video') : _d.meta.name + '  S' + seasonOf(v) + 'E' + (v.episode || '');
+        return (_d && _d.addonType) ? (v.title || U.t('Video')) : _d.meta.name + '  S' + seasonOf(v) + 'E' + (v.episode || '');
     }
     // Seasons that are years (a YouTube channel): the newest first.
     function yearOrder() { return !!(_d && _d.yearSeasons); }
@@ -233,7 +233,7 @@
             behaviorHints: (p.fileHints && typeof p.fileHints === 'object') ? p.fileHints : undefined };   // (its file: for subtitles made for it)
         if (p.torrent && typeof p.torrent.infoHash === 'string') {   // (a torrent: its link from the streaming server set now)
             st = Stremio.torrentSource({ infoHash: p.torrent.infoHash, fileIdx: p.torrent.fileIdx, sources: p.torrent.sources, name: p.name, behaviorHints: st.behaviorHints });
-            if (!st.url) { U.toast('This one plays through a streaming server: Settings › Content › Streaming server', 6000); return; }
+            if (!st.url) { U.toast(U.t('This one plays through a streaming server: Settings › Content › Streaming server'), 6000); return; }
         }
         if (/^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(p.url || '')) { st._yt = true; st.ytPage = p.url; }   // (a YouTube video: through the service again)
         resumeSources(startPlayback(st, p.id, p.name, how), p.id);
@@ -285,7 +285,7 @@
             var epTitle = ep.title || ep.name || '';
             bits.push(epCode(ep) + (epTitle ? '  “' + epTitle + '”' : ''));
             var aired = airsAt(ep);
-            if (aired > 0) { bits.push((aired > Date.now() ? 'Airs ' : 'Aired ') + U.dayLabel(aired)); }
+            if (aired > 0) { bits.push(aired > Date.now() ? U.t('Airs {when}', { when: U.dayLabel(aired) }) : U.t('Aired {when}', { when: U.dayLabel(aired) })); }
             if (ep.rating && !isNaN(parseFloat(ep.rating))) { bits.push('★ ' + ep.rating); }
         } else {
             if (meta.releaseInfo) { bits.push(meta.releaseInfo); }
@@ -296,7 +296,7 @@
             var genres = (meta.genres && meta.genres.length) ? meta.genres : own.genres;
             if (genres.length) { bits.push(genres.slice(0, 3).join(', ')); }
         }
-        if (meta._from) { bits.push('Details: ' + meta._from); }   // (which addon: the highest in Settings › Addons that has them)
+        if (meta._from) { bits.push(U.t('Details: {addon}', { addon: meta._from })); }   // (which addon: the highest in Settings › Addons that has them)
         body.appendChild(U.el('div', 'detail-meta', bits.join('   ·   ')));
         var ratings = U.el('div', 'detail-ratings');
         body.appendChild(ratings);
@@ -410,7 +410,7 @@
     function withTmdb() { return Stremio.hasTmdb() && /^tt\d+$/.test(_d.id || ''); }
     function morePill() {
         if (!withTmdb() && !hasAddonPeople(_d.meta)) { return null; }
-        var p = U.el('div', 'pill focusable more-pill', 'ⓘ  Cast & more');
+        var p = U.el('div', 'pill focusable more-pill', U.t('ⓘ  Cast & more'));
         p.__onselect = function () { _d.moreFrom = _d.mode; _d.mode = 'more'; drawDetail(); };
         if (_d._focusPill === 'more') { _d._epFocus = p; _d._focusPill = null; }
         return p;
@@ -418,7 +418,7 @@
     function ratingsPill() {
         var integ = Stremio.getIntegrations();
         if (!(integ.omdb || integ.tmdb) || !/^tt\d+$/.test(_d.id || '')) { return null; }
-        var p = U.el('div', 'pill focusable ratings-pill', '★  Episode ratings');
+        var p = U.el('div', 'pill focusable ratings-pill', U.t('★  Episode ratings'));
         p.__onselect = function () { _d.moreFrom = _d.mode; _d.mode = 'ratings'; drawDetail(); };
         if (_d._focusPill === 'ratings') { _d._epFocus = p; _d._focusPill = null; }
         return p;
@@ -427,7 +427,7 @@
     function morePanel() {
         var panel = U.el('div', 'list-panel more-panel');
         var rows = U.el('div', 'more-rows');
-        rows.appendChild(U.el('div', 'row-empty', 'Loading…'));
+        rows.appendChild(U.el('div', 'row-empty', U.t('Loading…')));
         panel.appendChild(rows);
         var page = _d;
         var ep = shownEpisode();
@@ -439,16 +439,16 @@
                 if (_d !== page || _d.mode !== 'more') { return; }
                 U.clear(rows);
                 if (!people || !people.length) {
-                    if (!theirs()) { rows.appendChild(U.el('div', 'row-empty', 'TMDB has nothing more for this episode.')); }
+                    if (!theirs()) { rows.appendChild(U.el('div', 'row-empty', U.t('TMDB has nothing more for this episode.'))); }
                     focusLoaded(rows);
                     return;
                 }
-                rows.appendChild(buildRow('Cast & more', people.map(personCard)));
+                rows.appendChild(buildRow(U.t('Cast & more'), people.map(personCard)));
                 focusLoaded(rows);
             }, function () {
                 if (_d !== page) { return; }
                 U.clear(rows);
-                if (!theirs()) { rows.appendChild(U.el('div', 'row-empty', 'Couldn\'t reach TMDB.')); }
+                if (!theirs()) { rows.appendChild(U.el('div', 'row-empty', U.t('Couldn\'t reach TMDB.'))); }
                 focusLoaded(rows);
             });
             return panel;
@@ -456,16 +456,16 @@
         Stremio.tmdbTitleExtras(page.type, page.id, pageCancel()).then(function (x) {
             if (_d !== page || _d.mode !== 'more') { return; }
             U.clear(rows);
-            if (x && x.cast.length) { rows.appendChild(buildRow('Cast & more', x.cast.map(personCard))); }
+            if (x && x.cast.length) { rows.appendChild(buildRow(U.t('Cast & more'), x.cast.map(personCard))); }
             var own = !(x && x.cast.length) && theirs();   // (no people from TMDB: the addon's)
             if (x && x.collection) { rows.appendChild(buildRow(x.collection.name, x.collection.parts.map(tmdbCard))); }
-            if (x && x.similar.length) { rows.appendChild(buildRow('More like this', x.similar.map(tmdbCard))); }
-            if (!rows.firstChild && !own) { rows.appendChild(U.el('div', 'row-empty', 'TMDB has nothing more for this title.')); }
+            if (x && x.similar.length) { rows.appendChild(buildRow(U.t('More like this'), x.similar.map(tmdbCard))); }
+            if (!rows.firstChild && !own) { rows.appendChild(U.el('div', 'row-empty', U.t('TMDB has nothing more for this title.'))); }
             focusLoaded(rows);
         }, function (err) {
             if (_d !== page || (err && err.cancelled)) { return; }
             U.clear(rows);
-            if (!theirs()) { rows.appendChild(U.el('div', 'row-empty', 'Couldn\'t reach TMDB.')); }
+            if (!theirs()) { rows.appendChild(U.el('div', 'row-empty', U.t('Couldn\'t reach TMDB.'))); }
             focusLoaded(rows);
         });
         return panel;
@@ -496,10 +496,10 @@
     // Rows of them, by name (no photos): OK searches for the name. Whether there were any.
     function appendAddonPeople(rows, meta) {
         var o = addonLinks(meta), any = false;
-        [['Cast', o.cast, ''], ['Directors', o.directors, 'Director'], ['Writers', o.writers, 'Writer']].forEach(function (g) {
+        [[U.t('Cast'), o.cast, ''], [U.t('Directors'), o.directors, U.t('Director')], [U.t('Writers'), o.writers, U.t('Writer')]].forEach(function (g) {
             if (!g[1].length) { return; }
             any = true;
-            rows.appendChild(buildRow(g[0] + '   ·   from ' + ((meta && meta._from) || 'the addon'), g[1].map(function (n) { return namedPersonCard(n, g[2]); })));
+            rows.appendChild(buildRow(g[0] + '   ·   ' + U.t('from {addon}', { addon: (meta && meta._from) || U.t('the addon') }), g[1].map(function (n) { return namedPersonCard(n, g[2]); })));
         });
         return any;
     }
@@ -550,7 +550,7 @@
     function peopleCard(p) {
         var c = personCard({ id: p.id, name: p.name, photo: p.photo, character: p.dept });
         c.__meta = { id: 'person:' + p.id, name: p.name, releaseInfo: p.dept,
-            description: p.knownFor && p.knownFor.length ? 'Known for: ' + p.knownFor.join(', ') : '' };
+            description: p.knownFor && p.knownFor.length ? U.t('Known for: {titles}', { titles: p.knownFor.join(', ') }) : '' };
         return c;
     }
 
@@ -575,9 +575,9 @@
         U.spinner(true);
         Stremio.tmdbImdbId(item.kind, item.tmdbId, pageCancel()).then(function (imdb) {
             U.spinner(false);
-            if (!imdb) { U.toast('“' + item.name + '” has no IMDb id, so the addons can\'t open it.', 3500); return; }
+            if (!imdb) { U.toast(U.t('“{name}” has no IMDb id, so the addons can\'t open it.', { name: item.name }), 3500); return; }
             then(imdb);
-        }, function () { U.spinner(false); U.toast('Couldn\'t reach TMDB.'); });
+        }, function () { U.spinner(false); U.toast(U.t('Couldn\'t reach TMDB.')); });
     }
 
     // ----- a person's page (from the cast row) -----
@@ -594,7 +594,7 @@
             drawPerson();
         }, function () {
             U.spinner(false);
-            if (_d === page) { U.toast('Couldn\'t load this person from TMDB.'); }
+            if (_d === page) { U.toast(U.t('Couldn\'t load this person from TMDB.')); }
         });
     }
     function drawPerson() {
@@ -619,9 +619,9 @@
         panel.appendChild(rows);
         s.appendChild(panel);
         if (p) {
-            if (p.movies.length) { rows.appendChild(buildRow('Movies', p.movies.map(tmdbCard))); }
-            if (p.series.length) { rows.appendChild(buildRow('Series', p.series.map(tmdbCard))); }
-            if (!p.movies.length && !p.series.length) { rows.appendChild(U.el('div', 'row-empty', 'No titles listed on TMDB.')); }
+            if (p.movies.length) { rows.appendChild(buildRow(U.t('Movies'), p.movies.map(tmdbCard))); }
+            if (p.series.length) { rows.appendChild(buildRow(U.t('Series'), p.series.map(tmdbCard))); }
+            if (!p.movies.length && !p.series.length) { rows.appendChild(U.el('div', 'row-empty', U.t('No titles listed on TMDB.'))); }
         }
         Focus.setScope(s, rows.querySelector('.focusable') || undefined);
         restoreFocusKey(s);
@@ -669,7 +669,7 @@
         }
         scroll.appendChild(table);
         panel.appendChild(scroll);
-        panel.appendChild(U.el('div', 'grid-legend', 'IMDb ratings where OMDb has them, else TMDB.   OK on an episode opens it.'));
+        panel.appendChild(U.el('div', 'grid-legend', U.t('IMDb ratings where OMDb has them, else TMDB.   OK on an episode opens it.')));
         _d._epFocus = (_d.season != null && cells[_d.season + ':1']) || startCell;
         U.settleAll(ss.map(function (sn) {
             return function () {
@@ -758,7 +758,7 @@
         return (meta.videos || []).filter(function (v) { return v && v.streams && v.streams.length; });
     }
     function fileLabel(v) {
-        var t = '' + (v.title || v.name || v.id || 'File');
+        var t = '' + (v.title || v.name || v.id || U.t('File'));
         return t.split('/').pop();
     }
     function fileStreams(v) {
@@ -812,7 +812,7 @@
     // ----- series: Resume / Play -----
     function seasonOf(v) { return v.season === undefined ? 1 : v.season; }
     function epCode(v) {
-        if (_d && _d.addonType) { var t = '' + (v.title || 'Video'); return '“' + (t.length > 40 ? t.slice(0, 39) + '…' : t) + '”'; }   // (a YouTube channel's video)
+        if (_d && _d.addonType) { var t = '' + (v.title || U.t('Video')); return '“' + (t.length > 40 ? t.slice(0, 39) + '…' : t) + '”'; }   // (a YouTube channel's video)
         return 'S' + seasonOf(v) + 'E' + (v.episode || '?');
     }
 
@@ -851,7 +851,7 @@
         // watched all that's out): no Play, just when it airs.
         var airs = airsAt(up.v);
         if (_d.collection) {   // (the next film you haven't watched: its page)
-            var open = U.el('div', 'pill focusable', '▶  Open  “' + (up.v.title || up.v.name || '') + '”');
+            var open = U.el('div', 'pill focusable', '▶  ' + U.t('Open  “{title}”', { title: up.v.title || up.v.name || '' }));
             open.__onselect = function () { openTitle(up.v); };
             row.appendChild(open);
             var tpc = trailerPill();
@@ -859,7 +859,7 @@
             return row;
         }
         if (!up.resume && !episodeWatched(up.v) && airs > Date.now()) {
-            row.appendChild(U.el('div', 'pill airs-pill', epCode(up.v) + ' airs ' + U.dayLabel(airs)));
+            row.appendChild(U.el('div', 'pill airs-pill', U.t('{ep} airs {when}', { ep: epCode(up.v), when: U.dayLabel(airs) })));
         } else {
             row.appendChild(playUpButton(up));
         }
@@ -879,8 +879,8 @@
     }
     function playUpButton(up) {
         var btn = U.el('div', 'pill focusable', up.resume
-            ? '▶  Resume  ' + epCode(up.v) + '  ·  ' + U.fmtTime(up.resume.position)
-            : '▶  Play  ' + epCode(up.v));
+            ? '▶  ' + U.t('Resume  {ep}  ·  {at}', { ep: epCode(up.v), at: U.fmtTime(up.resume.position) })
+            : '▶  ' + U.t('Play  {ep}', { ep: epCode(up.v) }));
         btn.__onselect = function () {
             // resume the exact stream when one was saved; otherwise pick a source
             if (up.resume && up.resume.url) { startResume(up.resume); }
@@ -895,7 +895,7 @@
         if (up.resume && up.resume.position > 0) {
             btn.__onlongpress = function () {
                 var code = epCode(up.v);
-                pickList((_d.meta.name || '') + '  ' + code, [['resume', 'Resume at ' + U.fmtTime(up.resume.position)], ['start', 'Play ' + code + ' from the start']], null, function (k) {
+                pickList((_d.meta.name || '') + '  ' + code, [['resume', U.t('Resume at {at}', { at: U.fmtTime(up.resume.position) })], ['start', U.t('Play {ep} from the start', { ep: code })]], null, function (k) {
                     if (k === 'resume') { btn.__onselect(); return; }
                     if (up.resume.url) { startResume(Object.assign({}, up.resume, { fromStart: true })); }
                     else { openStreams(up.v.id, epName(up.v), false, { fromStart: true }); }
@@ -951,7 +951,7 @@
             return (t.lang && mine.indexOf(t.lang) !== -1 && r < 3 ? 0 : 10) + r;   // (yours first, ticket ads still last)
         }
         out.sort(function (a, b) { return (rank(a) - rank(b)) || (a.at - b.at); });
-        out.forEach(function (t, i) { if (!t.name) { t.name = out.length > 1 ? 'Trailer ' + (i + 1) : 'Trailer'; } });
+        out.forEach(function (t, i) { if (!t.name) { t.name = out.length > 1 ? U.t('Trailer {n}', { n: i + 1 }) : U.t('Trailer'); } });
         return out;
     }
     // Your languages, two-letter (TMDB's): the audio's, the subtitles' (and their second choice).
@@ -964,12 +964,11 @@
         return out;
     }
     // A trailer as listed: its title, then its language, month and "unofficial", where known.
-    var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     function trailerLabel(t) {
         var bits = [t.name];
         if (t.lang && Player.langName) { bits.push(Player.langName(t.lang)); }
         var m = /^(\d{4})-(\d{2})/.exec(t.date || '');
-        if (m) { bits.push(MONTHS[+m[2] - 1] + ' ' + m[1]); }
+        if (m) { bits.push(U.month(+m[2] - 1) + ' ' + m[1]); }
         if (t.official === false) { bits.push('unofficial'); }
         return bits.join('  ·  ');
     }
@@ -978,25 +977,25 @@
     // when it refuses (false: just that one, picked by hand).
     function playTrailers(list, next) {
         var meta = _d.meta, title = (meta && (meta.name || meta.title)) || '', passed = [], still = pageNow();
-        U.spinner(true, 'Opening trailer…');
+        U.spinner(true, U.t('Opening trailer…'));
         YTPlay.ensureService().then(function () {
             function tryAt(i) {
                 if (!still()) { U.spinner(false); return; }
                 if (i >= list.length) {
                     U.spinner(false);
-                    U.toast(list.length === 1 ? '“' + list[0].name + '” isn’t available from YouTube to StremioK' : 'YouTube won’t give out any of this title’s ' + list.length + ' trailers to StremioK', 6000);
+                    U.toast(list.length === 1 ? U.t('“{name}” isn’t available from YouTube to StremioK', { name: list[0].name }) : U.t('YouTube won’t give out any of this title’s {n} trailers to StremioK', { n: list.length }), 6000);
                     return;
                 }
                 var t = list[i], page = 'https://www.youtube.com/watch?v=' + t.id;
                 (YTPlay.canPlay ? YTPlay.canPlay(page) : Promise.resolve(true)).then(function (ok) {
                     if (!ok) {
                         U.log('youtube', 'Trailer “' + t.name + '” (' + t.id + ') of “' + title + '”: YouTube didn’t give it out' + (next && i + 1 < list.length ? '; trying the next one' : ''));
-                        if (!next) { U.spinner(false); U.toast('“' + t.name + '” isn’t available from YouTube to StremioK', 6000); return; }
+                        if (!next) { U.spinner(false); U.toast(U.t('“{name}” isn’t available from YouTube to StremioK', { name: t.name }), 6000); return; }
                         passed.push(t);
                         tryAt(i + 1);
                         return;
                     }
-                    if (passed.length) { U.toast('“' + passed[0].name + '” isn’t available from YouTube: playing “' + t.name + '”', 6000); }
+                    if (passed.length) { U.toast(U.t('“{name}” isn’t available from YouTube: playing “{other}”', { name: passed[0].name, other: t.name }), 6000); }
                     playTrailer(t.id);
                 });
             }
@@ -1025,11 +1024,11 @@
         }
         var list = trailersOf(_d.meta);
         if (!list.length || typeof YTPlay === 'undefined') { return null; }
-        var p = U.el('div', 'pill focusable trailer-pill', '▶  Trailer' + (list.length > 1 ? '  (' + list.length + ')' : ''));
+        var p = U.el('div', 'pill focusable trailer-pill', '▶  ' + U.t('Trailer') + (list.length > 1 ? '  (' + list.length + ')' : ''));
         p.__onselect = function () { playTrailers(list, true); };
         if (list.length > 1) {   // hold OK: the list, to pick one
             p.__onlongpress = function () {
-                pickList('Trailers', list.map(function (t, i) { return ['' + i, trailerLabel(t)]; }), '', function (k) { playTrailers([list[+k]], false); });
+                pickList(U.t('Trailers'), list.map(function (t, i) { return ['' + i, trailerLabel(t)]; }), '', function (k) { playTrailers([list[+k]], false); });
             };
         }
         if (_d._focusTrailer) { _d._epFocus = p; _d._focusTrailer = false; }
@@ -1059,7 +1058,7 @@
     }
     function epTrailerButton(ep, t) {
         var season = seasonName(seasonOf(ep));
-        var p = U.el('div', 'pill focusable trailer-pill', t.season ? '▶  ' + season + ' trailer' : '▶  Trailer');
+        var p = U.el('div', 'pill focusable trailer-pill', t.season ? '▶  ' + U.t('{season} trailer', { season: season }) : '▶  ' + U.t('Trailer'));
         p.__onselect = function () { playTrailer(t.ytId, (_d.meta.name || _d.meta.title || '') + '  ' + (t.season ? season : epCode(ep))); };
         if (_d._focusTrailer) { _d._epFocus = p; _d._focusTrailer = false; }
         return p;
@@ -1069,13 +1068,13 @@
     function playTrailer(ytId, label) {
         var page = 'https://www.youtube.com/watch?v=' + ytId;
         var meta = _d.meta, still = pageNow();
-        U.spinner(true, 'Opening trailer…');
+        U.spinner(true, U.t('Opening trailer…'));
         YTPlay.ensureService().then(function () {
             U.spinner(false);
             if (!still()) { return; }
             Player.play({
                 url: YTPlay.resolverUrl(page, 1080, false, ytLangFor(page)), variantUrl: YTPlay.resolverUrl(page), initialQualityHeight: 1080,
-                ytLang: ytLangFor(page), type: _d.type, id: 'trailer:' + ytId, name: (label || meta.name || meta.title || '') + '  ·  Trailer',
+                ytLang: ytLangFor(page), type: _d.type, id: 'trailer:' + ytId, name: (label || meta.name || meta.title || '') + '  ·  ' + U.t('Trailer'),
                 poster: meta.poster, streams: [], yt: page, trailer: true
             }, function () { _d._focusTrailer = true; drawDetail(); });   // back on the page, on the Trailer button
         }, function () {
@@ -1086,7 +1085,7 @@
 
     function movieActions() {
         var row = U.el('div', 'btn-row');
-        var play = U.el('div', 'pill focusable', '▶  Play');
+        var play = U.el('div', 'pill focusable', U.t('▶  Play'));
         play.__onselect = function () { openStreams(_d.id, _d.meta.name, false, AUTO); };
         play.__onplay = function () { openStreams(_d.id, _d.meta.name, false, PLAY_KEY); };
         row.appendChild(play);
@@ -1104,7 +1103,7 @@
 
     // Hide spoilers (Settings › Appearance): for an episode not watched yet, 'pictures' (its still
     // blurred) or 'all' (its synopsis left out too); '' to show it.
-    var SPOILER_TEXT = 'Synopsis hidden: not watched yet';
+    var SPOILER_TEXT = U.t('Synopsis hidden: not watched yet');
     function spoilerFor(v) {
         var mode = Stremio.getPrefs().spoilers;
         if (mode === 'off' || !v || _d.collection || episodeWatched(v)) { return ''; }
@@ -1146,28 +1145,28 @@
 
     function seasonMenu(meta, sn, allSeasons) {
         var on = !seasonWatched(meta, sn);
-        var opts = [['season', (on ? 'Mark Season ' + sn + ' watched' : 'Mark Season ' + sn + ' unwatched')]];
+        var opts = [['season', (on ? U.t('Mark Season {n} watched', { n: sn }) : U.t('Mark Season {n} unwatched', { n: sn }))]];
         // "up to here": the regular seasons before this one too (not specials, Season 0)
         var earlier = allSeasons.filter(function (x) { return x > 0 && x < sn; });
-        if (sn > 0 && earlier.length) { opts.push(['upto', 'Mark Seasons ' + earlier[0] + '–' + sn + ' watched']); }
+        if (sn > 0 && earlier.length) { opts.push(['upto', U.t('Mark Seasons {from}–{to} watched', { from: earlier[0], to: sn })]); }
         var allOn = !seriesWatched(meta);
-        opts.push(['all', allOn ? 'Mark whole series watched' : 'Mark whole series unwatched']);
+        opts.push(['all', allOn ? U.t('Mark whole series watched') : U.t('Mark whole series unwatched')]);
         var showId = (meta.id || _d.id || '').split(':')[0];
         if (typeof Trakt !== 'undefined' && Trakt.isConnected() && Trakt.rate && /^tt\d+$/.test(showId)) {   // (on Trakt: by the show's IMDb id)
             var mine = Trakt.myRating('season', showId + ':' + sn);
-            opts.push(['rate', mine ? 'Season ' + sn + ': your rating ' + mine + ' · change' : 'Rate Season ' + sn + ' on Trakt']);
+            opts.push(['rate', mine ? U.t('Season {n}: your rating {rating} · change', { n: sn, rating: mine }) : U.t('Rate Season {n} on Trakt', { n: sn })]);
         }
         pickList(seasonName(sn), opts, null, function (what) {
             if (what === 'rate') { V.rateOnTrakt('season', showId + ':' + sn, (meta.name || '') + '  ' + seasonName(sn)); return; }
             if (what === 'season') {
-                markEpisodes(idsOf(seasonEpisodes(meta, sn)), on, seasonName(sn) + (on ? ' marked watched' : ' marked unwatched'));
+                markEpisodes(idsOf(seasonEpisodes(meta, sn)), on, on ? U.t('{season} marked watched', { season: seasonName(sn) }) : U.t('{season} marked unwatched', { season: seasonName(sn) }));
             } else if (what === 'upto') {
                 markEpisodes(idsOf(meta.videos.filter(function (v) {
                     var x = (v.season === undefined ? 1 : v.season);
                     return x > 0 && x <= sn;
-                })), true, 'Seasons ' + earlier[0] + '–' + sn + ' marked watched');
+                })), true, U.t('Seasons {from}–{to} marked watched', { from: earlier[0], to: sn }));
             } else {
-                markEpisodes(idsOf(meta.videos), allOn, allOn ? 'Whole series marked watched' : 'Whole series marked unwatched');
+                markEpisodes(idsOf(meta.videos), allOn, allOn ? U.t('Whole series marked watched') : U.t('Whole series marked unwatched'));
             }
             _d.season = sn;
             _d._focusSeason = sn;
@@ -1178,7 +1177,7 @@
     function episodeMenu(meta, v) {
         var on = !episodeWatched(v);
         var code = epCode(v);
-        var opts = [['details', 'Details'], ['one', on ? 'Mark ' + code + ' watched' : 'Mark ' + code + ' unwatched']];
+        var opts = [['details', U.t('Details')], ['one', on ? U.t('Mark {ep} watched', { ep: code }) : U.t('Mark {ep} unwatched', { ep: code })]];
         // every episode before this one (same order as Next), specials only within Season 0
         var ord = orderedEpisodes(meta), at = ord.indexOf(v), before = [];
         var sv = (v.season === undefined ? 1 : v.season);
@@ -1186,19 +1185,19 @@
             var x = (ord[i].season === undefined ? 1 : ord[i].season);
             if (x > 0 || sv === 0) { before.push(ord[i]); }
         }
-        if (before.length) { opts.push(['upto', 'Mark watched up to ' + code]); }
+        if (before.length) { opts.push(['upto', U.t('Mark watched up to {ep}', { ep: code })]); }
         // it and every episode after it (the same order; specials only within Season 0), when one is watched
         var after = [v];
         for (var j = at + 1; j < ord.length; j++) {
             var y = (ord[j].season === undefined ? 1 : ord[j].season);
             if (y > 0 || sv === 0) { after.push(ord[j]); }
         }
-        if (after.length > 1 && after.some(episodeWatched)) { opts.push(['fromhere', 'Mark unwatched from ' + code + ' on']); }
+        if (after.length > 1 && after.some(episodeWatched)) { opts.push(['fromhere', U.t('Mark unwatched from {ep} on', { ep: code })]); }
         pickList(meta.name + '  ' + code, opts, null, function (what) {
             if (what === 'details') { openStreams(v.id, epName(v)); return; }   // (its page: as OK on it)
-            if (what === 'one') { markEpisodes([v.id], on, on ? 'Marked watched' : 'Marked unwatched'); }
-            else if (what === 'fromhere') { markEpisodes(idsOf(after), false, 'Marked unwatched from ' + code + ' on'); }
-            else { markEpisodes(idsOf(before.concat([v])), true, 'Marked watched up to ' + code); }
+            if (what === 'one') { markEpisodes([v.id], on, on ? U.t('Marked watched') : U.t('Marked unwatched')); }
+            else if (what === 'fromhere') { markEpisodes(idsOf(after), false, U.t('Marked unwatched from {ep} on', { ep: code })); }
+            else { markEpisodes(idsOf(before.concat([v])), true, U.t('Marked watched up to {ep}', { ep: code })); }
             _d.target = v.id;
             drawDetail();
         });
@@ -1209,15 +1208,15 @@
     function collectionMenu(meta, v) {
         var on = !episodeWatched(v), name = v.title || v.name || '';
         var before = orderedEpisodes(meta).slice(0, orderedEpisodes(meta).indexOf(v));
-        var opts = [['one', on ? 'Mark watched' : 'Mark unwatched']];
-        if (before.length) { opts.push(['upto', 'Mark watched up to “' + name + '” (' + (before.length + 1) + ' films)']); }
-        opts.push(['open', 'Open its page']);
+        var opts = [['one', on ? U.t('Mark watched') : U.t('Mark unwatched')]];
+        if (before.length) { opts.push(['upto', U.t('Mark watched up to “{name}” ({n} films)', { name: name, n: before.length + 1 })]); }
+        opts.push(['open', U.t('Open its page')]);
         pickList(name, opts, null, function (what) {
             if (what === 'open') { openTitle(v); return; }
             var films = what === 'one' ? [v] : before.concat([v]), mark = what === 'one' ? on : true;
             Player.setWatchedMany('movie', idsOf(films), mark);
             if (mark) { films.forEach(function (f) { Player.removeProgress('movie', f.id); }); }   // (off Continue Watching: watched)
-            U.toast(what === 'one' ? (mark ? 'Marked watched' : 'Marked unwatched') : 'Marked watched up to “' + name + '”');
+            U.toast(what === 'one' ? (mark ? U.t('Marked watched') : U.t('Marked unwatched')) : U.t('Marked watched up to “{name}”', { name: name }));
             _d.target = v.id;
             drawDetail();
         });
@@ -1314,7 +1313,7 @@
             var title = U.el('span', 'ep-title', (watched ? '✓ ' : '') + (_d.collection ? (v.title || v.name || '') + (yr ? '  (' + yr + ')' : '') : 'E' + (v.episode || '?') + '  ' + (v.title || v.name || '')));
             var rating = U.el('span', 'ep-rating', '');
             line.appendChild(title);
-            if (unaired) { var when = U.dayLabel(airs); line.appendChild(U.el('span', 'ep-airs', 'Airs ' + when)); }
+            if (unaired) { var when = U.dayLabel(airs); line.appendChild(U.el('span', 'ep-airs', U.t('Airs {when}', { when: when }))); }
             line.appendChild(rating);
             body.appendChild(line);
             var ov = U.el('span', 'ep-ov', hide === 'all' ? SPOILER_TEXT : v.overview || '');
@@ -1409,14 +1408,13 @@
     // (matched by the service's name) asks first, once, naming the exact app.
     function openWhere(opens) {
         function go() {
-            U.toast('Opening ' + opens.app.name + '…', 2000);
+            U.toast(U.t('Opening {app}…', { app: opens.app.name }), 2000);
             TVApps.openTitle(opens.app, opens.data).then(null, function (e) {
-                U.toast('Couldn\'t open ' + opens.app.name + ': ' + e.message, 4000);
+                U.toast(U.t('Couldn\'t open {name}: {why}', { name: opens.app.name, why: e.message }), 4000);
             });
         }
         if (!TVApps.isApproved || TVApps.isApproved(opens.app.id)) { go(); return; }
-        confirm('Open “' + opens.app.name + '” (' + opens.app.id + ') from “where to watch” sources? It isn’t one of your streaming apps; ' +
-            'StremioK will remember your answer for this app (Settings › Content › Streaming apps lists yours).', 'Open', function () {
+        confirm(U.t('Open “{app}” ({id}) from “where to watch” sources? It isn’t one of your streaming apps; StremioK will remember your answer for this app (Settings › Content › Streaming apps lists yours).', { app: opens.app.name, id: opens.app.id }), U.t('Open'), function () {
             TVApps.approve(opens.app.id); go();
         });
     }
@@ -1443,8 +1441,8 @@
     //    links that don't play here.
     var TIERS = ['2160', '1440', '1080', '720', 'sd', 'other'];
     var GROUPS = ['local', 'net', 'server', 'emby', 'plex', 'played'].concat(TIERS, ['ranked', 'unsuitable', 'worded', 'sized', 'bad', 'where']);
-    var GROUP_TITLES = { local: 'On your USB drive', net: 'On your network folder', server: 'On your Jellyfin server', emby: 'On your Emby server', plex: 'On your Plex server', played: 'Played before', '2160': '4K', '1440': '1440p', '1080': '1080p', '720': '720p',
-        sd: 'SD', other: 'Other', ranked: 'Sources', unsuitable: 'Marked not suitable', worded: 'Hidden by your words', sized: 'Outside your size limits', bad: 'Not working or not allowed on this TV', where: 'Where to watch  ·  other apps' };
+    var GROUP_TITLES = { local: U.t('On your USB drive'), net: U.t('On your network folder'), server: U.t('On your Jellyfin server'), emby: U.t('On your Emby server'), plex: U.t('On your Plex server'), played: U.t('Played before'), '2160': '4K', '1440': '1440p', '1080': '1080p', '720': '720p',
+        sd: 'SD', other: U.t('Other'), ranked: U.t('Sources'), unsuitable: U.t('Marked not suitable'), worded: U.t('Hidden by your words'), sized: U.t('Outside your size limits'), bad: U.t('Not working or not allowed on this TV'), where: U.t('Where to watch  ·  other apps') };
     var KIND_SCORE = { remux: 4, bluray: 3, web: 2, hdtv: 1, '': 1.5, cam: -5 };
     function tierOf(info) {
         return info.res >= 2160 ? '2160' : info.res >= 1440 ? '1440' : info.res >= 1080 ? '1080' : info.res >= 720 ? '720' : info.res > 0 ? 'sd' : 'other';
@@ -1549,7 +1547,7 @@
         else if (r.info.hdr) { bits.push('HDR'); }
         var out = bits.join(' ');
         if (r.info.cache > 0) { out += ' ⚡'; }
-        if (r.group === 'played') { out += '  ·  played before'; }
+        if (r.group === 'played') { out += '  ·  ' + U.t('played before'); }
         return out;
     }
 
@@ -1647,10 +1645,10 @@
         var canService = serviceHlsOk(stream);
         if (!canStart && !canDownload && !canService) { toggleUnsuitable(stream); return; }
         var unsuit = isUnsuitable(_d.id, stream), opts = [];
-        if (canStart) { opts.push(['start', 'Play from the start']); }
-        if (canService) { opts.push(['service', 'Play through StremioK’s service']); }
-        if (canDownload) { opts.push(['download', '⬇  Download to USB drive']); }
-        opts.push(['suit', unsuit ? 'Put back among the sources' : 'Not suitable']);
+        if (canStart) { opts.push(['start', U.t('Play from the start')]); }
+        if (canService) { opts.push(['service', U.t('Play through StremioK’s service')]); }
+        if (canDownload) { opts.push(['download', U.t('⬇  Download to USB drive')]); }
+        opts.push(['suit', unsuit ? U.t('Put back among the sources') : U.t('Not suitable')]);
         pickList(Stremio.streamName(stream), opts, null, function (k) {
             if (k === 'start') { startPlayback(stream, _d.streamId, _d.streamLabel || _d.meta.name, { fromStart: true }); }
             else if (k === 'service') { startPlayback(stream, _d.streamId, _d.streamLabel || _d.meta.name, { viaService: true, fromStart: !!howHere() }); }
@@ -1661,7 +1659,7 @@
     // What a download of this title's video is saved as (here, and from the player: ctx.downloadAs).
     function downloadTitle(videoId) {
         var meta = _d.meta || {}, ep = (_d.type === 'series' && videoId) ? ('' + videoId).match(/:(\d+):(\d+)$/) : null;
-        var label = (meta.name || meta.title || _d.streamLabel || 'Video') + (meta.year ? ' (' + meta.year + ')' : '') +
+        var label = (meta.name || meta.title || _d.streamLabel || U.t('Video')) + (meta.year ? ' (' + meta.year + ')' : '') +
             (ep ? ' S' + (ep[1] < 10 ? '0' : '') + ep[1] + 'E' + (ep[2] < 10 ? '0' : '') + ep[2] : '');
         return { type: _d.type, videoId: videoId, label: label, titleId: _d.id, name: meta.name || meta.title || '', poster: meta.poster || '', year: meta.year || meta.releaseInfo || '' };
     }
@@ -1671,12 +1669,12 @@
     }
     function toggleUnsuitable(stream) {
         var titleId = _d && _d.id, on = !isUnsuitable(titleId, stream), name = Stremio.streamName(stream);
-        var msg = on ? 'Mark “' + name + '” as not suitable for this title? It moves to the bottom of the list, and out of Played before.'
-            : 'Put “' + name + '” back among this title’s sources?';
-        confirm(msg, on ? 'Not suitable' : 'Put back', function () {
+        var msg = on ? U.t('Mark “{name}” as not suitable for this title? It moves to the bottom of the list, and out of Played before.', { name: name })
+            : U.t('Put “{name}” back among this title’s sources?', { name: name });
+        confirm(msg, on ? U.t('Not suitable') : U.t('Put back'), function () {
             setUnsuitable(titleId, stream, on);
             if (on) { forgetPlayed(titleId, stream, Stremio.streamInfo(stream)); }
-            U.toast(on ? 'Marked not suitable' : 'Back among the sources');
+            U.toast(on ? U.t('Marked not suitable') : U.t('Back among the sources'));
             if (_d && _d.id === titleId && _d.mode === 'streams' && _d.streams) {
                 _d.streams = sortStreams(_d.streams);
                 redrawKeepingFocus();   // (on the same source, in its new place)
@@ -1805,8 +1803,8 @@
         var pend = _d.streamsPending || 0, label = _d.streamLabel || '';
         var title = (_d.meta && (_d.meta.name || _d.meta.title)) || '';
         var parts = [];
-        if (label && label !== title) { parts.push('Sources for ' + label); }
-        if (pend) { parts.push(pend + ' more addon' + (pend > 1 ? 's' : '') + ' still loading…'); }
+        if (label && label !== title) { parts.push(U.t('Sources for {title}', { title: label })); }
+        if (pend) { parts.push(U.tn(pend, '{n} more addon still loading…', '{n} more addons still loading…')); }
         return parts.join('   ·   ');
     }
     // ----- the source filter: Addon ▾ / Resolution ▾ next to ▶ Play best (this title's, on _d) -----
@@ -1842,12 +1840,12 @@
     function filterPill(kind, rows) {
         var f = filterOf(), opts = filterOptions(kind, rows);
         if (opts.length < 2 && !f[kind]) { return null; }   // (no choice to make)
-        var label = kind === 'addon' ? 'Addon: ' + (f.addon || 'All') : 'Resolution: ' + (f.res ? GROUP_TITLES[f.res] : 'All');
+        var label = kind === 'addon' ? U.t('Addon: {which}', { which: f.addon || U.t('All') }) : U.t('Resolution: {which}', { which: f.res ? GROUP_TITLES[f.res] : U.t('All') });
         var p = U.el('div', 'pill focusable filter-pill', label + '  ▾');
         if (_d._focusPill === 'filter-' + kind) { _d._epFocus = p; _d._focusPill = null; }
         p.__onselect = function () {
             var total = rows.filter(function (r) { return matchFilter(r, filterOf(), kind) && (kind === 'addon' || r.group !== 'where'); }).length;
-            pickList(kind === 'addon' ? 'Sources from' : 'Resolution', [['', 'All  ·  ' + total]].concat(opts.map(function (o) { return [o[0], o[1] + '  ·  ' + o[2]]; })), f[kind], function (k) {
+            pickList(kind === 'addon' ? U.t('Sources from') : U.t('Resolution'), [['', U.t('All') + '  ·  ' + total]].concat(opts.map(function (o) { return [o[0], o[1] + '  ·  ' + o[2]]; })), f[kind], function (k) {
                 var now = filterOf();
                 _d.filter = { addon: kind === 'addon' ? k : now.addon, res: kind === 'res' ? k : now.res };
                 _d._focusPill = 'filter-' + kind;
@@ -1863,7 +1861,7 @@
         var best = (_d.streams && _d.streams.length) ? bestRow(filterRows(rankRowsFor(_d.streams))) : null;
         if (best) { startPlayback(best.st, _d.streamId, _d.streamLabel || _d.meta.name, howHere()); }
         else if (!_d.streams || _d.streamsPending > 0) { _d.autoBest = _d.streamId; }
-        else { U.toast('Nothing here plays on this TV'); }
+        else { U.toast(U.t('Nothing here plays on this TV')); }
     }
     function streamActionsBar() {
         var row = U.el('div', 'btn-row streams-actions');
@@ -1871,12 +1869,12 @@
         // ▶ Play best: the top of the ranking (focused when the page opens), within the filter
         var best = allRows.length ? bestRow(filterRows(allRows)) : null;
         if (best) {
-            var pb = U.el('div', 'pill focusable play-best', '▶  Play best' + (howHere() ? ' from the start' : '') + '  ·  ' + describeRow(best));
+            var pb = U.el('div', 'pill focusable play-best', '▶  ' + (howHere() ? U.t('Play best from the start') : U.t('Play best')) + '  ·  ' + describeRow(best));
             pb.__onselect = function () { startPlayback(best.st, _d.streamId, _d.streamLabel || _d.meta.name, howHere()); };
             var place = !howHere() && savedPlace(_d.streamId);
             if (place) {   // hold OK: resuming, or from the start
                 pb.__onlongpress = function () {
-                    pickList(_d.streamLabel || _d.meta.name || '', [['resume', 'Play best, resuming at ' + U.fmtTime(place.position)], ['start', 'Play best from the start']], null, function (k) {
+                    pickList(_d.streamLabel || _d.meta.name || '', [['resume', U.t('Play best, resuming at {at}', { at: U.fmtTime(place.position) })], ['start', U.t('Play best from the start')]], null, function (k) {
                         startPlayback(best.st, _d.streamId, _d.streamLabel || _d.meta.name, k === 'start' ? { fromStart: true } : null);
                     });
                 };
@@ -1912,11 +1910,11 @@
         var panel = U.el('div', 'list-panel streams-panel');
         var listScroll = U.el('div', 'list-scroll');
         if (_d.streams === null) {
-            panel.appendChild(U.el('div', 'detail-meta', 'Loading sources…'));
+            panel.appendChild(U.el('div', 'detail-meta', U.t('Loading sources…')));
             return panel;
         }
         if (!_d.streams.length) {   // (asked again from here: an addon may have been slow or down)
-            var none = U.el('div', 'detail-meta no-sources', Stremio.hasStreamAddons && !Stremio.hasStreamAddons() ? 'No sources found. Add a stream addon in Settings.' : 'No sources found.');
+            var none = U.el('div', 'detail-meta no-sources', Stremio.hasStreamAddons && !Stremio.hasStreamAddons() ? U.t('No sources found. Add a stream addon in Settings.') : U.t('No sources found.'));
             if (_d.embedded) { panel.appendChild(none); return panel; }
             listScroll.appendChild(none);   // (in the list, above Re-scan: the list sits at the panel's top)
             (Stremio.streamNotes ? Stremio.streamNotes(addonType(), _d.streamId) : []).forEach(function (n) {   // (why, when an addon says: AIOStreams)
@@ -1926,8 +1924,8 @@
                 listScroll.appendChild(note);
             });
             var again = U.el('div', 'stream focusable rescan-row');
-            again.appendChild(document.createTextNode('↻  Re-scan for sources'));
-            again.appendChild(U.el('span', 's-sub', 'Ask all stream addons again'));
+            again.appendChild(document.createTextNode(U.t('↻  Re-scan for sources')));
+            again.appendChild(U.el('span', 's-sub', U.t('Ask all stream addons again')));
             again.__onselect = function () { rescanStreams(); };
             if (!_d._epFocus) { _d._epFocus = again; }
             listScroll.appendChild(again);
@@ -1951,7 +1949,7 @@
             });
             var gone = list.length - keptList.length;
             if (gone) {
-                listScroll.appendChild(U.el('div', 'streams-hidden', gone + (gone === 1 ? ' source the TV can’t play is hidden' : ' sources the TV can’t play are hidden') + '  (Settings › Playback › Source ranking)'));
+                listScroll.appendChild(U.el('div', 'streams-hidden', U.tn(gone, '{n} source the TV can’t play is hidden', '{n} sources the TV can’t play are hidden') + '  ' + U.t('(Settings › Playback › Source ranking)')));
                 list = keptList; rows = keptRows;
             }
         }
@@ -1960,8 +1958,8 @@
         if ((flt.addon || flt.res) && !_d.live) {
             var fl = [], fr = [];
             list.forEach(function (st, i) { if (rows[i] && matchFilter(rows[i], flt)) { fl.push(st); fr.push(rows[i]); } });
-            listScroll.appendChild(U.el('div', 'streams-hidden', 'Showing ' + fl.length + ' of ' + list.length + ' sources: ' +
-                [flt.addon, flt.res ? GROUP_TITLES[flt.res] : ''].filter(Boolean).join('  ·  ') + '  (Addon ▾ / Resolution ▾ above)'));
+            listScroll.appendChild(U.el('div', 'streams-hidden', U.t('Showing {shown} of {all} sources: {filter}  (Addon ▾ / Resolution ▾ above)', { shown: fl.length, all: list.length,
+                filter: [flt.addon, flt.res ? GROUP_TITLES[flt.res] : ''].filter(Boolean).join('  ·  ') })));
             list = fl; rows = fr;
         }
         if (_d._keepStream) {
@@ -2001,23 +1999,23 @@
             var desc = Stremio.streamDescription(stream);
             if (size && !/(TB|GB|MB)\b/i.test(desc)) { lines.push('💾 ' + size); }
             if (desc) { lines.push(desc); }
-            if (stream._addon) { lines.push('⚙️ ' + stream._addon + (stream._also ? '   ·   also on ' + stream._also.join(', ') : '')); }
-            if (stream._earlier) { lines.push('🕘 From earlier: you played it ' + U.dayLabel(stream._earlier) + '; the addon didn’t answer in time just now, so it may no longer play'); }
-            if (row && row.unsuitable) { lines.push('⛔ Marked not suitable for this title  ·  hold OK to put it back'); }
-            if (row && row.worded) { lines.push('🚫 Has your word “' + row.worded + '”  (Settings › Playback › Source ranking)'); }
-            if (row && row.sized) { lines.push('📏 Outside your size limits: ' + row.sized + '  (Settings › Playback › Source ranking)'); }
-            if (row && row.blocked) { lines.push('⚠ ' + row.blocked + ' isn’t allowed  (Settings › Playback › Formats)'); }
-            if (row && row.bad.length) { lines.push('⚠ Marked “Not working” on this TV: ' + row.bad.join(', ') + '  (Settings › Playback › Formats)'); }
-            if (stream._torrent) { lines.push('🧲 A torrent, through your streaming server (Settings › Content › Streaming server)'); }
+            if (stream._addon) { lines.push('⚙️ ' + stream._addon + (stream._also ? '   ·   ' + U.t('also on {addons}', { addons: stream._also.join(', ') }) : '')); }
+            if (stream._earlier) { lines.push('🕘 ' + U.t('From earlier: you played it {when}; the addon didn’t answer in time just now, so it may no longer play', { when: U.dayLabel(stream._earlier) })); }
+            if (row && row.unsuitable) { lines.push(U.t('⛔ Marked not suitable for this title  ·  hold OK to put it back')); }
+            if (row && row.worded) { lines.push('🚫 ' + U.t('Has your word “{word}”  (Settings › Playback › Source ranking)', { word: row.worded })); }
+            if (row && row.sized) { lines.push('📏 ' + U.t('Outside your size limits: {limit}  (Settings › Playback › Source ranking)', { limit: row.sized })); }
+            if (row && row.blocked) { lines.push('⚠ ' + U.t('{format} isn’t allowed  (Settings › Playback › Formats)', { format: row.blocked })); }
+            if (row && row.bad.length) { lines.push('⚠ ' + U.t('Marked “Not working” on this TV: {formats}  (Settings › Playback › Formats)', { formats: row.bad.join(', ') })); }
+            if (stream._torrent) { lines.push(U.t('🧲 A torrent, through your streaming server (Settings › Content › Streaming server)')); }
             if (opens) {
-                lines.push('▶ OK opens ' + (opens.data ? 'it in ' : '') + opens.app.name);
+                lines.push('▶ ' + (opens.data ? U.t('OK opens it in {app}', { app: opens.app.name }) : U.t('OK opens {app}', { app: opens.app.name })));
             } else if (!playable) {
-                if (stream.infoHash) { lines.push('— torrent: plays through a streaming server (Settings › Content › Streaming server)'); }
+                if (stream.infoHash) { lines.push(U.t('— torrent: plays through a streaming server (Settings › Content › Streaming server)')); }
                 else if (stream.externalUrl) {
-                    lines.push('— another app' + ((typeof TVApps !== 'undefined' && TVApps.available())
-                        ? ': add it in Settings › Content › Streaming apps to open it from here' : ' (not playable here)'));
+                    lines.push((typeof TVApps !== 'undefined' && TVApps.available())
+                        ? U.t('— another app: add it in Settings › Content › Streaming apps to open it from here') : U.t('— another app (not playable here)'));
                 }
-                else { lines.push('— not directly playable on the TV'); }
+                else { lines.push(U.t('— not directly playable on the TV')); }
             }
             var sub = U.el('span', 's-sub', lines.join('\n'));
             sub.style.whiteSpace = 'pre-line';
@@ -2030,7 +2028,7 @@
             }
             node.__onselect = function () {
                 if (opens) { openWhere(opens); return; }
-                if (!playable) { U.toast(stream.infoHash ? 'Torrents play through a streaming server: Settings › Content › Streaming server' : 'This source can’t play directly on the TV.', stream.infoHash ? 6000 : undefined); return; }
+                if (!playable) { U.toast(stream.infoHash ? U.t('Torrents play through a streaming server: Settings › Content › Streaming server') : U.t('This source can’t play directly on the TV.'), stream.infoHash ? 6000 : undefined); return; }
                 startPlayback(stream, _d.streamId, _d.streamLabel || _d.meta.name, howHere());
             };
             return node;
@@ -2040,8 +2038,8 @@
         // file's own embedded stream, which no stream addon provides.
         if (!_d.embedded) {
             rescan = U.el('div', 'stream focusable rescan-row');
-            rescan.appendChild(document.createTextNode('↻  Re-scan for sources'));
-            rescan.appendChild(U.el('span', 's-sub', 'Refresh the list from all stream addons'));
+            rescan.appendChild(document.createTextNode(U.t('↻  Re-scan for sources')));
+            rescan.appendChild(U.el('span', 's-sub', U.t('Refresh the list from all stream addons')));
             rescan.__onselect = function () { rescanStreams(); };
             listScroll.appendChild(rescan);
         }
@@ -2073,7 +2071,7 @@
     // so the player lists them first ("with this source").
     function sourceSubsOf(st) {
         return U.listOf(st && st.subtitles, 50, function (t) { return typeof t.url === 'string' && /^https?:\/\//i.test(t.url); }).map(function (t, i) {
-            return { id: 'src:' + (t.id != null ? t.id : i), url: t.url, lang: typeof t.lang === 'string' ? t.lang : '', _addon: (st._addon || 'Source') + ' · with this source' };
+            return { id: 'src:' + (t.id != null ? t.id : i), url: t.url, lang: typeof t.lang === 'string' ? t.lang : '', _addon: (st._addon || U.t('Source')) + ' · ' + U.t('with this source') };
         });
     }
     // The player's "Select source" list: each source with the request headers it needs
@@ -2098,7 +2096,7 @@
     function startPlayback(stream, videoId, label, how) {
         if (stream && stream.infoHash) {   // (a torrent: its link from the streaming server set now)
             Stremio.torrentSource(stream);
-            if (!stream.url) { U.toast('Torrents play through a streaming server: Settings › Content › Streaming server', 6000); return null; }
+            if (!stream.url) { U.toast(U.t('Torrents play through a streaming server: Settings › Content › Streaming server'), 6000); return null; }
         }
         // VOD changes progress/watched state. Live playback does not, and keeping Home
         // untouched lets us restore the exact originating card and scroll position.
@@ -2250,7 +2248,7 @@
         var ch = _d && _d.channels;
         if (!ch) { return; }
         var n = ch.list.length;
-        if (!(pos >= 1 && pos <= n)) { U.toast('No channel ' + pos + ' here (1 to ' + n + ')', 2000); return; }
+        if (!(pos >= 1 && pos <= n)) { U.toast(U.t('No channel {n} here (1 to {max})', { n: pos, max: n }), 2000); return; }
         if (_zap) { clearTimeout(_zap.timer); _zap = null; }
         var m = ch.list[pos - 1].meta;
         U.toast(pos + ' / ' + n + '    ' + (m.name || m.title || ''), 1600);
@@ -2278,14 +2276,14 @@
         if (!ch || !Player.isActive()) { return; }
         var gen = ++_tuneGen;
         ch.tuning = idx;
-        var m = ch.list[idx].meta, type = m.type || page.type, name = m.name || m.title || 'Live';
-        U.spinner(true, 'Tuning to ' + name + '…');
+        var m = ch.list[idx].meta, type = m.type || page.type, name = m.name || m.title || U.t('Live');
+        U.spinner(true, U.t('Tuning to {name}…', { name: name }));
         Stremio.getStreams(type, m.id).then(function (list) {
             if (gen !== _tuneGen) { return; }   // (a later channel was chosen: its own answer handles the spinner)
             ch.tuning = null;
             if (_d !== page || !Player.isActive()) { U.spinner(false); return; }   // left the player meanwhile
             var playable = list.filter(Stremio.isPlayable);
-            if (!playable.length) { U.spinner(false); U.toast('No playable source for ' + name); return; }
+            if (!playable.length) { U.spinner(false); U.toast(U.t('No playable source for {name}', { name: name })); return; }
             ch.idx = idx;
             page.id = m.id; page.type = type; page.meta = m; page.preview = m;
             page.streamId = m.id; page.streamLabel = name; page.streams = list;
@@ -2295,7 +2293,7 @@
             ch.tuning = null;
             if (_d !== page || !Player.isActive()) { U.spinner(false); return; }
             U.spinner(false);
-            U.toast('Couldn\'t load ' + name);
+            U.toast(U.t('Couldn\'t load {name}', { name: name }));
         });
     }
 
@@ -2318,12 +2316,12 @@
             U.spinner(false);
             var pick = pickLikeLast(_d.id, _d.streams);
             if (!pick) {
-                U.toast('No playable source for that episode');
+                U.toast(U.t('No playable source for that episode'));
                 if (!Player.isActive()) { drawDetail(); }
                 return;
             }
             startPlayback(pick, v.id, _d.streamLabel);
-        }, function () { if (!current()) { return; } U.spinner(false); U.toast('Failed to load that episode'); });
+        }, function () { if (!current()) { return; } U.spinner(false); U.toast(U.t('Failed to load that episode')); });
     }
 
     // ----- binge: the next episode plays a source like the one you've been watching -----

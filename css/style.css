@@ -4,6 +4,11 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* A language written right to left (js/i18n.js): each piece of text runs by its own first letters,
+   so translated text runs right to left (and aligns right), a title in English left to right;
+   pieces laid out as text (the header's tabs) follow it. The remote moves by position, so it still fits. */
+html.rtl-text body, html.rtl-text body * { unicode-bidi: -webkit-plaintext; unicode-bidi: plaintext; }
+
 html, body {
     width: 1920px;
     height: 1080px;

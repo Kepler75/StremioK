@@ -21,16 +21,16 @@
     // other three are the catalog rows of that Stremio type, in the user's
     // Home-Feeds order/visibility. A tab only appears when it has content.
     var HOME_TABS = [
-        { key: 'continue', icon: '▶', label: 'Watching' },   // (Continue Watching: short, the menu is full)
-        { key: 'calendar', icon: '📅', label: 'Calendar' },   // (coming up, and what you watched: see calendarRows)
-        { key: 'movie', icon: '🎬', label: 'Movies' },
-        { key: 'series', icon: '📺', label: 'Series' },
+        { key: 'continue', icon: '▶', label: U.t('Watching') },   // (Continue Watching: short, the menu is full)
+        { key: 'calendar', icon: '📅', label: U.t('Calendar') },   // (coming up, and what you watched: see calendarRows)
+        { key: 'movie', icon: '🎬', label: U.t('Movies') },
+        { key: 'series', icon: '📺', label: U.t('Series') },
         { key: 'tv', icon: '📡', label: 'IPTV' },
-        { key: 'guide', icon: '☰', label: 'Guide' },   // (the IPTV channels' TV guide as a grid, once one is read: see js/view-guide.js)
-        { key: 'radio', icon: '📻', label: 'Radio' },
-        { key: 'sport', icon: '⚽', label: 'Sports' },
+        { key: 'guide', icon: '☰', label: U.t('Guide') },   // (the IPTV channels' TV guide as a grid, once one is read: see js/view-guide.js)
+        { key: 'radio', icon: '📻', label: U.t('Radio') },
+        { key: 'sport', icon: '⚽', label: U.t('Sports') },
         { key: 'youtube', icon: '📹', label: 'YouTube' },   // (StremioK's YouTube catalogs, an addon's YouTube / channel ones: see isYouTubeCat)
-        { key: 'local', icon: '💾', label: 'Local' }   // (a USB drive plugged in: see LocalMedia)
+        { key: 'local', icon: '💾', label: U.t('Local') }   // (a USB drive plugged in: see LocalMedia)
     ];
     function hasLocal() { return typeof LocalMedia !== 'undefined' && LocalMedia.present(); }
     function hasGuide() { return typeof EPG !== 'undefined' && !!EPG.hasAny && EPG.hasAny(); }
@@ -306,27 +306,27 @@
         return null;
     }
     function localTitle(d) {
-        var name = d.dav ? '🌐  ' + d.label : LocalMedia.knownDrives().length > 1 ? 'USB · ' + d.label.replace(/^removable_/, '') : 'USB drive';
+        var name = d.dav ? '🌐  ' + d.label : LocalMedia.knownDrives().length > 1 ? 'USB · ' + d.label.replace(/^removable_/, '') : U.t('USB drive');
         return [name].concat(_local.rel ? _local.rel.split('/') : []).join('  ›  ');
     }
     function localRows(rows) {
         if (!LocalMedia.isRead()) {   // (read when the tab opens, not at launch)
-            rows.appendChild(U.el('div', 'row-empty', 'Reading your drives and folders…'));
+            rows.appendChild(U.el('div', 'row-empty', U.t('Reading your drives and folders…')));
             LocalMedia.ensure().then(redrawLocal);
             return;
         }
         var ds = LocalMedia.knownDrives();
-        if (!ds.length) { rows.appendChild(U.el('div', 'row-empty', 'No USB drive. Plug one into the TV.')); return; }
+        if (!ds.length) { rows.appendChild(U.el('div', 'row-empty', U.t('No USB drive. Plug one into the TV.'))); return; }
         downloadsList(rows);
         if (!localDrive()) { _local.root = ds.length === 1 ? ds[0].root : null; _local.rel = ''; _local.listing = null; _local.key = ''; }
         var d = localDrive();
         if (!d) {   // several drives: one card each
-            rows.appendChild(buildGrid(ds.some(function (x) { return x.dav; }) ? 'Drives and network folders' : 'USB drives', ds.map(function (x) {
+            rows.appendChild(buildGrid(ds.some(function (x) { return x.dav; }) ? U.t('Drives and network folders') : U.t('USB drives'), ds.map(function (x) {
                 var c = posterCard({ id: 'drive:' + x.root, name: (x.dav ? '🌐  ' + x.label : '💾  ' + x.label.replace(/^removable_/, '')) }, 'local');
                 c.className += ' local-folder';
                 c.__onselect = function () { _local.root = x.root; _local.rel = ''; _local.listing = null; _local.key = ''; _local.focusRel = '__first'; renderHome(); };
                 c.__onlongpress = null;
-                c.__meta = { name: x.label, description: x.dav ? 'Network folder   ·   ' + x.dav.url : x.root };
+                c.__meta = { name: x.label, description: x.dav ? U.t('Network folder') + '   ·   ' + x.dav.url : x.root };
                 return c;
             })));
             return;
@@ -349,7 +349,7 @@
                     redrawLocal();
                 });
             }
-            rows.appendChild(U.el('div', 'row-empty', 'Reading ' + localTitle(d) + '…'));
+            rows.appendChild(U.el('div', 'row-empty', U.t('Reading {name}…', { name: localTitle(d) })));
             return;
         }
         var all = _local.listing.entries;
@@ -362,7 +362,7 @@
         if (up) { cards.unshift(up); }   // (a card for BACK: easier with the arrows alone)
         if (cards.length) { rows.appendChild(buildGrid(localTitle(d), cards)); }
         if (!entries.length) {
-            rows.appendChild(U.el('div', 'row-empty', (cards.length ? '' : localTitle(d) + ':  ') + (_local.error ? 'Couldn’t read this folder (' + _local.error + ').' : 'No videos or folders here.')));
+            rows.appendChild(U.el('div', 'row-empty', (cards.length ? '' : localTitle(d) + ':  ') + (_local.error ? U.t('Couldn’t read this folder ({why}).', { why: _local.error }) : U.t('No videos or folders here.'))));
         }
         if (_local.focusRel) { setTimeout(localFocus, 0); }   // (after Home's own focusing)
     }
@@ -383,28 +383,34 @@
     // Stop indexing: said as it is — while it's listing the drive nothing new is kept yet (the
     // drive stays as it was indexed before, if it was); while matching, the listing and the
     // matches so far stay.
+    // (d: a USB drive, or a network folder (d.dav): each said in its own words, a drive or a folder)
     function confirmStopIndexing(d, st, after) {
-        var what = d.dav ? 'folder' : 'drive';
-        confirm(st.phase === 'matching' ? 'Stop matching this ' + what + '’s videos? The listing and what’s been matched so far are kept; the rest can be matched later (Continue matching).'
-            : 'Stop indexing this ' + what + '? It hasn’t been listed yet, so nothing new is kept: it stays as it was indexed before (if it was).',
-            'Stop', function () { LocalMedia.stopScan(d); after(); }, { noLabel: 'Keep going', plain: true });
+        var f = !!d.dav;
+        confirm(st.phase === 'matching' ? (f ? U.t('Stop matching this folder’s videos? The listing and what’s been matched so far are kept; the rest can be matched later (Continue matching).')
+                : U.t('Stop matching this drive’s videos? The listing and what’s been matched so far are kept; the rest can be matched later (Continue matching).'))
+            : (f ? U.t('Stop indexing this folder? It hasn’t been listed yet, so nothing new is kept: it stays as it was indexed before (if it was).')
+                : U.t('Stop indexing this drive? It hasn’t been listed yet, so nothing new is kept: it stays as it was indexed before (if it was).')),
+            U.t('Stop'), function () { LocalMedia.stopScan(d); after(); }, { noLabel: U.t('Keep going'), plain: true });
     }
     V.confirmStopIndexing = confirmStopIndexing;
     // The drive's index (so title pages know what's on it): read only when asked.
     function indexCard(d) {
-        var st = LocalMedia.status(d), busy = st.state === 'scanning', what = d.dav ? 'folder' : 'drive';
-        var busyName = st.phase === 'matching' ? '⏳  Matching ' + st.done + ' / ' + st.total : '⏳  Listing the ' + what + '…';
-        var c = posterCard({ id: 'index:' + d.root, name: busy ? busyName : st.state === 'none' ? '🔍  Index this ' + what : st.left ? '🔍  Continue matching (' + st.left + ' left)' : '🔍  Index again' }, 'local');
+        var st = LocalMedia.status(d), busy = st.state === 'scanning', f = !!d.dav;
+        var indexThis = f ? U.t('Index this folder') : U.t('Index this drive');
+        var busyName = st.phase === 'matching' ? '⏳  ' + U.t('Matching {done} / {total}', { done: st.done, total: st.total }) : '⏳  ' + (f ? U.t('Listing the folder…') : U.t('Listing the drive…'));
+        var c = posterCard({ id: 'index:' + d.root, name: busy ? busyName : st.state === 'none' ? '🔍  ' + indexThis : st.left ? '🔍  ' + U.t('Continue matching ({n} left)', { n: st.left }) : '🔍  ' + U.t('Index again') }, 'local');
         c.className += ' local-folder';
         c.__onlongpress = null;
-        c.__meta = { name: 'Index this ' + what, description: (st.state === 'none' ? 'Not indexed yet. ' : st.state === 'failed' ? 'Indexing failed: ' + st.error + '. ' :
-            busy ? 'Indexing… (OK: stop) ' : st.videos + ' videos, ' + st.matched + ' matched to titles, indexed ' + U.dayLabel(st.at) + '. ') +
-            (LocalMedia.matchingAllowed() ? 'Indexing lists the ' + what + '’s videos and matches them to titles, so their title pages offer them (“On your ' + (d.dav ? 'network folder' : 'USB drive') + '”).'
-                : 'Indexing lists the ' + what + '’s videos (matching them to titles is off: Settings › Content › USB drive).') };
+        c.__meta = { name: indexThis, description: (st.state === 'none' ? U.t('Not indexed yet.') + ' ' : st.state === 'failed' ? U.t('Indexing failed: {why}.', { why: st.error }) + ' ' :
+            busy ? U.t('Indexing… (OK: stop)') + ' ' : U.t('{videos} videos, {matched} matched to titles, indexed {when}.', { videos: st.videos, matched: st.matched, when: U.dayLabel(st.at) }) + ' ') +
+            (LocalMedia.matchingAllowed() ? (f ? U.t('Indexing lists the folder’s videos and matches them to titles, so their title pages offer them (“On your network folder”).')
+                    : U.t('Indexing lists the drive’s videos and matches them to titles, so their title pages offer them (“On your USB drive”).'))
+                : (f ? U.t('Indexing lists the folder’s videos (matching them to titles is off: Settings › Content › USB drive).')
+                    : U.t('Indexing lists the drive’s videos (matching them to titles is off: Settings › Content › USB drive).'))) };
         c.__onselect = function () {
             if (busy) { confirmStopIndexing(d, st, function () { renderHome(); }); return; }
             if (st.left) {
-                pickList('Index this ' + what, [['more', 'Continue matching (' + st.left + ' titles left)'], ['again', 'Index again (list the ' + what + ' afresh)']], 'more', function (k) {
+                pickList(indexThis, [['more', U.t('Continue matching ({n} titles left)', { n: st.left })], ['again', f ? U.t('Index again (list the folder afresh)') : U.t('Index again (list the drive afresh)')]], 'more', function (k) {
                     _local.focusRel = 'index:' + d.root;
                     if (k === 'more') { LocalMedia.continueMatching(d); } else { LocalMedia.scan(d); }
                     renderHome();
@@ -412,7 +418,7 @@
                 return;
             }
             _local.focusRel = 'index:' + d.root;
-            LocalMedia.scan(d).then(function () { var s2 = LocalMedia.status(d); U.toast(s2.state === 'failed' ? 'Indexing failed' + (s2.error ? ': ' + s2.error : '') : 'Indexed: ' + s2.videos + ' videos, ' + s2.matched + ' matched', 5000); });
+            LocalMedia.scan(d).then(function () { var s2 = LocalMedia.status(d); U.toast(s2.state === 'failed' ? (s2.error ? U.t('Indexing failed: {why}', { why: s2.error }) : U.t('Indexing failed')) : U.t('Indexed: {videos} videos, {matched} matched', { videos: s2.videos, matched: s2.matched }), 5000); });
             renderHome();
         };
         return c;
@@ -423,11 +429,11 @@
     function askMatching(d, entries) {
         if (_askedMatching || _homeTab !== 'local' || _current() !== scr('home') || isModalOpen() || Player.isActive()) { return; }
         _askedMatching = true;
-        confirm('Match your videos to movies and series? Each one’s title is worked out from its name and looked up with your search addons, so they see those titles. Matched videos get posters and play as that title; without it, Local just browses. Settings › Content › USB drive changes this.',
-            'Match', function () {
+        confirm(U.t('Match your videos to movies and series? Each one’s title is worked out from its name and looked up with your search addons, so they see those titles. Matched videos get posters and play as that title; without it, Local just browses. Settings › Content › USB drive changes this.'),
+            U.t('Match'), function () {
                 LocalMedia.setMatching(true);
                 LocalMedia.matchFolder(d, entries).then(function (n) { if (n) { redrawLocal(); } });
-            }, { noLabel: 'Don’t match', plain: true, onNo: function () { LocalMedia.setMatching(false); } });
+            }, { noLabel: U.t('Don’t match'), plain: true, onNo: function () { LocalMedia.setMatching(false); } });
     }
     // ----- Downloads (js/downloads.js): at the top of the Local tab while it has any -----
     // Each: what it is, how far it's got, its speed and time left (or done, or what went wrong);
@@ -436,13 +442,13 @@
     var _dlWatching = null, _dlShown = '', _dlRows = {};   // (key -> its status line, updated in place)
     function dlLine(x) {
         var pct = x.size ? Math.min(100, Math.floor(x.got / x.size * 100)) : 0;
-        if (x.state === 'done') { return 'Done   ·   ' + (LocalMedia.humanSize(x.size || x.got) || '') + '   ·   in ' + x.dir.replace(/^\/opt\/media\//, ''); }
-        if (x.state === 'failed') { return 'Didn’t finish: ' + (x.err || 'unknown') + '   ·   OK to retry'; }
-        if (x.state === 'queued') { return 'Waiting for the one before it'; }
-        if (x.state === 'waiting') { return 'Paused (' + (x.err || 'connection') + '), picked up again shortly   ·   ' + (pct ? pct + '%' : LocalMedia.humanSize(x.got)); }
+        if (x.state === 'done') { return U.t('Done') + '   ·   ' + (LocalMedia.humanSize(x.size || x.got) || '') + '   ·   ' + U.t('in {folder}', { folder: x.dir.replace(/^\/opt\/media\//, '') }); }
+        if (x.state === 'failed') { return U.t('Didn’t finish: {why}', { why: x.err || U.t('unknown') }) + '   ·   ' + U.t('OK to retry'); }
+        if (x.state === 'queued') { return U.t('Waiting for the one before it'); }
+        if (x.state === 'waiting') { return U.t('Paused ({why}), picked up again shortly', { why: x.err || U.t('connection') }) + '   ·   ' + (pct ? pct + '%' : LocalMedia.humanSize(x.got)); }
         var left = x.speed > 0 && x.size ? Math.round((x.size - x.got) / x.speed / 60) : null;
-        return (x.size ? pct + '%  of  ' + LocalMedia.humanSize(x.size) : LocalMedia.humanSize(x.got) + ' so far') +
-            (x.speed > 0 ? '   ·   ' + (x.speed / 1048576).toFixed(1) + ' MB/s' : '') + (left != null ? '   ·   about ' + (left < 1 ? 'a minute' : left + ' min') + ' left' : '');
+        return (x.size ? U.t('{pct}%  of  {size}', { pct: pct, size: LocalMedia.humanSize(x.size) }) : U.t('{size} so far', { size: LocalMedia.humanSize(x.got) })) +
+            (x.speed > 0 ? '   ·   ' + (x.speed / 1048576).toFixed(1) + ' MB/s' : '') + (left != null ? '   ·   ' + (left < 1 ? U.t('about a minute left') : U.t('about {n} min left', { n: left })) : '');
     }
     function dlSig(list) { return list.map(function (x) { return x.key + ':' + (x.state === 'done' || x.state === 'failed' ? x.state : 'on'); }).join('|'); }
     function downloadsList(rows) {
@@ -467,7 +473,7 @@
         _dlShown = dlSig(list); _dlRows = {};
         if (!list.length) { return; }
         var box = U.el('div', 'dl-list');
-        box.appendChild(U.el('div', 'row-title', 'Downloads   ·   OK on one: cancel, retry or remove it'));
+        box.appendChild(U.el('div', 'row-title', U.t('Downloads   ·   OK on one: cancel, retry or remove it')));
         list.slice().reverse().forEach(function (x) {
             var r = U.el('div', 'addon-item focusable dl-item ' + x.state);
             r.setAttribute('data-dl', x.key.replace(/"/g, ''));
@@ -480,12 +486,12 @@
                 description: x.name + '   ·   ' + x.dir.replace(/^\/opt\/media\//, '') + '   ·   ' + dlLine(x) };
             r.__onselect = function () {
                 var now = Downloads.items().filter(function (y) { return y.key === x.key; })[0] || x, opts = [];
-                if (now.state === 'failed') { opts.push(['retry', 'Retry']); }
-                if (now.state === 'queued' || now.state === 'downloading' || now.state === 'waiting') { opts.push(['cancel', 'Cancel (its partial file deleted)']); }
-                opts.push(['clear', now.state === 'done' ? 'Remove from the list (the file stays)' : 'Remove from the list']);
+                if (now.state === 'failed') { opts.push(['retry', U.t('Retry')]); }
+                if (now.state === 'queued' || now.state === 'downloading' || now.state === 'waiting') { opts.push(['cancel', U.t('Cancel (its partial file deleted)')]); }
+                opts.push(['clear', now.state === 'done' ? U.t('Remove from the list (the file stays)') : U.t('Remove from the list')]);
                 pickList(now.title || now.name, opts, null, function (k) {
                     if (k === 'retry') { Downloads.retry(now); }
-                    else if (k === 'cancel') { confirm('Cancel “' + (now.title || now.name) + '”? What’s been downloaded is deleted.', 'Cancel it', function () { Downloads.cancel(now); }, { noLabel: 'Keep going' }); }
+                    else if (k === 'cancel') { confirm(U.t('Cancel “{name}”? What’s been downloaded is deleted.', { name: now.title || now.name }), U.t('Cancel it'), function () { Downloads.cancel(now); }, { noLabel: U.t('Keep going') }); }
                     else { Downloads.clear(now); }
                 });
             };
@@ -500,17 +506,17 @@
         var c = posterCard({ id: x.rel, name: '📁  ' + x.name }, 'local');
         c.className += ' local-folder';
         c.__onlongpress = null;
-        c.__meta = { name: x.name, description: 'Folder' + (x.bad ? '   ·   the TV can’t read its details' : '') };
+        c.__meta = { name: x.name, description: U.t('Folder') + (x.bad ? '   ·   ' + U.t('the TV can’t read its details') : '') };
         c.__onselect = function () { _local.rel = x.rel; _local.listing = null; _local.key = ''; _local.focusRel = '__first'; renderHome(); };
         return c;
     }
     // ⬆ Back: up a folder (from a drive's top, to the drives), as BACK does.
     function localBackCard(d) {
-        var parent = _local.rel ? (_local.rel.indexOf('/') === -1 ? 'the drive’s top' : '“' + _local.rel.split('/').slice(-2, -1)[0] + '”') : 'your USB drives';
-        var c = posterCard({ id: '..', name: '⬆  Back' }, 'local');
+        var parent = _local.rel ? (_local.rel.indexOf('/') === -1 ? U.t('the drive’s top') : '“' + _local.rel.split('/').slice(-2, -1)[0] + '”') : U.t('your USB drives');
+        var c = posterCard({ id: '..', name: U.t('⬆  Back') }, 'local');
         c.className += ' local-folder';
         c.__onlongpress = null;
-        c.__meta = { name: 'Back', description: 'Up to ' + parent + ' (or press BACK)' };
+        c.__meta = { name: U.t('Back'), description: U.t('Up to {place} (or press BACK)', { place: parent }) };
         c.__onselect = function () { backInLocal(); };
         return c;
     }
@@ -524,7 +530,7 @@
         if (prog && prog.duration) { var bar = U.el('div', 'prog'); bar.style.width = Math.min(100, prog.position / prog.duration * 100) + '%'; c.appendChild(bar); }
         if (Player.isWatched(pType, pId)) { c.appendChild(U.el('div', 'card-watched', '✓')); }
         c.__meta = { name: label, description: x.name + (x.size ? '   ·   ' + LocalMedia.humanSize(x.size) : '') + '   ·   ' +
-            (m ? 'Matched' + (m.fixed ? ' by you' : '') + ': ' + m.name : 'Not matched to a title  ·  long-press to match it') };
+            (m ? (m.fixed ? U.t('Matched by you: {name}', { name: m.name }) : U.t('Matched: {name}', { name: m.name })) : U.t('Not matched to a title  ·  long-press to match it')) };
         c.__onselect = function () {
             _local.focusRel = x.rel;
             LocalMedia.play(d, x, _local.listing.entries, function () { renderHome(); });
@@ -539,19 +545,19 @@
         var label = m ? (m.type === 'series' ? m.name + '  ·  S' + m.parsed.season + 'E' + m.parsed.episode : m.name) : x.name.replace(/\.[^.]+$/, '');
         var c = posterCard({ id: x.rel, name: label, poster: m ? m.poster : '' }, 'local');
         c.className += ' local-sub';
-        c.appendChild(U.el('div', 'card-new card-code', 'Subtitles'));
-        c.__meta = { name: label, description: x.name + '   ·   subtitles   ·   ' +
-            (m ? 'Matched' + (m.fixed ? ' by you' : '') + ': ' + m.name + ' (offered for its sources)' : 'Not matched to a title  ·  OK to match it') };
+        c.appendChild(U.el('div', 'card-new card-code', U.t('Subtitles')));
+        c.__meta = { name: label, description: x.name + '   ·   ' + U.t('subtitles') + '   ·   ' +
+            (m ? (m.fixed ? U.t('Matched by you: {name} (offered for its sources)', { name: m.name }) : U.t('Matched: {name} (offered for its sources)', { name: m.name })) : U.t('Not matched to a title  ·  OK to match it')) };
         function actions() {
             var opts = [];
-            if (m) { opts.push(['page', 'Title page: ' + m.name]); }
-            opts.push(['match', m ? 'Match to another title…' : 'Match to a title…']);
-            if (m) { opts.push(['none', 'Not a movie or episode']); }
-            if (m && m.fixed) { opts.push(['auto', 'Back to the automatic match']); }
+            if (m) { opts.push(['page', U.t('Title page: {name}', { name: m.name })]); }
+            opts.push(['match', m ? U.t('Match to another title…') : U.t('Match to a title…')]);
+            if (m) { opts.push(['none', U.t('Not a movie or episode')]); }
+            if (m && m.fixed) { opts.push(['auto', U.t('Back to the automatic match')]); }
             pickList(x.name, opts, null, function (k) {
                 _local.focusRel = x.rel;
                 if (k === 'page') { App.openDetail(m.type, m.id, { id: m.id, type: m.type, name: m.name, poster: m.poster }, m.type === 'series' ? m.vid : null); }
-                else if (k === 'none') { LocalMedia.setMatch(x.rel, 0, { none: true }); U.toast('“' + x.name + '”: no title’s'); renderHome(); }
+                else if (k === 'none') { LocalMedia.setMatch(x.rel, 0, { none: true }); U.toast(U.t('“{name}”: no title’s', { name: x.name })); renderHome(); }
                 else if (k === 'auto') { LocalMedia.setMatch(x.rel, 0, null); LocalMedia.matchFolder(d, [sx]).then(function () { renderHome(); }); }
                 else if (k === 'match') { matchByHand(d, sx); }
             });
@@ -561,18 +567,18 @@
         return c;
     }
     function localActions(d, x, m, pType, pId) {
-        var watched = Player.isWatched(pType, pId), opts = [['play', '▶  Play']];
-        if (m) { opts.push(['page', 'Title page: ' + m.name]); }
-        opts.push(['watched', watched ? 'Mark not watched' : 'Mark watched']);
-        opts.push(['match', m ? 'Match to another title…' : 'Match to a title…']);
-        if (m) { opts.push(['none', 'Not a movie or episode (a plain file)']); }
-        if (m && m.fixed) { opts.push(['auto', 'Back to the automatic match']); }
+        var watched = Player.isWatched(pType, pId), opts = [['play', U.t('▶  Play')]];
+        if (m) { opts.push(['page', U.t('Title page: {name}', { name: m.name })]); }
+        opts.push(['watched', watched ? U.t('Mark not watched') : U.t('Mark watched')]);
+        opts.push(['match', m ? U.t('Match to another title…') : U.t('Match to a title…')]);
+        if (m) { opts.push(['none', U.t('Not a movie or episode (a plain file)')]); }
+        if (m && m.fixed) { opts.push(['auto', U.t('Back to the automatic match')]); }
         pickList(x.name, opts, null, function (k) {
             _local.focusRel = x.rel;
             if (k === 'play') { LocalMedia.play(d, x, _local.listing.entries, function () { renderHome(); }); }
             else if (k === 'page') { App.openDetail(m.type, m.id, { id: m.id, type: m.type, name: m.name, poster: m.poster }, m.type === 'series' ? m.vid : null); }
             else if (k === 'watched') { Player.setWatched(pType, pId, !watched); renderHome(); }
-            else if (k === 'none') { LocalMedia.setMatch(x.rel, x.size, { none: true }); U.toast('“' + x.name + '”: a plain file'); renderHome(); }
+            else if (k === 'none') { LocalMedia.setMatch(x.rel, x.size, { none: true }); U.toast(U.t('“{name}”: a plain file', { name: x.name })); renderHome(); }
             else if (k === 'auto') { LocalMedia.setMatch(x.rel, x.size, null); LocalMedia.matchFolder(d, [x]).then(function () { renderHome(); }); }
             else if (k === 'match') { matchByHand(d, x); }
         });
@@ -582,29 +588,29 @@
         var p = LocalMedia.parsedOf(x.rel);
         function ask(type) {
             App.openEntry({
-                title: 'Search for ' + (type === 'series' ? 'a series' : 'a movie'), value: p ? p.title : x.name.replace(/\.[^.]+$/, ''),
-                hint: '“' + x.name + '”' + (type === 'series' && p && p.kind === 'series' ? ': every episode of the show follows.' : ''),
-                validate: function (v) { return v ? null : 'Type a name'; },
+                title: type === 'series' ? U.t('Search for a series') : U.t('Search for a movie'), value: p ? p.title : x.name.replace(/\.[^.]+$/, ''),
+                hint: type === 'series' && p && p.kind === 'series' ? U.t('“{name}”: every episode of the show follows.', { name: x.name }) : '“' + x.name + '”',
+                validate: function (v) { return v ? null : U.t('Type a name'); },
                 onConfirm: function (q) {
                     App.back();
-                    U.spinner(true, 'Searching…');
+                    U.spinner(true, U.t('Searching…'));
                     LocalMedia.searchTitles(type, q).then(function (metas) {
                         U.spinner(false);
-                        if (!metas.length) { U.toast('Nothing found for “' + q + '”'); return; }
-                        pickList('Which one is “' + x.name + '”?', metas.slice(0, 20).map(function (mm) {
+                        if (!metas.length) { U.toast(U.t('Nothing found for “{q}”', { q: q })); return; }
+                        pickList(U.t('Which one is “{name}”?', { name: x.name }), metas.slice(0, 20).map(function (mm) {
                             return [mm.id, (mm.name || mm.id) + (mm.releaseInfo ? '  (' + mm.releaseInfo + ')' : '')];
                         }), null, function (id) {
                             var mm = metas.filter(function (y) { return y.id === id; })[0];
                             LocalMedia.setMatch(x.rel, x.size, { id: mm.id, type: type, name: mm.name, poster: mm.poster, releaseInfo: mm.releaseInfo });
-                            U.toast('Matched: ' + mm.name);
+                            U.toast(U.t('Matched: {name}', { name: mm.name }));
                             renderHome();
                         });
-                    }, function () { U.spinner(false); U.toast('Search failed'); });
+                    }, function () { U.spinner(false); U.toast(U.t('Search failed')); });
                 }
             });
         }
         if (p && p.kind === 'series') { ask('series'); return; }
-        pickList('“' + x.name + '” is…', [['movie', 'A movie'], ['series', 'An episode of a series']], p ? p.kind : 'movie', ask);
+        pickList(U.t('“{name}” is…', { name: x.name }), [['movie', U.t('A movie')], ['series', U.t('An episode of a series')]], p ? p.kind : 'movie', ask);
     }
     // BACK on the Local tab: up a folder (then to the drives, with several), wherever focus is —
     // an empty folder has nothing to focus but the top menu — and only then the top menu.
@@ -652,18 +658,18 @@
         c.__onlongpress = function () { continueActions(e, base, preview, target, c); };
         c.__cwKey = showKey(e);
         c.__meta = { _id: base, _bg: a.background || e.background || '', _ep: e.type === 'series' && target ? codeOfId(target) : '', name: e.name, description: e.position
-            ? 'Resume at ' + U.fmtTime(e.position) + (e.duration ? '  of  ' + U.fmtTime(e.duration) : '')
-            : e.upNext !== undefined ? 'Next episode' + (e.upNext ? ': “' + e.upNext + '”' : '') + '   ·   from Trakt'
-            : 'Added, not started yet' };
+            ? (e.duration ? U.t('Resume at {at}  of  {length}', { at: U.fmtTime(e.position), length: U.fmtTime(e.duration) }) : U.t('Resume at {at}', { at: U.fmtTime(e.position) }))
+            : e.upNext !== undefined ? (e.upNext ? U.t('Next episode: “{title}”', { title: e.upNext }) : U.t('Next episode')) + '   ·   ' + U.t('from Trakt')
+            : U.t('Added, not started yet') };
         var fresh = e.type === 'series' ? newEpisodeFor(e) : null, soon = notOutYet(e);
         if (soon) {   // (a next episode that hasn't aired: when it does)
-            c.appendChild(U.el('div', 'card-new card-code', soon === true ? 'Not out yet' : 'Airs ' + U.dayLabel(soon)));
-            c.__meta.description = 'Next episode' + (e.upNext ? ': “' + e.upNext + '”' : '') + '   ·   ' + (soon === true ? 'not out yet' : 'airs ' + U.dayLabel(soon)) + (e._trakt ? '   ·   from Trakt' : '');
+            c.appendChild(U.el('div', 'card-new card-code', soon === true ? U.t('Not out yet') : U.t('Airs {when}', { when: U.dayLabel(soon) })));
+            c.__meta.description = (e.upNext ? U.t('Next episode: “{title}”', { title: e.upNext }) : U.t('Next episode')) + '   ·   ' + (soon === true ? U.t('not out yet') : U.t('airs {when}', { when: U.dayLabel(soon) })) + (e._trakt ? '   ·   ' + U.t('from Trakt') : '');
         }
         if (fresh) {   // an episode came out since you last watched
             c.appendChild(U.el('div', 'card-new', 'NEW'));
-            c.__meta.description = 'New episode: ' + fresh.code + (fresh.title ? '  “' + fresh.title + '”' : '') +
-                '  ·  out ' + U.dayLabel(fresh.r) + '.   ' + c.__meta.description;
+            c.__meta.description = U.t('New episode: {code}', { code: fresh.code + (fresh.title ? '  “' + fresh.title + '”' : '') }) +
+                '  ·  ' + (fresh.r > Date.now() ? U.t('out {when}', { when: U.dayLabel(fresh.r) }) : U.t('came out {when}', { when: U.dayLabel(fresh.r) })) + '.   ' + c.__meta.description;
         }
         if (e.duration) {
             var p = U.el('div', 'prog');
@@ -678,7 +684,7 @@
         var c = posterCard({ id: e.id, name: e.name || ('' + e.id).split('/').pop() }, 'local');
         c.className += ' local-video';
         c.__cwKey = showKey(e);
-        c.__meta = { name: e.name, description: (e.position ? 'Resume at ' + U.fmtTime(e.position) + (e.duration ? '  of  ' + U.fmtTime(e.duration) : '') : 'Added, not started yet') + (/^local:\d+:@dav:/.test(e.id) ? '   ·   in your network folder' : '   ·   on your USB drive') };
+        c.__meta = { name: e.name, description: (e.position ? (e.duration ? U.t('Resume at {at}  of  {length}', { at: U.fmtTime(e.position), length: U.fmtTime(e.duration) }) : U.t('Resume at {at}', { at: U.fmtTime(e.position) })) : U.t('Added, not started yet')) + '   ·   ' + (/^local:\d+:@dav:/.test(e.id) ? U.t('in your network folder') : U.t('on your USB drive')) };
         c.__onselect = function () { LocalMedia.resumePlain(e, function () { renderHome(); }); };
         c.__onlongpress = function () { continueActions(e, null, null, null, c); };
         if (e.duration) { var p = U.el('div', 'prog'); p.style.width = Math.min(100, (e.position / e.duration * 100)) + '%'; c.appendChild(p); }
@@ -776,18 +782,18 @@
         var by = upcomingByDay(now), days = Object.keys(by).map(Number).sort(function (a, b) { return a - b; });
         if (!days.length) {
             var any = continueEntries().some(function (e) { return e.type === 'series'; });
-            rows.appendChild(U.el('div', 'row-empty', any ? 'Coming up: nothing in the next ' + CAL_AHEAD + ' days for the shows you’re watching.'
-                : 'Coming up: the new episodes of the shows in Watching show here, by day.'));
+            rows.appendChild(U.el('div', 'row-empty', any ? U.t('Coming up: nothing in the next {n} days for the shows you’re watching.', { n: CAL_AHEAD })
+                : U.t('Coming up: the new episodes of the shows in Watching show here, by day.')));
             return;
         }
         days.forEach(function (d) {
             // (the same day: by time, then by show, a show's episodes in their order)
             var list = by[d].sort(function (a, b) { return a.ep.r - b.ep.r || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0) || a.ep.s - b.ep.s || a.ep.e - b.ep.e; });
-            rows.appendChild(buildRow('Coming up   ·   ' + dayTitle(d), list.map(function (u) {
+            rows.appendChild(buildRow(U.t('Coming up') + '   ·   ' + dayTitle(d), list.map(function (u) {
                 var c = posterCard({ id: u.show, type: 'series', name: u.name, poster: u.poster || calPoster(u.show) }, 'series');
                 var code = epCodeOf(u.ep);
                 c.appendChild(U.el('div', 'card-new card-code', code));
-                c.__meta = { _id: u.show, name: u.name, description: code + (u.ep.t ? '  “' + u.ep.t + '”' : '') + '   ·   ' + (u.ep.r > now ? 'out ' : 'came out ') + U.dayLabel(u.ep.r) };
+                c.__meta = { _id: u.show, name: u.name, description: code + (u.ep.t ? '  “' + u.ep.t + '”' : '') + '   ·   ' + (u.ep.r > now ? U.t('out {when}', { when: U.dayLabel(u.ep.r) }) : U.t('came out {when}', { when: U.dayLabel(u.ep.r) })) };
                 c.__onselect = function () { App.openDetail('series', u.show, { name: u.name, poster: u.poster, type: 'series' }, u.ep.id); };
                 c.__onplay = function () { App.openDetail('series', u.show, { name: u.name, poster: u.poster, type: 'series' }, u.ep.id, { playBest: true }); };
                 return c;
@@ -829,8 +835,8 @@
     function appendWatchedToggle(rows, now) {
         var t = U.el('div', 'addon-item focusable cal-watched' + (_calWatched ? ' open' : ''));
         t.setAttribute('data-id', 'cal-watched');
-        t.appendChild(U.el('div', 'a-name', (_calWatched ? '▾' : '▸') + '  Watched: the last ' + CAL_BACK + ' days'));
-        t.appendChild(U.el('div', 'a-url', _calWatched ? 'OK to hide them' : 'OK to show what you watched, here' + (typeof Trakt !== 'undefined' && Trakt.isConnected() ? ' and on Trakt' : '')));
+        t.appendChild(U.el('div', 'a-name', (_calWatched ? '▾' : '▸') + '  ' + U.t('Watched: the last {n} days', { n: CAL_BACK })));
+        t.appendChild(U.el('div', 'a-url', _calWatched ? U.t('OK to hide them') : (typeof Trakt !== 'undefined' && Trakt.isConnected() ? U.t('OK to show what you watched, here and on Trakt') : U.t('OK to show what you watched, here'))));
         t.__onselect = function () {
             _calWatched = !_calWatched;
             renderHome();
@@ -850,22 +856,22 @@
         });
         var days = Object.keys(byDay).map(Number).sort(function (a, b) { return b - a; });
         if (!days.length) {
-            rows.appendChild(U.el('div', 'row-empty', 'Watched: nothing in the last ' + CAL_BACK + ' days' + (typeof Trakt !== 'undefined' && Trakt.isConnected() ? ', here or on Trakt.' : '.')));
+            rows.appendChild(U.el('div', 'row-empty', typeof Trakt !== 'undefined' && Trakt.isConnected() ? U.t('Watched: nothing in the last {n} days, here or on Trakt.', { n: CAL_BACK }) : U.t('Watched: nothing in the last {n} days.', { n: CAL_BACK })));
             return;
         }
         var unnamed = [];
         days.forEach(function (d) {
             var titles = Object.keys(byDay[d]).map(function (k) { return byDay[d][k]; }).sort(function (a, b) { return b.at - a.at; });
-            rows.appendChild(buildRow('Watched   ·   ' + dayTitle(d), titles.map(function (t) {
+            rows.appendChild(buildRow(U.t('Watched') + '   ·   ' + dayTitle(d), titles.map(function (t) {
                 t.eps.sort(function (a, b) { return b.at - a.at; });
                 var c = posterCard({ id: t.base, type: t.type, name: t.name, poster: t.poster }, t.type);
                 var latest = t.eps[0], codes = t.eps.map(function (x) { return codeOfId(x.id); }).filter(Boolean);
                 var partial = t.eps.length === 1 && latest.how === 'partial';
                 var tag = partial ? (latest.pct ? latest.pct + '%' : '…') : codes.length ? codes[0] + (codes.length > 1 ? ' +' + (codes.length - 1) : '') : '';   // (the latest, and how many more)
                 if (tag) { c.appendChild(U.el('div', 'card-new card-code', tag)); }
-                var what = partial ? 'Stopped part-way' + (latest.pct ? ' (' + latest.pct + '%)' : '') + (codes.length ? ': ' + codes[0] : '')
-                    : 'Watched' + (codes.length ? ' ' + codes.slice().reverse().join(', ') : '');
-                var where = t.eps.every(function (x) { return x.how === 'trakt'; }) ? '   ·   on Trakt' : '';
+                var what = partial ? U.t('Stopped part-way') + (latest.pct ? ' (' + latest.pct + '%)' : '') + (codes.length ? ': ' + codes[0] : '')
+                    : U.t('Watched') + (codes.length ? ' ' + codes.slice().reverse().join(', ') : '');
+                var where = t.eps.every(function (x) { return x.how === 'trakt'; }) ? '   ·   ' + U.t('on Trakt') : '';
                 c.__meta = { name: t.name, description: what + where };
                 c.__onselect = function () { App.openDetail(t.type, t.base, { name: c.__meta.name, poster: t.poster, type: t.type }, t.type === 'series' && latest.id !== t.base ? latest.id : null); };
                 if (!t.name) { unnamed.push({ t: t, c: c }); }
@@ -935,7 +941,7 @@
             var base = e.parent || e.id.split(':')[0], code = e.type === 'series' ? codeOfId(e.id) : '';
             var name = ('' + (e.name || (showInfoAll()[base] || {}).name || '')).replace(/\s+S\d+E\d+$/, '') || 'StremioK';
             out.push({ title: name.slice(0, 60),
-                subtitle: (code ? code + '   ·   ' : '') + (e.position > 0 ? 'Resume at ' + (e._trakt ? Math.round(e.position) + '%' : U.fmtTime(e.position)) : e.type === 'series' ? 'Next episode' : 'Start watching'),
+                subtitle: (code ? code + '   ·   ' : '') + (e.position > 0 ? U.t('Resume at {at}', { at: e._trakt ? Math.round(e.position) + '%' : U.fmtTime(e.position) }) : e.type === 'series' ? U.t('Next episode') : U.t('Start watching')),
                 image_ratio: '16by9', image_url: 'https://images.metahub.space/background/small/' + base + '/img',
                 action_data: JSON.stringify({ type: e.type, id: e.id, parent: base }), is_playable: false });
         });
@@ -968,8 +974,8 @@
             });
             if (!news.length) { return; }
             U.store.set(ALERTS_KEY, a);
-            var shown = news.slice(0, 3).join('  ·  ') + (news.length > 3 ? '  ·  and ' + (news.length - 3) + ' more' : '');
-            U.toast((news.length === 1 ? 'New episode: ' : 'New episodes: ') + shown, 8000);
+            var shown = news.slice(0, 3).join('  ·  ') + (news.length > 3 ? '  ·  ' + U.t('and {n} more', { n: news.length - 3 }) : '');
+            U.toast(U.tn(news.length, 'New episode: {list}', 'New episodes: {list}', { list: shown }), 8000);
         });
     }
     function epCodeOf(x) { return 'S' + x.s + 'E' + x.e; }
@@ -998,26 +1004,26 @@
         if (existing) { existing.parentNode.removeChild(existing); }
         var overlay = U.el('div', 'modal-overlay');
         var box = U.el('div', 'modal-box actions-box');   // (as wide as its buttons)
-        box.appendChild(U.el('div', 'modal-msg', e.name || 'Continue Watching'));
+        box.appendChild(U.el('div', 'modal-msg', e.name || U.t('Continue Watching')));
         var row = U.el('div', 'modal-row');
-        var cancel = U.el('div', 'pill focusable modal-btn', 'Cancel');
-        var details = U.el('div', 'pill focusable modal-btn', 'Details');
-        var remove = U.el('div', 'pill focusable modal-btn danger', 'Remove');
-        var move = U.el('div', 'pill focusable modal-btn', 'Move');
+        var cancel = U.el('div', 'pill focusable modal-btn', U.t('Cancel'));
+        var details = U.el('div', 'pill focusable modal-btn', U.t('Details'));
+        var remove = U.el('div', 'pill focusable modal-btn danger', U.t('Remove'));
+        var move = U.el('div', 'pill focusable modal-btn', U.t('Move'));
         // a show: its new-episode alerts off (or on again)
         var showId = e.type === 'series' && base ? showIdOf(e) : '', alerts = null;
         if (showId) {
             var on = alertsOn(showId), showName = ((showInfoAll()[showId] || {}).name) || ('' + (e.name || '')).replace(/\s+S\d+E\d+$/, '');
-            alerts = U.el('div', 'pill focusable modal-btn', on ? 'Alerts off' : 'Alerts on');
+            alerts = U.el('div', 'pill focusable modal-btn', on ? U.t('Alerts off') : U.t('Alerts on'));
             alerts.__onselect = function () {
                 closeModal();
                 setAlerts(showId, !on);
-                U.toast(on ? 'No new-episode alerts for ' + showName : 'New-episode alerts for ' + showName + ' again');
+                U.toast(on ? U.t('No new-episode alerts for {show}', { show: showName }) : U.t('New-episode alerts for {show} again', { show: showName }));
             };
         }
-        var watched = U.el('div', 'pill focusable modal-btn', 'Mark watched');
+        var watched = U.el('div', 'pill focusable modal-btn', U.t('Mark watched'));
         // Play from start: the same source, from 0:00 (a card with a source saved and a place to resume)
-        var restart = (e.url && e.position > 0) ? U.el('div', 'pill focusable modal-btn', 'Play from start') : null;
+        var restart = (e.url && e.position > 0) ? U.el('div', 'pill focusable modal-btn', U.t('Play from start')) : null;
         if (restart) {
             restart.__onselect = function () {
                 closeModal();
@@ -1025,9 +1031,9 @@
                 App.openDetail(e.type, base, preview, target, { resume: Object.assign({}, e, { fromStart: true }) });
             };
         }
-        var recent = cwOrder() ? U.el('div', 'pill focusable modal-btn', 'Recent first') : null;
+        var recent = cwOrder() ? U.el('div', 'pill focusable modal-btn', U.t('Recent first')) : null;
         move.__onselect = function () { closeModal(); startMove(card); };
-        if (recent) { recent.__onselect = function () { closeModal(); U.store.remove(CW_ORDER_KEY); U.toast('Continue Watching: most recent first'); renderHome(); }; }
+        if (recent) { recent.__onselect = function () { closeModal(); U.store.remove(CW_ORDER_KEY); U.toast(U.t('Continue Watching: most recent first')); renderHome(); }; }
         cancel.__onselect = function () { closeModal(); };
         details.__onselect = function () { closeModal(); App.openDetail(e.type, base, preview, target); };
         if (!base) { details = null; }   // (a plain file from a USB drive: no title page)
@@ -1042,7 +1048,7 @@
         remove.__onselect = function () {
             closeModal();
             dropCard();
-            U.toast('Removed from Continue Watching');
+            U.toast(U.t('Removed from Continue Watching'));
             renderHome();
         };
         // Watched (not just off the row): marked watched (Trakt too, when connected), then off
@@ -1133,7 +1139,7 @@
     function cardsOf(grid) { return Array.prototype.slice.call(grid.children); }
     function moveTitle(on) {
         var t = _moving && _moving.grid.parentNode && _moving.grid.parentNode.querySelector('.row-title');
-        if (t) { t.textContent = on ? 'Continue Watching   ·   arrows: move it   ·   OK: leave it there   ·   BACK: cancel' : CW_TITLE; }
+        if (t) { t.textContent = on ? U.t('Continue Watching   ·   arrows: move it   ·   OK: leave it there   ·   BACK: cancel') : CW_TITLE; }
     }
     function startMove(card) {
         if (!card || !card.parentNode) { return; }
@@ -1233,8 +1239,8 @@
     // prevFocus: a Home card to put focus back on after the rebuild (the card a title
     // was opened from). Otherwise the card currently focused on Home is kept, so rows
     // refreshed in the background don't move focus.
-    var CW_TITLE = 'Continue Watching';   // (holding OK: the corner's "Hold OK for more" says so)
-    var UPCOMING_TITLE = 'Upcoming';
+    var CW_TITLE = U.t('Continue Watching');   // (holding OK: the corner's "Hold OK for more" says so)
+    var UPCOMING_TITLE = U.t('Upcoming');
     function renderHome(prevFocus) {
         _moving = null;   // (a move not left yet: as it was)
         var s = scr('home');
@@ -1306,11 +1312,11 @@
                     }
                     refreshShowInfo(entries);
                 } else {
-                    rows.appendChild(U.el('div', 'row-empty', 'Nothing in Continue Watching yet.'));
+                    rows.appendChild(U.el('div', 'row-empty', U.t('Nothing in Continue Watching yet.')));
                 }
             } else {
                 var cats = catsForTab(_homeTab);
-                if (!cats.length) { rows.appendChild(U.el('div', 'row-empty', _homeLoading ? 'Loading…' : 'Nothing here yet.')); }
+                if (!cats.length) { rows.appendChild(U.el('div', 'row-empty', _homeLoading ? U.t('Loading…') : U.t('Nothing here yet.'))); }
                 else {
                     // render at least down to the row focus is going back to
                     var need = 0;
@@ -1428,8 +1434,8 @@
         var desc = m.description || '';
         var g = /^iptv:/.test(m.id || '') && typeof EPG !== 'undefined' ? EPG.now(m.id) : null;   // a channel: what's on, from its TV guide
         if (g && g.now) {
-            bits = ['Now  ' + EPG.hhmm(g.now.start) + '–' + EPG.hhmm(g.now.stop) + '   ' + g.now.title];
-            desc = (g.now.desc ? g.now.desc + '   ' : '') + (g.next ? 'Next  ' + EPG.hhmm(g.next.start) + '   ' + g.next.title : '');
+            bits = [U.t('Now') + '  ' + EPG.hhmm(g.now.start) + '–' + EPG.hhmm(g.now.stop) + '   ' + g.now.title];
+            desc = (g.now.desc ? g.now.desc + '   ' : '') + (g.next ? U.t('Next') + '  ' + EPG.hhmm(g.next.start) + '   ' + g.next.title : '');
         }
         if (ep) { bits.unshift(ep); }
         box.children[1].textContent = bits.join('   ·   ');
@@ -1521,7 +1527,7 @@
     // fails this time, and swaps the new rows in when they all arrive.
     var _homeFirstLoad = false;
     // A big IPTV playlist takes a while to read: say how far along it is under the spinner.
-    function channelsText(n) { return 'Reading IPTV playlists…  ' + ('' + n).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' channels'; }
+    function channelsText(n) { return U.t('Reading IPTV playlists…  {n} channels', { n: ('' + n).replace(/\B(?=(\d{3})+(?!\d))/g, ',') }); }
     if (typeof IPTV !== 'undefined' && IPTV.onProgress) {
         IPTV.onProgress(function (n) { if (_homeFirstLoad) { U.spinner(true, channelsText(n)); } });
     }
@@ -1543,7 +1549,7 @@
         (_homeCatalogs || []).forEach(function (c) { old[c.type + '|' + c.name] = c.metas; if (c.loading) { oldLoading[c.type + '|' + c.name] = true; } });
         function oldFor(cat) {
             return cat.type === 'other'
-                ? (old['movie|' + otherRowName('Movies', cat.name)] || []).concat(old['series|' + otherRowName('Series', cat.name)] || [])
+                ? (old['movie|' + otherRowName(U.t('Movies'), cat.name)] || []).concat(old['series|' + otherRowName(U.t('Series'), cat.name)] || [])
                 : (old[cat.type + '|' + cat.name] || []);
         }
         var before = first ? null : shownSig();
@@ -1618,7 +1624,7 @@
         }, function () {
             done();
             _wantTab = null;
-            if (first) { U.toast('Failed to load addons. Check network / Settings.'); }
+            if (first) { U.toast(U.t('Failed to load addons. Check network / Settings.')); }
         });
     }
 
@@ -1662,8 +1668,8 @@
             if (c.type !== 'other' || c.yt) { out.push(copyCat(c, c.all ? c.metas.slice() : c.metas.slice(0, rowCards()))); return; }   // (a YouTube one as it is, whatever its type)
             var movies = [], series = [];
             c.metas.forEach(function (m) { (SERIES_NAME.test(m.name || '') ? series : movies).push(m); });
-            out.push({ name: otherRowName('Movies', c.name), type: 'movie', metas: movies.slice(0, rowCards()) });
-            out.push({ name: otherRowName('Series', c.name), type: 'series', metas: series.slice(0, rowCards()) });
+            out.push({ name: otherRowName(U.t('Movies'), c.name), type: 'movie', metas: movies.slice(0, rowCards()) });
+            out.push({ name: otherRowName(U.t('Series'), c.name), type: 'series', metas: series.slice(0, rowCards()) });
         });
         return out;
     }
@@ -1709,7 +1715,7 @@
             }
             var row = buildRow(c.name, c.metas.slice(0, ROW_FIRST).map(function (m) { return posterCard(m, c.type); }));
             if (c.metas.length > ROW_FIRST) { lateCards(row, c); }
-            if (c.loading) { row.className += ' row-loading'; row.appendChild(U.el('div', 'row-empty', 'Loading…')); }   // (its place kept: nothing to focus)
+            if (c.loading) { row.className += ' row-loading'; row.appendChild(U.el('div', 'row-empty', U.t('Loading…'))); }   // (its place kept: nothing to focus)
             rows.appendChild(row);
             built.push(row);
         }

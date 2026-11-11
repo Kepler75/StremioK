@@ -159,7 +159,7 @@ var App = (function () {
 
     // Asked, so a stray BACK (one left over from closing the player) never closes the app; focus
     // starts on Exit, so BACK, OK leaves.
-    function askExit() { Views.confirm('Exit StremioK?', 'Exit', exitApp, { plain: true, focusYes: true }); }
+    function askExit() { Views.confirm(U.t('Exit StremioK?'), U.t('Exit'), exitApp, { plain: true, focusYes: true }); }
     // The TV's own exit where StremioK has it (the sideloaded app). A TizenBrew module's page
     // doesn't get it: the window closed instead, and if it's still open, the TV's way said.
     function exitApp() {
@@ -170,7 +170,7 @@ var App = (function () {
         try { window.close(); } catch (e2) {}
         setTimeout(function () {
             U.log('app', 'Exit: still open after closing the window (' + (typeof YTPlay !== 'undefined' && YTPlay.installMode ? YTPlay.installMode() : '?') + ')');
-            U.toast('Hold BACK to close StremioK', 4000);
+            U.toast(U.t('Hold BACK to close StremioK'), 4000);
         }, 500);
     }
 
@@ -227,7 +227,7 @@ var App = (function () {
     // player closed first. Not over a popup, nor while an addon's link is typed.
     function guideKey() {
         var on = (Views.menuItems ? Views.menuItems() : []).some(function (m) { return m.key === 'guide'; });
-        if (!on) { U.toast('No TV guide yet (Settings › Content › IPTV › Guide link)', 3000); return; }
+        if (!on) { U.toast(U.t('No TV guide yet (Settings › Content › IPTV › Guide link)'), 3000); return; }
         if (Player.isActive()) { Player.exit(); }
         else if (Views.isModalOpen() || _current === 'addaddon') { return; }
         goHome('guide');

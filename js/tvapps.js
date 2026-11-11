@@ -12,7 +12,7 @@ var TVApps = (function () {
 
     function api() { return (window.tizen && tizen.application) || null; }
     function available() { var a = api(); return !!(a && a.getAppsInfo && a.launch); }
-    function errText(e) { return '' + ((e && (e.name || e.message)) || 'unknown error'); }
+    function errText(e) { return '' + ((e && (e.name || e.message)) || U.t('unknown error')); }
     function byName(x, y) { var p = x.name.toLowerCase(), q = y.name.toLowerCase(); return p < q ? -1 : p > q ? 1 : 0; }
 
     // The installed apps, by name: [{ id, name, version, show }] (show false: a hidden
@@ -27,7 +27,7 @@ var TVApps = (function () {
                 reject(new Error(m));
             }
             var a = api();
-            if (!a || !a.getAppsInfo) { reject(new Error('Not available here')); return; }
+            if (!a || !a.getAppsInfo) { reject(new Error(U.t('Not available here'))); return; }
             try {
                 a.getAppsInfo(function (apps) {
                     var list = [];
@@ -52,7 +52,7 @@ var TVApps = (function () {
                 reject(new Error(m));
             }
             var a = api();
-            if (!a || !a.launch) { fail(new Error('Not available here')); return; }
+            if (!a || !a.launch) { fail(new Error(U.t('Not available here'))); return; }
             try { a.launch(app.id, function () { resolve(); }, fail); } catch (e) { fail(e); }
         });
     }
@@ -65,7 +65,7 @@ var TVApps = (function () {
     function sendControl(appId, spec) {
         return new Promise(function (resolve, reject) {
             var a = api();
-            if (!a || !a.launchAppControl || !window.tizen.ApplicationControl) { reject(new Error('Not available here')); return; }
+            if (!a || !a.launchAppControl || !window.tizen.ApplicationControl) { reject(new Error(U.t('Not available here'))); return; }
             try {
                 var data = (spec.data || []).map(function (d) { return new tizen.ApplicationControlData(d[0], ['' + d[1]]); });
                 var ctl = new tizen.ApplicationControl(OP[spec.operation] || spec.operation, spec.uri || null, null, null, data);

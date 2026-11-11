@@ -256,7 +256,7 @@ var XtVod = (function () {
                 var pic = link(i.cover_big || i.movie_image);
                 if (pic) { m.poster = pic; }
                 var secs = +i.duration_secs || 0;
-                if (secs > 0) { m.runtime = Math.round(secs / 60) + ' min'; }
+                if (secs > 0) { m.runtime = U.t('{n} min', { n: Math.round(secs / 60) }); }
                 var y = yearOf(i.releasedate || i.release_date);
                 if (y) { m.releaseInfo = y; m.year = y; }
                 return m;
@@ -271,7 +271,7 @@ var XtVod = (function () {
             var y = yearOf(i.releaseDate || i.release_date);
             if (y) { m.releaseInfo = y; m.year = y; }
             m.videos = episodes(r).map(function (e) {
-                var ei = e.info || {}, v = { id: showId + ':' + e.season + ':' + e.episode, season: e.season, episode: e.episode, title: ('' + (e.title || '')).trim() || 'Episode ' + e.episode };
+                var ei = e.info || {}, v = { id: showId + ':' + e.season + ':' + e.episode, season: e.season, episode: e.episode, title: ('' + (e.title || '')).trim() || U.t('Episode {n}', { n: e.episode }) };
                 if (ei.plot) { v.overview = ('' + ei.plot).slice(0, 1000); }
                 if (link(ei.movie_image)) { v.thumbnail = link(ei.movie_image); }
                 var rel = Date.parse(ei.releasedate || ei.air_date || '');

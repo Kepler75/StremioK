@@ -67,7 +67,7 @@ var StremioSync = (function () {
     function lostSignIn() {
         if (!isConnected()) { return; }
         setState({ reconnect: true });
-        if (!_told) { _told = true; U.toast('Your Stremio account needs connecting again: Settings › Content › Integrations', 6000); U.log('stremio', 'Stremio sign-in no longer works: connect again in Settings'); }
+        if (!_told) { _told = true; U.toast(U.t('Your Stremio account needs connecting again: Settings › Content › Integrations'), 6000); U.log('stremio', 'Stremio sign-in no longer works: connect again in Settings'); }
     }
     function connectStatus() {
         var a = auth() || {}, s = state();
@@ -338,9 +338,9 @@ var StremioSync = (function () {
     function synthAddon() {
         return {
             __local: true, __impl: { catalog: synthCatalog }, url: 'local:stremio', base: 'local:stremio',
-            manifest: { id: 'org.stremiok.stremio-library', name: 'Stremio Library', version: '1.0.0', types: ['movie', 'series'], resources: ['catalog'],
-                catalogs: [{ type: 'movie', id: 'stremio_library_movies', name: 'Stremio Library', extra: [{ name: 'skip' }] },
-                    { type: 'series', id: 'stremio_library_shows', name: 'Stremio Library', extra: [{ name: 'skip' }] }] }
+            manifest: { id: 'org.stremiok.stremio-library', name: U.t('Stremio Library'), version: '1.0.0', types: ['movie', 'series'], resources: ['catalog'],
+                catalogs: [{ type: 'movie', id: 'stremio_library_movies', name: U.t('Stremio Library'), extra: [{ name: 'skip' }] },
+                    { type: 'series', id: 'stremio_library_shows', name: U.t('Stremio Library'), extra: [{ name: 'skip' }] }] }
         };
     }
 
@@ -591,7 +591,7 @@ var StremioSync = (function () {
             setState(sendOnly ? { err: '' } : { last: Date.now(), err: '' });
         }, function (e) {
             if (g !== _gen || (e && e.stale)) { return; }
-            setState({ err: (e && e.message) || 'couldn’t reach Stremio' });
+            setState({ err: (e && e.message) || U.t('couldn’t reach Stremio') });
             U.log('stremio', 'Stremio sync: ' + ((e && e.message) || 'failed'));
         }).then(function () {
             if (_syncing === p) { _syncing = null; }

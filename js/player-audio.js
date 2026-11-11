@@ -69,7 +69,7 @@
         setAudioTrack(tracks[pos].index);
         _audioIdx = tracks[pos].index;
         U.log('player', 'Audio picked before playback (Quick): ' + audioLabel(tracks[pos], pos));
-        U.toast('Audio: ' + audioLabel(tracks[pos], pos));
+        U.toast(U.t('Audio: {track}', { track: audioLabel(tracks[pos], pos) }));
         return true;
     }
 
@@ -136,7 +136,7 @@
         var tracks = getAudioTracks();
         _audioIdx = playingAudioIndex(tracks);
         var pos = preferredPos(tracks);
-        if (pos >= 0 && tracks[pos].index !== _audioIdx) { selectAudio(tracks[pos].index, 'Audio: ' + audioLabel(tracks[pos], pos)); }
+        if (pos >= 0 && tracks[pos].index !== _audioIdx) { selectAudio(tracks[pos].index, U.t('Audio: {track}', { track: audioLabel(tracks[pos], pos) })); }
     }
     // The track to play (its position in tracks), or -1: leave the one playing.
     function preferredPos(tracks) {
@@ -184,7 +184,7 @@
         var lang = info && infoLang(info);
         var ch = info && (info.channels || info.channel);
         var parts = [];
-        parts.push((lang && lang !== 'und' && lang !== '') ? lang : ('Audio ' + (n + 1)));
+        parts.push((lang && lang !== 'und' && lang !== '') ? lang : U.t('Audio {n}', { n: n + 1 }));
         if (ch) { parts.push(ch + 'ch'); }
         return parts.join('  ·  ');
     }
@@ -193,7 +193,7 @@
     function audioMenuLabel(tr, n) {
         var info = trackInfo(tr), lang = infoLang(info);
         var ch = info.channels || info.channel, codec = info.fourCC || info.codec || '';
-        var parts = [lang && lang !== 'und' ? langName(lang) : 'Audio ' + (n + 1)];
+        var parts = [lang && lang !== 'und' ? langName(lang) : U.t('Audio {n}', { n: n + 1 })];
         if (ch) { parts.push(ch + 'ch'); }
         if (codec) { parts.push(('' + codec).toUpperCase()); }
         var label = parts.join('  ·  ');
@@ -233,7 +233,7 @@
             try { var at = S.videoEl.audioTracks; for (var i = 0; i < at.length; i++) { at[i].enabled = (i === index); } } catch (e3) {}
         }
         _audioIdx = index;
-        U.toast(message || 'Audio track changed');
+        U.toast(message || U.t('Audio track changed'));
     }
 
     // A series' episode: the series it's in (its choice of audio carries to the next episodes).
@@ -275,14 +275,14 @@
         if (tries >= HOLD_TRIES) {
             _held = null;
             U.log('player', 'Audio switch to track ' + index + ': still refused after ' + HOLD_TRIES + ' tries, left');
-            U.toast('The TV didn’t switch the audio: choose it again', 4000);
+            U.toast(U.t('The TV didn’t switch the audio: choose it again'), 4000);
             return;
         }
         var first = !_held || _held.index !== index;
         _held = { index: index, message: message, force: force, tries: tries };
         _audioIdx = index;   // (the menu ticks it meanwhile)
         if (first) { U.log('player', 'Audio switch to track ' + index + ' held (' + why + '): made once it plays on'); }
-        if (first && why === 'paused') { U.toast((message || 'Audio track changed') + ': when you carry on', 3000); }
+        if (first && why === 'paused') { U.toast(U.t('{what}: when you carry on', { what: message || U.t('Audio track changed') }), 3000); }
     }
     // ----- Diagnostics: what the TV said of its audio tracks around a switch -----
     var SWITCH_CHECK_MS = 2500;
@@ -293,14 +293,14 @@
         try {
             var l = (avplay.getTotalTrackInfo() || []).filter(function (t) { return t && ('' + t.type).toUpperCase() === 'AUDIO'; }).map(rawOf);
             return l.length ? l.join(' | ') : 'none';
-        } catch (e) { return '(unreadable: ' + trackError(e) + ')'; }
+        } catch (e) { return U.t('(unreadable: {why})', { why: trackError(e) }); }
     }
     // the audio track it says is playing (getCurrentStreamInfo)
     function playingRaw() {
         try {
             var now = (avplay.getCurrentStreamInfo() || []).filter(function (t) { return t && ('' + t.type).toUpperCase() === 'AUDIO'; });
             return now.length ? rawOf(now[0]) : 'none reported';
-        } catch (e) { return '(unreadable: ' + trackError(e) + ')'; }
+        } catch (e) { return U.t('(unreadable: {why})', { why: trackError(e) }); }
     }
 
     // No TV player (TizenBrew: the TV gives it only to installed apps; a desktop browser): the
@@ -309,8 +309,8 @@
     function cantSwitch() { return !avplay; }
     function cantSwitchText() {
         return (typeof YTPlay !== 'undefined' && YTPlay.installMode && YTPlay.installMode() === 'tizenbrew')
-            ? 'Under TizenBrew only a file’s first audio track plays: the TV gives its own player only to installed apps. The sideloaded app can switch.'
-            : 'Here only a file’s first audio track plays (no TV player).';
+            ? U.t('Under TizenBrew only a file’s first audio track plays: the TV gives its own player only to installed apps. The sideloaded app can switch.')
+            : U.t('Here only a file’s first audio track plays (no TV player).');
     }
     // Tracks sorted by language (preferred languages first) and named in full, so the
     // same language's tracks sit together.
@@ -331,7 +331,7 @@
                 run: function () {
                     if (stuck) { closeMenu(); U.toast(cantSwitchText(), 6000); return; }
                     // re-picking the checked track re-applies it (see selectAudio)
-                    selectAudio(tr.index, 'Audio: ' + audioLabel(tr, x.n), tr.index === _audioIdx);
+                    selectAudio(tr.index, U.t('Audio: {track}', { track: audioLabel(tr, x.n) }), tr.index === _audioIdx);
                     var info = trackInfo(tr);
                     var sel = { url: S.ctx.url, index: tr.index, lang: infoLang(info), ch: info.channels || info.channel || '' };
                     rememberAudio(S.ctx.id, sel);
@@ -343,17 +343,17 @@
         // (player-core's setLiveSound), after its tracks.
         var ls = P.liveSound ? P.liveSound() : null;
         if (ls) {
-            [[false, 'Sound: straight from the server'], [true, 'Sound: repacked by StremioK’s service']].forEach(function (o) {
+            [[false, U.t('Sound: straight from the server'), U.t('Already straight from the server')], [true, U.t('Sound: repacked by StremioK’s service'), U.t('Already repacked by StremioK’s service')]].forEach(function (o) {
                 var on = o[0] === ls.repacked;
-                items.push({ label: o[1], sel: on, detail: on && ls.mine ? 'your choice' : '', run: function () {
+                items.push({ label: o[1], sel: on, detail: on && ls.mine ? U.t('your choice') : '', run: function () {
                     closeMenu();
-                    if (on) { U.toast(o[1].replace('Sound: ', 'Already ') + '', 2500); return; }
+                    if (on) { U.toast(o[2], 2500); return; }
                     P.setLiveSound(o[0]);
                 } });
             });
         }
-        if (stuck) { return { title: 'Audio track', items: items, idx: idx, wide: true, node: U.el('div', 'sm-detail', cantSwitchText()) }; }
-        return { title: 'Audio track', items: items, idx: idx };
+        if (stuck) { return { title: U.t('Audio track'), items: items, idx: idx, wide: true, node: U.el('div', 'sm-detail', cantSwitchText()) }; }
+        return { title: U.t('Audio track'), items: items, idx: idx };
     }
 
     // ----- for the other parts (and js/player.js) -----

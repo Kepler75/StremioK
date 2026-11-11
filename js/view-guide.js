@@ -29,7 +29,7 @@
         stopFinding();   // (a lookup from the grid drawn before: stopped)
         var now = Date.now() / 1000, chans = EPG.guided(), was = _g;
         var g = _g = { el: rows, start: floorStep(now), live: true, chans: chans, lists: {}, asked: {}, failed: {}, got: {}, top: 0, nodes: [], at: Date.now(), gen: EPG.generation ? EPG.generation() : 0 };   // (live: the hours show the present, and follow the clock: tick)
-        if (!chans.length) { rows.appendChild(U.el('div', 'row-empty', 'No TV guide yet (Settings › Content › IPTV › Guide link).')); return; }
+        if (!chans.length) { rows.appendChild(U.el('div', 'row-empty', U.t('No TV guide yet (Settings › Content › IPTV › Guide link).'))); return; }
         if (was && was.at && !was.reading && Date.now() - was.at < REUSE_MS && was.gen === g.gen && sameChans(was, chans)) {
             var f = Focus.current(), want = (f && was.box && was.box.contains(f) && f.__chan) ? (f.__loading ? { id: f.__chan, t: f.__t } : { id: f.__chan, start: f.__p.start }) : null;
             g.lists = was.lists; g.asked = was.asked; g.failed = was.failed || {}; g.got = was.got || {}; g.at = was.at; g.top = was.top;
@@ -39,7 +39,7 @@
             if (n && (want || !cur || !document.documentElement.contains(cur) || /\b(tab-pill|hchip)\b/.test(cur.className || ''))) { Focus.setScope(scr('home'), n); }
             return;
         }
-        rows.appendChild(U.el('div', 'row-empty guide-loading', 'Reading the TV guide…'));
+        rows.appendChild(U.el('div', 'row-empty guide-loading', U.t('Reading the TV guide…')));
         ensure(g).then(function () {
             if (_g !== g || !document.documentElement.contains(rows)) { return; }
             var first = draw(g);
@@ -136,7 +136,7 @@
         if (loading) { loading.parentNode.removeChild(loading); }
         var box = U.el('div', 'guide'), now = Date.now() / 1000, end = g.start + SPAN, found = null, first = null;
         var head = U.el('div', 'guide-head'), hours = U.el('div', 'guide-hours');
-        head.appendChild(U.el('div', 'guide-corner', EPG.dayTime(g.start).length > 5 ? EPG.dayTime(g.start).split(' ')[0] : 'Today'));
+        head.appendChild(U.el('div', 'guide-corner', EPG.dayTime(g.start).length > 5 ? EPG.dayTime(g.start).split(' ')[0] : U.t('Today')));
         for (var t = g.start; t < end; t += STEP) {
             var mark = U.el('div', 'guide-time', EPG.hhmm(t));
             mark.setAttribute('style', 'left: ' + pct((t - g.start) / SPAN) + '%');
@@ -165,11 +165,11 @@
                 n.__goDOWN = function () { return vertical(g, r, 1, n); };
             }
             if (!(c.id in g.lists)) {   // (not read yet: says so, and can be passed through)
-                var wait = U.el('div', 'guide-prog guide-wait focusable', g.failed[c.id] ? 'Its TV guide didn’t come: asked again shortly' : 'Loading…');
+                var wait = U.el('div', 'guide-prog guide-wait focusable', g.failed[c.id] ? U.t('Its TV guide didn’t come: asked again shortly') : U.t('Loading…'));
                 wait.setAttribute('style', 'left: 0%; width: 100%');
                 wait.__p = { start: g.start, stop: end, title: '' }; wait.__loading = true;
                 wait.__t = want && want.id === c.id && typeof want.t === 'number' ? want.t : Math.max(now, g.start);
-                wait.__meta = { name: c.name, releaseInfo: 'Reading its TV guide…' };
+                wait.__meta = { name: c.name, releaseInfo: U.t('Reading its TV guide…') };
                 hooks(wait, -1);
                 wait.__onlongpress = function () { hold(g, r, null); };
                 if (!c.guideOnly) { wait.__onselect = function () { playChannel(g, r); }; wait.__onplay = function () { playChannel(g, r, true); }; }   // (OK: the channel, as for what's on now)
@@ -182,7 +182,7 @@
                     var on = p.start <= now && now < p.stop, a = Math.max(p.start, g.start), b = Math.min(p.stop, end);
                     var n = U.el('div', 'guide-prog focusable' + (on ? ' now' : ''), p.title);
                     n.setAttribute('style', 'left: ' + pct((a - g.start) / SPAN) + '%; width: ' + pct((b - a) / SPAN) + '%');
-                    n.__meta = { name: p.title, releaseInfo: c.name + '   ·   ' + EPG.dayTime(p.start) + '–' + EPG.hhmm(p.stop) + (c.guideOnly ? '   ·   OK: find it in your addons' : ''), description: p.desc, picture: p.picture };
+                    n.__meta = { name: p.title, releaseInfo: c.name + '   ·   ' + EPG.dayTime(p.start) + '–' + EPG.hhmm(p.stop) + (c.guideOnly ? '   ·   ' + U.t('OK: find it in your addons') : ''), description: p.desc, picture: p.picture };
                     n.__p = p; n.__i = i;
                     n.__onselect = function () { pick(g, r, p); };
                     n.__onlongpress = function () { hold(g, r, p); };
@@ -207,7 +207,7 @@
             g.nodes[r] = nodes;
         });
         if (!any && g.chans.slice(g.top, g.top + ROWS).every(function (c) { return c.id in g.lists; })) {
-            box.appendChild(U.el('div', 'row-empty guide-empty', 'Nothing on any channel in these hours.'));
+            box.appendChild(U.el('div', 'row-empty guide-empty', U.t('Nothing on any channel in these hours.')));
         }
         if (old) { g.el.removeChild(old); }   // (the grid is all the tab has)
         g.el.appendChild(box);
@@ -308,7 +308,7 @@
         if (c.guideOnly) { findInAddons(p); return; }
         if (p.start <= now && now < p.stop) { playChannel(g, r); return; }
         U.toast(EPG.dayTime(p.start) + '–' + EPG.hhmm(p.stop) + '   ' + c.name + '   ·   ' + p.title + (p.desc ? ':  ' + p.desc : '') +
-            (p.stop <= now ? '   (already shown)' : ''), 8000);
+            (p.stop <= now ? '   ' + U.t('(already shown)') : ''), 8000);
     }
 
     // Hold OK on a program: ▶ Watch now (what's on now, a channel that plays), ★ Add to / Remove
@@ -316,14 +316,14 @@
     // OK). p: null for a channel whose guide hasn't come (Watch now, its favorites).
     function hold(g, r, p) {
         var c = g.chans[r], now = Date.now() / 1000, fav = IPTV.isFavorite(c.id), items = [];
-        if (!c.guideOnly && (!p || (p.start <= now && now < p.stop))) { items.push(['play', '▶  Watch now']); }
-        items.push(['fav', fav ? '★  Remove from favorites' : '★  Add to favorites']);
-        if (p && p.title) { items.push(['find', '🔍  Find in your addons']); }
+        if (!c.guideOnly && (!p || (p.start <= now && now < p.stop))) { items.push(['play', U.t('▶  Watch now')]); }
+        items.push(['fav', fav ? U.t('★  Remove from favorites') : U.t('★  Add to favorites')]);
+        if (p && p.title) { items.push(['find', U.t('🔍  Find in your addons')]); }
         pickList(c.name + (p && p.title ? '  ·  ' + p.title : ''), items, items[0][0], function (v) {
             if (v === 'play') { if (p) { pick(g, r, p); } else { playChannel(g, r); } return; }
             if (v === 'find') { findInAddons(p); return; }
             IPTV.setFavorite(c.id, !fav);
-            U.toast(fav ? 'Removed from favorites' : 'Added to favorites: ★ Favorites, first on the IPTV and Guide tabs', 3000);
+            U.toast(fav ? U.t('Removed from favorites') : U.t('Added to favorites: ★ Favorites, first on the IPTV and Guide tabs'), 3000);
             refreshAddonRows('local:iptv');
         });
     }
@@ -344,7 +344,7 @@
         function search() { App.openSearch(); Views.searchFor(p.title); }
         if (p.kind === 'series') { search(); return; }
         var gen = _finding, grid = _g, cancel = _findCancel = U.cancelToken();
-        U.spinner(true, 'Looking for “' + p.title + '”…');
+        U.spinner(true, U.t('Looking for “{title}”…', { title: p.title }));
         function done(hit) {
             if (gen !== _finding) { return; }
             _findCancel = null;

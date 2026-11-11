@@ -278,15 +278,20 @@ var YTPlay = (function () {
 
     // What to tell you when the service doesn't answer. what: 'channel' | 'trailer'
     function unavailableMessage(what) {
-        var thing = what === 'trailer' ? 'Trailers play' : what === 'video' ? 'YouTube videos play' : 'YouTube channels play';
+        // (each said whole: what plays through the service, and why it didn't answer)
         if (MODE === 'tizenbrew') {
-            return thing + ' through StremioK’s YouTube service, which TizenBrew hasn’t started. ' +
-                'Close StremioK and open it again from TizenBrew; if that doesn’t help, update TizenBrew.';
+            return what === 'trailer' ? U.t('Trailers play through StremioK’s YouTube service, which TizenBrew hasn’t started. Close StremioK and open it again from TizenBrew; if that doesn’t help, update TizenBrew.')
+                : what === 'video' ? U.t('YouTube videos play through StremioK’s YouTube service, which TizenBrew hasn’t started. Close StremioK and open it again from TizenBrew; if that doesn’t help, update TizenBrew.')
+                : U.t('YouTube channels play through StremioK’s YouTube service, which TizenBrew hasn’t started. Close StremioK and open it again from TizenBrew; if that doesn’t help, update TizenBrew.');
         }
         if (MODE === 'wgt') {
-            return thing + ' through StremioK’s YouTube service, which didn’t start. Try again, or restart StremioK.';
+            return what === 'trailer' ? U.t('Trailers play through StremioK’s YouTube service, which didn’t start. Try again, or restart StremioK.')
+                : what === 'video' ? U.t('YouTube videos play through StremioK’s YouTube service, which didn’t start. Try again, or restart StremioK.')
+                : U.t('YouTube channels play through StremioK’s YouTube service, which didn’t start. Try again, or restart StremioK.');
         }
-        return thing + ' through StremioK’s YouTube service, which runs on the TV (not in a browser).';
+        return what === 'trailer' ? U.t('Trailers play through StremioK’s YouTube service, which runs on the TV (not in a browser).')
+            : what === 'video' ? U.t('YouTube videos play through StremioK’s YouTube service, which runs on the TV (not in a browser).')
+            : U.t('YouTube channels play through StremioK’s YouTube service, which runs on the TV (not in a browser).');
     }
 
     // One look at the service, without starting it: resolves true / false.
@@ -296,7 +301,7 @@ var YTPlay = (function () {
 
     // For Settings: how StremioK was installed.
     function installLabel() {
-        return MODE === 'tizenbrew' ? 'TizenBrew module' : MODE === 'wgt' ? 'Sideloaded app (.wgt)' : 'Browser (development)';
+        return MODE === 'tizenbrew' ? U.t('TizenBrew module') : MODE === 'wgt' ? U.t('Sideloaded app (.wgt)') : U.t('Browser (development)');
     }
 
     return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, hlsMaster: hlsMaster, aiomAddons: aiomAddons, stalkerList: stalkerList, stalkerVod: stalkerVod, drmLicense: drmLicense, stalkerPlayUrl: stalkerPlayUrl, stalkerGenres: stalkerGenres, stalkerLink: stalkerLink, xtvodAsk: xtvodAsk, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, entryGive: entryGive, entrySeen: entrySeen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },

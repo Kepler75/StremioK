@@ -147,7 +147,7 @@ var Downloads = (function () {
         return clean(named || (label + ext));
     }
     function clean(n) { return ('' + n).replace(/[\/\\:*?"<>|\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+/, '').slice(0, 180); }
-    function size(n) { return LocalMedia.humanSize(n) || 'size unknown'; }
+    function size(n) { return LocalMedia.humanSize(n) || U.t('size unknown'); }
     // The drives with their free space: [{ drive, free, fs }]
     function spaces() {
         return LocalMedia.drives().then(function (ds) {
@@ -160,44 +160,44 @@ var Downloads = (function () {
     // stream: the source; t: { type, videoId, label (the title, episode code), titleId };
     // ui: { pick(title, options, onPick), confirm(msg, ok, fn) } (the views' popups)
     function start(stream, t, ui) {
-        if (!available()) { U.toast('Plug a USB drive into the TV first'); return; }
-        if (!isFileLink(stream)) { U.toast('This source is a streamed playlist (HLS or DASH), not a file: it can’t be downloaded. Pick another source.', 6000); return; }
+        if (!available()) { U.toast(U.t('Plug a USB drive into the TV first')); return; }
+        if (!isFileLink(stream)) { U.toast(U.t('This source is a streamed playlist (HLS or DASH), not a file: it can’t be downloaded. Pick another source.'), 6000); return; }
         var name = fileNameFor(stream, t.label), bytes = +((stream.behaviorHints || {}).videoSize) || 0;
         spaces().then(function (list) {
-            if (!list.length) { U.toast('No USB drive'); return; }
+            if (!list.length) { U.toast(U.t('No USB drive')); return; }
             function go(sp) {
-                if (bytes && sp.free != null && sp.free < bytes) { U.toast('Not enough space on ' + driveName(sp.drive) + ': it needs ' + size(bytes) + ', ' + size(sp.free) + ' free', 6000); return; }
-                if (bytes > 4294967295 && /^(vfat|msdos|fat)/.test(sp.fs || '')) { U.toast(driveName(sp.drive) + ' is FAT32, which can’t hold a file over 4 GB', 6000); return; }
+                if (bytes && sp.free != null && sp.free < bytes) { U.toast(U.t('Not enough space on {drive}: it needs {size}, {free} free', { drive: driveName(sp.drive), size: size(bytes), free: size(sp.free) }), 6000); return; }
+                if (bytes > 4294967295 && /^(vfat|msdos|fat)/.test(sp.fs || '')) { U.toast(U.t('{drive} is FAT32, which can’t hold a file over 4 GB', { drive: driveName(sp.drive) }), 6000); return; }
                 var dir = sp.drive.root + '/' + FOLDER;
-                ui.confirm('Download “' + name + '” (' + size(bytes) + ') to ' + driveName(sp.drive) + (sp.free != null ? ' (' + size(sp.free) + ' free)' : '') +
-                    '? It goes into its ' + FOLDER + ' folder; Home › Local shows how it’s going.' + subNote(t.sub), 'Download', function () {
+                ui.confirm((sp.free != null ? U.t('Download “{name}” ({size}) to {drive} ({free} free)? It goes into its {folder} folder; Home › Local shows how it’s going.', { name: name, size: size(bytes), drive: driveName(sp.drive), free: size(sp.free), folder: FOLDER })
+                    : U.t('Download “{name}” ({size}) to {drive}? It goes into its {folder} folder; Home › Local shows how it’s going.', { name: name, size: size(bytes), drive: driveName(sp.drive), folder: FOLDER })) + subNote(t.sub), U.t('Download'), function () {
                     var h = stream._headers || {};
                     add({ kind: 'video', title: t.label, name: name, dir: dir, url: stream.url, ua: h.ua || '', ref: h.ref || '', size: bytes || 0,
                         type: t.type, vid: t.videoId, sid: Stremio.sourceId ? Stremio.sourceId(stream) : '',
                         tid: t.titleId, ttype: t.type === 'series' ? 'series' : 'movie', tname: t.name || '', tposter: t.poster || '', tyear: t.year || '' }).then(function () {
-                        U.toast('Downloading to ' + driveName(sp.drive) + ': Home › Local shows how it’s going', 5000);
-                    }, function (e) { U.toast('Couldn’t start the download: ' + U.problem(e), 6000); });
+                        U.toast(U.t('Downloading to {drive}: Home › Local shows how it’s going', { drive: driveName(sp.drive) }), 5000);
+                    }, function (e) { U.toast(U.t('Couldn’t start the download: {why}', { why: U.problem(e) }), 6000); });
                     if (t.sub === undefined) { subtitleFor(stream, t, dir, name); }   // (from a source: your language's, when an addon has one)
                     else if (t.sub && t.sub.url) { addSub(t, dir, name, t.sub.url, t.sub.lang); }   // (from the player: the one that's on)
                 });
             }
             if (list.length === 1) { go(list[0]); return; }
-            ui.pick('Download to which drive?', list.map(function (sp, i) { return ['' + i, driveName(sp.drive) + (sp.free != null ? '   ·   ' + size(sp.free) + ' free' : '')]; }), function (k) { go(list[+k]); });
-        }, function () { U.toast('Couldn’t read the USB drives'); });
+            ui.pick(U.t('Download to which drive?'), list.map(function (sp, i) { return ['' + i, driveName(sp.drive) + (sp.free != null ? '   ·   ' + U.t('{free} free', { free: size(sp.free) }) : '')]; }), function (k) { go(list[+k]); });
+        }, function () { U.toast(U.t('Couldn’t read the USB drives')); });
     }
     // What's said about the subtitle, from the player (t.sub: the one that's on; undefined: from a
     // source, nothing said).
     function subNote(sub) {
         if (sub === undefined) { return ''; }
-        if (sub && sub.url) { return ' With the subtitle that’s on' + (sub.name ? ' (' + sub.name + ')' : '') + ', next to it.'; }
-        if (sub && sub.embedded) { return ' Its built-in subtitles come with it.'; }
-        return ' No subtitle (they’re off).';
+        if (sub && sub.url) { return ' ' + (sub.name ? U.t('With the subtitle that’s on ({name}), next to it.', { name: sub.name }) : U.t('With the subtitle that’s on, next to it.')); }
+        if (sub && sub.embedded) { return ' ' + U.t('Its built-in subtitles come with it.'); }
+        return ' ' + U.t('No subtitle (they’re off).');
     }
     // A subtitle file next to the video: the video's name with the language (Film.en.srt).
     function addSub(t, dir, name, url, lang) {
         var two = (typeof Player !== 'undefined' && Player.lang2) ? (Player.lang2(lang) || (Player.langKey ? Player.lang2(Player.langKey(lang)) : '')) : '', code = two || ('' + (lang || '')).toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 12) || 'sub';
         var ext = /\.vtt(\?|$)/i.test(url) ? '.vtt' : '.srt';
-        add({ kind: 'sub', title: t.label + ' (subtitles)', name: name.replace(/\.[^.]+$/, '') + '.' + code + ext, dir: dir, url: url, size: 0 });
+        add({ kind: 'sub', title: t.label + ' ' + U.t('(subtitles)'), name: name.replace(/\.[^.]+$/, '') + '.' + code + ext, dir: dir, url: url, size: 0 });
     }
     // A subtitle in your language next to it (Film.en.srt), when a subtitle addon has one.
     function subtitleFor(stream, t, dir, name) {

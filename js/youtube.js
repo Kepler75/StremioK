@@ -12,17 +12,17 @@ var YouTube = (function () {
     var MAX_CATALOGS = 40;
     var KINDS = ['auto', 'videos', 'channels', 'live'];
     var SORTS = ['relevance', 'date', 'views', 'rating'];
-    var KIND_NAMES = { auto: 'Auto (what the source is)', videos: 'Videos', channels: 'Channels', live: 'Live now' };
-    var SORT_NAMES = { relevance: 'Relevance', date: 'Upload date', views: 'View count', rating: 'Rating' };
+    var KIND_NAMES = { auto: U.t('Auto (what the source is)'), videos: U.t('Videos'), channels: U.t('Channels'), live: U.t('Live now') };
+    var SORT_NAMES = { relevance: U.t('Relevance'), date: U.t('Upload date'), views: U.t('View count'), rating: U.t('Rating') };
     // SponsorBlock's sections, what each is called, and what's done with it by default:
     // skip (jump over it), ask (a "Skip …" button), show (on the progress bar only), off.
     // The highlight is a button on the UP bar; a whole-video label, a note when it starts.
     var SB_CATS = ['sponsor', 'selfpromo', 'interaction', 'intro', 'outro', 'preview', 'music_offtopic', 'filler', 'poi_highlight', 'exclusive_access'];
-    var SB_NAMES = { sponsor: 'Sponsor', selfpromo: 'Self-promotion', interaction: 'Interaction reminder', intro: 'Intro', outro: 'Endcards / credits',
-        preview: 'Preview / recap', music_offtopic: 'Non-music section', filler: 'Filler / tangent', poi_highlight: 'Highlight', exclusive_access: 'Exclusive access' };
+    var SB_NAMES = { sponsor: U.t('Sponsor'), selfpromo: U.t('Self-promotion'), interaction: U.t('Interaction reminder'), intro: U.t('Intro'), outro: U.t('Endcards / credits'),
+        preview: U.t('Preview / recap'), music_offtopic: U.t('Non-music section'), filler: U.t('Filler / tangent'), poi_highlight: U.t('Highlight'), exclusive_access: U.t('Exclusive access') };
     var SB_DEFAULTS = { sponsor: 'skip', selfpromo: 'ask', interaction: 'ask', intro: 'show', outro: 'show', preview: 'show', music_offtopic: 'show', filler: 'show',
         poi_highlight: 'show', exclusive_access: 'show' };
-    var SB_MODE_NAMES = { skip: 'Skip', ask: 'Ask (a Skip button)', show: 'Show on the bar', off: 'Off' };
+    var SB_MODE_NAMES = { skip: U.t('Skip'), ask: U.t('Ask (a Skip button)'), show: U.t('Show on the bar'), off: U.t('Off') };
     function sbModesFor(cat) { return (cat === 'poi_highlight' || cat === 'exclusive_access') ? ['show', 'off'] : ['skip', 'ask', 'show', 'off']; }
 
     // ----- your catalogs -----
@@ -152,9 +152,9 @@ var YouTube = (function () {
                 extra: search ? [{ name: 'search', isRequired: true }, { name: 'skip' }] : [{ name: 'skip' }] });
         });
         if (searchOn()) {
-            out.push({ type: 'YouTube', id: 'ytk_search_videos', name: 'Videos', extra: [{ name: 'search', isRequired: true }, { name: 'skip' }] });
-            out.push({ type: 'YouTube', id: 'ytk_search_channels', name: 'Channels', extra: [{ name: 'search', isRequired: true }, { name: 'skip' }] });
-            out.push({ type: 'YouTube', id: 'ytk_search_live', name: 'Live now', extra: [{ name: 'search', isRequired: true }, { name: 'skip' }] });
+            out.push({ type: 'YouTube', id: 'ytk_search_videos', name: U.t('Videos'), extra: [{ name: 'search', isRequired: true }, { name: 'skip' }] });
+            out.push({ type: 'YouTube', id: 'ytk_search_channels', name: U.t('Channels'), extra: [{ name: 'search', isRequired: true }, { name: 'skip' }] });
+            out.push({ type: 'YouTube', id: 'ytk_search_live', name: U.t('Live now'), extra: [{ name: 'search', isRequired: true }, { name: 'skip' }] });
         }
         return out;
     }
@@ -178,7 +178,7 @@ var YouTube = (function () {
         return ready.then(function () { return U.getJSON(proxy() + '/ytlist?' + q + (wantBrand() ? '&brand=1' : '') + (originalTitles() ? '&orig=1' : ''), 25000, 4 * 1024 * 1024); });
     }
     // A video's title and picture, with DeArrow's (when it has them and they're turned on).
-    function titleOf(it) { var b = it.brand; return (b && typeof b.title === 'string' && b.title && dearrow().titles) ? b.title : (it.title || 'YouTube video'); }
+    function titleOf(it) { var b = it.brand; return (b && typeof b.title === 'string' && b.title && dearrow().titles) ? b.title : (it.title || U.t('YouTube video')); }
     function thumbOf(it) { var b = it.brand; return (b && typeof b.thumbAt === 'number' && dearrow().thumbs) ? dearrowThumb(it.id, b.thumbAt) : it.thumb; }
 
     // What a list item becomes on a card. Video items are kept (by id) for their pages.
@@ -187,10 +187,10 @@ var YouTube = (function () {
         var desc = [it.by, it.length, it.views, it.ago].filter(Boolean).join('   ·   ');
         if (it.kind === 'video') {
             var name = titleOf(it), poster = thumbOf(it);
-            if (name !== it.title && it.title) { desc = 'On YouTube: “' + it.title + '”' + (desc ? '   ·   ' + desc : ''); }
-            if (it.live) { desc = '● LIVE now' + (desc ? '   ·   ' + desc : ''); }
+            if (name !== it.title && it.title) { desc = U.t('On YouTube: “{title}”', { title: it.title }) + (desc ? '   ·   ' + desc : ''); }
+            if (it.live) { desc = '● ' + U.t('LIVE now') + (desc ? '   ·   ' + desc : ''); }
             var m = { id: 'ytk:v:' + it.id, type: type, name: name, poster: it.thumb, posterShape: 'landscape',
-                background: 'https://i.ytimg.com/vi/' + it.id + '/hqdefault.jpg', description: desc, releaseInfo: it.live ? '● LIVE' : (it.ago || '') };
+                background: 'https://i.ytimg.com/vi/' + it.id + '/hqdefault.jpg', description: desc, releaseInfo: it.live ? '● ' + U.t('LIVE') : (it.ago || '') };
             if (poster !== it.thumb) { m._cardImage = poster; m._posterAlt = it.thumb; }   // (DeArrow's on the card; not made yet: YouTube's)
             _known.set(m.id, { meta: m, item: it });
             return m;
@@ -255,10 +255,10 @@ var YouTube = (function () {
                 : Promise.resolve(null));
             var brand = (base || !dearrow().titles) ? Promise.resolve(null) : videoExtras(m[2]).then(function (x) { return x && x.brand; });
             return Promise.all([details, brand]).then(function (both) {
-                var d = both[0], b = both[1], yt = (d && d.title) || 'YouTube video', better = b && b.title;
+                var d = both[0], b = both[1], yt = (d && d.title) || U.t('YouTube video'), better = b && b.title;
                 var out = base || { id: id, type: 'YouTube', name: better || yt, poster: 'https://i.ytimg.com/vi/' + m[2] + '/mqdefault.jpg',
                     posterShape: 'landscape', background: 'https://i.ytimg.com/vi/' + m[2] + '/hqdefault.jpg',
-                    description: (better && d && d.title ? 'On YouTube: “' + d.title + '”   ·   ' : '') + (d ? [d.by, d.description].filter(Boolean).join('   ·   ') : '') };
+                    description: (better && d && d.title ? U.t('On YouTube: “{title}”', { title: d.title }) + '   ·   ' : '') + (d ? [d.by, d.description].filter(Boolean).join('   ·   ') : '') };
                 out.videos = [{ id: id, title: out.name, streams: [{ name: 'YouTube', ytId: m[2] }] }];
                 return out;
             });
@@ -275,8 +275,8 @@ var YouTube = (function () {
                 description: head.description || '',
                 videos: live.map(function (v) {
                     var vm = toMeta(v, 'YouTube');
-                    return { id: vm.id, title: '● LIVE   ' + vm.name, season: 1, episode: 0, released: now, thumbnail: v.thumb, live: true,
-                        overview: ['Live now', v.views].filter(Boolean).join('   ·   ') };
+                    return { id: vm.id, title: '● ' + U.t('LIVE') + '   ' + vm.name, season: 1, episode: 0, released: now, thumbnail: v.thumb, live: true,
+                        overview: [U.t('Live now'), v.views].filter(Boolean).join('   ·   ') };
                 }).concat(vids.map(function (v, i) {
                     var vm = toMeta(v, 'YouTube');
                     return { id: vm.id, title: vm.name, season: 1, episode: i + 1, released: agoToDate(v.ago), thumbnail: v.thumb,
@@ -287,7 +287,7 @@ var YouTube = (function () {
     // A video's source: its YouTube id (played through the service, see Stremio.youTubeSource).
     function streams(id) {
         var m = ('' + id).match(/^ytk:v:([A-Za-z0-9_-]{11})$/);
-        return Promise.resolve(m ? [{ name: 'YouTube', title: 'Plays through StremioK’s YouTube service', ytId: m[1] }] : []);
+        return Promise.resolve(m ? [{ name: 'YouTube', title: U.t('Plays through StremioK’s YouTube service'), ytId: m[1] }] : []);
     }
 
     // ----- copying a YouTubio addon's catalogs -----

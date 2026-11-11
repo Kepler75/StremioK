@@ -105,10 +105,10 @@
         _ytRetried = false;                 // new pick → its one-shot retry is available again
         _autoRetried = false;               // ...and so is the final Auto fallback
         _userPicked = true;
-        var label = bw == null ? 'Auto quality' : (labelForBw(bw) || 'new quality');
-        _startNote = bw == null ? 'Playing with Auto quality' : 'Playing at ' + label;
+        var label = bw == null ? U.t('Auto quality') : (labelForBw(bw) || U.t('new quality'));
+        _startNote = bw == null ? U.t('Playing with Auto quality') : U.t('Playing at {quality}', { quality: label });
         S.ctx.resumeSec = S.isLive ? 0 : S.cur;
-        _switchNote = message || 'Switching to ' + label + '…';
+        _switchNote = message || U.t('Switching to {quality}…', { quality: label });
         U.spinner(true, _switchNote);
         // YouTube: don't re-open the same (cached, now-stale) master and lean on an AVPlay cap.
         // Rebuild the proxy URL so the service serves a single-rung master (&h=) from a FRESH
@@ -134,7 +134,7 @@
         S.ctx.resumeSec = S.isLive ? 0 : S.cur;
         S.ctx.url = YTPlay.resolverUrl(S.ctx.yt, retryHeight, true, S.ctx.ytLang);
         // Right after a switch this retry is routine: keep saying "Switching to …"
-        U.spinner(true, _switchNote || ((retryHeight ? retryHeight + 'p' : 'The stream') + ' didn\'t start — retrying…'));
+        U.spinner(true, _switchNote || (retryHeight ? U.t('{quality} didn\'t start — retrying…', { quality: retryHeight + 'p' }) : U.t('The stream didn\'t start — retrying…')));
         _switchNote = null;
         if (P.useAV) { startAV(S.ctx.url, true); } else { startHTML5(S.ctx.url); }
         return true;
@@ -146,7 +146,7 @@
         if (_qualityBw == null) { return false; }
         var lower = nextLowerBw(_qualityBw);
         if (lower == null) { return false; }
-        setQuality(lower, (labelForBw(_qualityBw) || 'That quality') + ' didn\'t start — trying ' + labelForBw(lower) + '…');
+        setQuality(lower, U.t('{quality} didn\'t start — trying {lower}…', { quality: labelForBw(_qualityBw) || U.t('That quality'), lower: labelForBw(lower) }));
         return true;
     }
 
@@ -162,8 +162,8 @@
         S.ctx.initialQualityHeight = 0;
         S.ctx.resumeSec = S.isLive ? 0 : S.cur;
         if (S.ctx.yt && typeof YTPlay !== 'undefined') { S.ctx.url = YTPlay.resolverUrl(S.ctx.yt, 0, true, S.ctx.ytLang); }
-        _startNote = wasAuto ? '' : 'Playing with Auto quality';
-        U.spinner(true, wasAuto ? 'Stream didn\'t start — retrying…' : 'Retrying with Auto quality…');
+        _startNote = wasAuto ? '' : U.t('Playing with Auto quality');
+        U.spinner(true, wasAuto ? U.t('Stream didn\'t start — retrying…') : U.t('Retrying with Auto quality…'));
         if (P.useAV) { startAV(S.ctx.url); } else { startHTML5(S.ctx.url); }
         return true;
     }
@@ -289,8 +289,8 @@
         S.ctx.resumeSec = S.cur;
         var v = variantByBw(_qualityBw);
         S.ctx.url = YTPlay.resolverUrl(S.ctx.yt, v ? v.h : (S.ctx.initialQualityHeight || 0), true, lang);
-        _switchNote = 'Switching to ' + ytLangLabel(a) + '…';
-        _startNote = 'Audio: ' + ytLangLabel(a);
+        _switchNote = U.t('Switching to {quality}…', { quality: ytLangLabel(a) });
+        _startNote = U.t('Audio: {track}', { track: ytLangLabel(a) });
         U.spinner(true, _switchNote);
         if (P.useAV) { startAV(S.ctx.url, true); } else { startHTML5(S.ctx.url); }
     }
@@ -300,20 +300,20 @@
         var idx = 0;
         var items = list.map(function (a, i) {
             if (a === cur) { idx = i; }
-            return { label: ytLangLabel(a), detail: a.original ? 'Original' : 'AI-dubbed by YouTube', sel: a === cur,
+            return { label: ytLangLabel(a), detail: a.original ? U.t('Original') : U.t('AI-dubbed by YouTube'), sel: a === cur,
                 run: function () { closeMenu(); setYtLanguage(a); } };
         });
-        return { title: 'Audio language', items: items, idx: idx };
+        return { title: U.t('Audio language'), items: items, idx: idx };
     }
 
     function qualityLabel() {
-        if (_qualityBw == null) { return 'Auto'; }
+        if (_qualityBw == null) { return U.t('Auto'); }
         for (var i = 0; i < _variants.length; i++) { if (_variants[i].bw === _qualityBw) { return _variants[i].label; } }
-        return 'Auto';
+        return U.t('Auto');
     }
 
     function qualityMenu() {
-        var items = [{ label: 'Auto', detail: 'Adapt to bandwidth', sel: _qualityBw == null,
+        var items = [{ label: U.t('Auto'), detail: U.t('Adapt to bandwidth'), sel: _qualityBw == null,
             run: function () { setQuality(null); closeMenu(); } }];
         _variants.forEach(function (v) {
             items.push({ label: v.label, detail: Math.round(v.bw / 1000) + ' kbps', sel: _qualityBw === v.bw,
@@ -321,7 +321,7 @@
         });
         var idx = 0;
         for (var i = 0; i < items.length; i++) { if (items[i].sel) { idx = i; break; } }
-        return { title: 'Video quality', items: items, idx: idx };
+        return { title: U.t('Video quality'), items: items, idx: idx };
     }
 
     // ----- for the other parts (and js/player.js) -----

@@ -36,8 +36,8 @@ var ViewParts = {};
         var box = U.el('div', 'modal-box');
         box.appendChild(U.el('div', 'modal-msg', message));
         var row = U.el('div', 'modal-row');
-        var no = U.el('div', 'pill focusable modal-btn', opts.noLabel || 'Cancel');
-        var yes = U.el('div', 'pill focusable modal-btn' + (opts.plain ? '' : ' danger'), confirmLabel || 'Confirm');
+        var no = U.el('div', 'pill focusable modal-btn', opts.noLabel || U.t('Cancel'));
+        var yes = U.el('div', 'pill focusable modal-btn' + (opts.plain ? '' : ' danger'), confirmLabel || U.t('Confirm'));
         no.__onselect = function () { closeModal(); if (opts.onNo) { opts.onNo(); } };
         yes.__onselect = function () { closeModal(); onYes(); };
         row.appendChild(no);
@@ -67,7 +67,7 @@ var ViewParts = {};
         box.appendChild(qrSpot(text));
         box.appendChild(U.el('div', 'qr-link', U.redactUrl ? U.redactUrl(text) : text));
         (lines || []).forEach(function (l) { box.appendChild(U.el('div', 'qr-note', l)); });
-        var row = U.el('div', 'modal-row'), done = U.el('div', 'pill focusable modal-btn', 'Done');
+        var row = U.el('div', 'modal-row'), done = U.el('div', 'pill focusable modal-btn', U.t('Done'));
         done.__onselect = function () { closeModal(); };
         row.appendChild(done);
         box.appendChild(row);
@@ -86,10 +86,10 @@ var ViewParts = {};
         if (existing) { existing.parentNode.removeChild(existing); }
         var overlay = U.el('div', 'modal-overlay'), box = U.el('div', 'modal-box qr-box');
         box.appendChild(U.el('div', 'modal-msg', o.title));
-        var spot = U.el('div', 'qr-spot'), how = U.el('div', 'qr-note', 'Opening the page for your phone…'), link = U.el('div', 'qr-link', '');
+        var spot = U.el('div', 'qr-spot'), how = U.el('div', 'qr-note', U.t('Opening the page for your phone…')), link = U.el('div', 'qr-link', '');
         box.appendChild(spot); box.appendChild(link); box.appendChild(how);
         var row = U.el('div', 'modal-row');
-        var cancel = U.el('div', 'pill focusable modal-btn', 'Cancel'), type = U.el('div', 'pill focusable modal-btn', 'Type it');
+        var cancel = U.el('div', 'pill focusable modal-btn', U.t('Cancel')), type = U.el('div', 'pill focusable modal-btn', U.t('Type it'));
         var token = null, timer = null, over = false;
         function stop() {
             over = true;
@@ -126,18 +126,18 @@ var ViewParts = {};
                     var bad = o.validate ? o.validate(text) : null;
                     if (bad) { U.toast(bad, 5000); return; }
                     o.onText(text);
-                }, function () { if (!over) { how.textContent = 'The phone page closed. Type it instead, or try again.'; token = null; } });
+                }, function () { if (!over) { how.textContent = U.t('The phone page closed. Type it instead, or try again.'); token = null; } });
             }, ENTRY_POLL_MS);
         }
-        if (typeof YTPlay === 'undefined' || !YTPlay.entryOpen) { how.textContent = 'Type it with the TV’s keyboard.'; return; }
+        if (typeof YTPlay === 'undefined' || !YTPlay.entryOpen) { how.textContent = U.t('Type it with the TV’s keyboard.'); return; }
         YTPlay.ensureService().then(function () { return YTPlay.entryOpen(o.what); }).then(function (r) {
             if (over) { if (r && r.token) { YTPlay.entryClose(r.token); } return; }
             token = r.token;
             spot.appendChild(qrSpotCanvas(r.url));
             link.textContent = r.url;
-            how.textContent = 'Scan it with your phone (on the same Wi-Fi as the TV), then type or paste it there. Only for the next 5 minutes, and once. It travels unencrypted over your home network: use it only on a network you trust.';
+            how.textContent = U.t('Scan it with your phone (on the same Wi-Fi as the TV), then type or paste it there. Only for the next 5 minutes, and once. It travels unencrypted over your home network: use it only on a network you trust.');
             poll();
-        }, function () { if (!over) { how.textContent = 'Your phone can’t reach the TV just now (no home network, or StremioK’s service isn’t running): type it instead.'; } });
+        }, function () { if (!over) { how.textContent = U.t('Your phone can’t reach the TV just now (no home network, or StremioK’s service isn’t running): type it instead.'); } });
     }
     function qrSpotCanvas(text) { var s = qrSpot(text); s.className = ''; return s; }
     // A file given to the phone (an export: YTPlay.entryGive): a QR to the service's one-time page
@@ -149,10 +149,10 @@ var ViewParts = {};
         if (existing) { existing.parentNode.removeChild(existing); }
         var overlay = U.el('div', 'modal-overlay'), box = U.el('div', 'modal-box qr-box');
         box.appendChild(U.el('div', 'modal-msg', title));
-        var spot = U.el('div', 'qr-spot'), how = U.el('div', 'qr-note', 'Opening the page for your phone…'), link = U.el('div', 'qr-link', '');
+        var spot = U.el('div', 'qr-spot'), how = U.el('div', 'qr-note', U.t('Opening the page for your phone…')), link = U.el('div', 'qr-link', '');
         box.appendChild(spot); box.appendChild(link); box.appendChild(how);
         if (note) { box.appendChild(U.el('div', 'qr-note', note)); }
-        var row = U.el('div', 'modal-row'), done = U.el('div', 'pill focusable modal-btn', 'Done');
+        var row = U.el('div', 'modal-row'), done = U.el('div', 'pill focusable modal-btn', U.t('Done'));
         var token = null, timer = null, over = false;
         done.__onselect = function () { closeModal(); };
         row.appendChild(done); box.appendChild(row); overlay.appendChild(box);
@@ -165,21 +165,21 @@ var ViewParts = {};
                 if (over || !token) { return; }
                 YTPlay.entrySeen(token).then(function (seen) {
                     if (over) { return; }
-                    if (seen) { how.textContent = 'Your phone has it: copy or download it there, then Done.'; }
+                    if (seen) { how.textContent = U.t('Your phone has it: copy or download it there, then Done.'); }
                     poll();
-                }, function () { if (!over) { how.textContent = 'The phone page closed. Export again to open another.'; token = null; } });
+                }, function () { if (!over) { how.textContent = U.t('The phone page closed. Export again to open another.'); token = null; } });
             }, GIVE_POLL_MS);
         }
-        if (typeof YTPlay === 'undefined' || !YTPlay.entryGive) { how.textContent = 'It needs StremioK’s service on the TV (not in a desktop browser).'; return; }
+        if (typeof YTPlay === 'undefined' || !YTPlay.entryGive) { how.textContent = U.t('It needs StremioK’s service on the TV (not in a desktop browser).'); return; }
         YTPlay.entryGive(text).then(function (r) {
             if (over) { if (r && r.token) { YTPlay.entryClose(r.token); } return; }
             if (!r || !r.url) { throw new Error('no page'); }
             token = r.token;
             spot.appendChild(qrSpotCanvas(r.url));
             link.textContent = r.url;
-            how.textContent = 'Scan it with your phone (on the same Wi-Fi as the TV): the page shows the file to copy or download. For the next 5 minutes, unencrypted over your home network: only on a network you trust.';
+            how.textContent = U.t('Scan it with your phone (on the same Wi-Fi as the TV): the page shows the file to copy or download. For the next 5 minutes, unencrypted over your home network: only on a network you trust.');
             poll();
-        }, function () { if (!over) { how.textContent = 'Your phone can’t reach the TV just now (no home network, or StremioK’s service isn’t running).'; } });
+        }, function () { if (!over) { how.textContent = U.t('Your phone can’t reach the TV just now (no home network, or StremioK’s service isn’t running).'); } });
     }
 
     // Show `overlay` (already in the page) as the modal: focus moves into it, and
@@ -212,11 +212,11 @@ var ViewParts = {};
     }
     function addYouTubeCatalog(meta) {
         var src = youTubeList(meta.id), name = meta.name || meta.title || src;
-        if (YouTube.catalogFor(src)) { U.toast('“' + name + '” is already one of your YouTube catalogs'); return; }
-        confirm('Add “' + name + '” to your YouTube catalogs? It becomes a row on Home and a catalog in Discover (Settings › Content › YouTube).', 'Add', function () {
-            if (!YouTube.add({ src: src, name: name })) { U.toast('Couldn\'t add it (40 catalogs at most)'); return; }
+        if (YouTube.catalogFor(src)) { U.toast(U.t('“{name}” is already one of your YouTube catalogs', { name: name })); return; }
+        confirm(U.t('Add “{name}” to your YouTube catalogs? It becomes a row on Home and a catalog in Discover (Settings › Content › YouTube).', { name: name }), U.t('Add'), function () {
+            if (!YouTube.add({ src: src, name: name })) { U.toast(U.t('Couldn\'t add it (40 catalogs at most)')); return; }
             refreshAddonRows('local:youtube');
-            U.toast('Added “' + name + '” to your YouTube catalogs', 3000);
+            U.toast(U.t('Added “{name}” to your YouTube catalogs', { name: name }), 3000);
         });
     }
 
@@ -227,21 +227,21 @@ var ViewParts = {};
         var overlay = U.el('div', 'modal-overlay');
         var box = U.el('div', 'modal-box actions-box');   // (as wide as its buttons)
 
-        box.appendChild(U.el('div', 'modal-msg', 'Update “' + name + '”'));
+        box.appendChild(U.el('div', 'modal-msg', U.t('Update “{name}”', { name: name })));
 
         var row = U.el('div', 'modal-row');
 
-        var cancel = U.el('div', 'pill focusable modal-btn', 'Cancel');
-        var refresh = U.el('div', 'pill focusable modal-btn', 'Refresh');
-        var remove = U.el('div', 'pill focusable modal-btn danger', 'Remove');
+        var cancel = U.el('div', 'pill focusable modal-btn', U.t('Cancel'));
+        var refresh = U.el('div', 'pill focusable modal-btn', U.t('Refresh'));
+        var remove = U.el('div', 'pill focusable modal-btn danger', U.t('Remove'));
         // Turn off / on: kept in your list, not asked for anything while it's off (a backup)
         var isOff = !!(Stremio.isAddonOff && Stremio.isAddonOff(url));
-        var onoff = U.el('div', 'pill focusable modal-btn', isOff ? 'Turn on' : 'Turn off');
+        var onoff = U.el('div', 'pill focusable modal-btn', isOff ? U.t('Turn on') : U.t('Turn off'));
         onoff.__onselect = function () {
             closeModal();
             Stremio.setAddonOff(url, !isOff);
             refreshAddonRows();   // (its rows come or go; nothing else is fetched)
-            U.toast(isOff ? '“' + name + '” is on' : '“' + name + '” is off: not asked for anything until you turn it on', 4000);
+            U.toast(isOff ? U.t('“{name}” is on', { name: name }) : U.t('“{name}” is off: not asked for anything until you turn it on', { name: name }), 4000);
             renderSettings();
         };
 
@@ -256,12 +256,12 @@ var ViewParts = {};
             Stremio.refreshAddon(url).then(function () {   // just this one; the others keep theirs
                 refreshAddonRows(url);
                 U.spinner(false);
-                U.toast('Addon refreshed');
+                U.toast(U.t('Addon refreshed'));
                 renderSettings();
             }, function () {
                 U.spinner(false);
                 var why = Stremio.manifestProblem ? Stremio.manifestProblem(url) : '', said = Stremio.manifestDetail ? Stremio.manifestDetail(url) : '';
-                U.toast('Could not refresh addon' + (why ? ' (' + why + ')' : '') + (said ? ': ' + said : ''), said ? 8000 : 3000);
+                U.toast(U.t('Could not refresh addon') + (why ? ' (' + why + ')' : '') + (said ? ': ' + said : ''), said ? 8000 : 3000);
                 renderSettings();   // (its row shows the reason)
             });
         };
@@ -270,22 +270,22 @@ var ViewParts = {};
             closeModal();
             Stremio.removeAddon(url);
             refreshAddonRows();   // its rows go; nothing else is fetched
-            U.toast('Removed');
+            U.toast(U.t('Removed'));
             setTimeout(renderSettings, 300);
         };
 
         // Share: a QR of its link (to add it elsewhere); Configure: of its setup page (its
         // manifest says it has one), to change its settings on the phone
         var base = ('' + url).replace(/\/manifest\.json(\?.*)?$/, '');
-        var share = U.el('div', 'pill focusable modal-btn', 'Share');
+        var share = U.el('div', 'pill focusable modal-btn', U.t('Share'));
         share.__onselect = function () {
-            qrModal('Share “' + name + '”', url, ['Scan it to add this addon on another device. It carries the personal parts of its link (your tokens and settings): show it only to your own devices.']);
+            qrModal(U.t('Share “{name}”', { name: name }), url, [U.t('Scan it to add this addon on another device. It carries the personal parts of its link (your tokens and settings): show it only to your own devices.')]);
         };
         var m = Stremio.savedManifest ? Stremio.savedManifest(url) : null, bh = (m && m.behaviorHints) || {};
-        var configure = (bh.configurable || bh.configurationRequired) ? U.el('div', 'pill focusable modal-btn', 'Configure') : null;
+        var configure = (bh.configurable || bh.configurationRequired) ? U.el('div', 'pill focusable modal-btn', U.t('Configure')) : null;
         if (configure) {
             configure.__onselect = function () {
-                qrModal('Configure “' + name + '”', base + '/configure', ['Scan it to change this addon’s settings on your phone. Then add the new link it gives you (Settings › Content › Addons): it replaces this one.']);
+                qrModal(U.t('Configure “{name}”', { name: name }), base + '/configure', [U.t('Scan it to change this addon’s settings on your phone. Then add the new link it gives you (Settings › Content › Addons): it replaces this one.')]);
             };
         }
         row.appendChild(cancel);
@@ -307,61 +307,61 @@ var ViewParts = {};
 
         var overlay = U.el('div', 'modal-overlay');
         var box = U.el('div', 'modal-box actions-box');   // (as wide as its buttons)
-        box.appendChild(U.el('div', 'modal-msg', 'Update “' + label + '”'));
+        box.appendChild(U.el('div', 'modal-msg', U.t('Update “{name}”', { name: label })));
 
         var row = U.el('div', 'modal-row');
-        var cancel = U.el('div', 'pill focusable modal-btn', 'Cancel');
-        var rename = U.el('div', 'pill focusable modal-btn', 'Rename');
-        var onoff = U.el('div', 'pill focusable modal-btn', playlist.off ? 'Turn on' : 'Turn off');
-        var edit = U.el('div', 'pill focusable modal-btn', 'Edit link');
-        var guide = U.el('div', 'pill focusable modal-btn', 'Guide link');
+        var cancel = U.el('div', 'pill focusable modal-btn', U.t('Cancel'));
+        var rename = U.el('div', 'pill focusable modal-btn', U.t('Rename'));
+        var onoff = U.el('div', 'pill focusable modal-btn', playlist.off ? U.t('Turn on') : U.t('Turn off'));
+        var edit = U.el('div', 'pill focusable modal-btn', U.t('Edit link'));
+        var guide = U.el('div', 'pill focusable modal-btn', U.t('Guide link'));
         var fmt = IPTV.xtreamFormat ? IPTV.xtreamFormat(playlist.id) : '';   // (an Xtream account: MPEG-TS or HLS)
-        var format = U.el('div', 'pill focusable modal-btn', 'Format: ' + (fmt === 'hls' ? 'HLS' : 'MPEG-TS'));
+        var format = U.el('div', 'pill focusable modal-btn', U.t('Format: {format}', { format: fmt === 'hls' ? 'HLS' : 'MPEG-TS' }));
         format.__onselect = function () {
             closeModal();
             Stremio.iptvSetXtreamFormat(playlist.id, fmt === 'hls' ? 'ts' : 'hls');
             refreshAddonRows('local:iptv');
-            U.toast('Its channels now play as ' + (fmt === 'hls' ? 'MPEG-TS' : 'HLS') + ' (reading the account again…)', 4000);
+            U.toast(U.t('Its channels now play as {format} (reading the account again…)', { format: fmt === 'hls' ? 'MPEG-TS' : 'HLS' }), 4000);
             renderSettings();
         };
-        var groups = U.el('div', 'pill focusable modal-btn', 'Channel groups');   // (a Stalker portal: the genres to read)
+        var groups = U.el('div', 'pill focusable modal-btn', U.t('Channel groups'));   // (a Stalker portal: the genres to read)
         groups.__onselect = function () {
             closeModal();
-            U.toast('Asking the portal for its groups…', 4000);
+            U.toast(U.t('Asking the portal for its groups…'), 4000);
             IPTV.stalkerGroups(playlist.id).then(function (list) {
-                if (!list.length) { U.toast('The portal lists no groups', 4000); return; }
-                pickMany('Groups to read from “' + label + '”', list.map(function (g) { return { key: g.id, label: g.title }; }), {
+                if (!list.length) { U.toast(U.t('The portal lists no groups'), 4000); return; }
+                pickMany(U.t('Groups to read from “{name}”', { name: label }), list.map(function (g) { return { key: g.id, label: g.title }; }), {
                     on: playlist.genres, none: true,
-                    button: function (n) { return n ? 'Read ' + n + ' group' + (n === 1 ? '' : 's') : 'Read as Stalker channels says'; }
+                    button: function (n) { return n ? U.tn(n, 'Read {n} group', 'Read {n} groups') : U.t('Read as Stalker channels says'); }
                 }, function (keys) {
                     IPTV.setStalkerGroups(playlist.id, keys);
                     refreshAddonRows('local:iptv');
-                    U.toast('Reading the portal…', 4000);
+                    U.toast(U.t('Reading the portal…'), 4000);
                     renderSettings();
                     Stremio.iptvReload(playlist.id).then(function () {
                         refreshAddonRows('local:iptv');
                         var st = Stremio.iptvStatus(playlist.id);
-                        U.toast(st.error ? ('Reload failed: ' + st.error) : ('Loaded ' + st.count + ' channels'), 4000);
+                        U.toast(st.error ? U.t('Reload failed: {why}', { why: st.error }) : U.t('Loaded {n} channels', { n: st.count }), 4000);
                         renderSettings();
                     });
                 });
             }, function (e) { U.toast(U.problem(e), 5000); });
         };
-        var reload = U.el('div', 'pill focusable modal-btn', 'Reload');
-        var remove = U.el('div', 'pill focusable modal-btn danger', 'Remove');
+        var reload = U.el('div', 'pill focusable modal-btn', U.t('Reload'));
+        var remove = U.el('div', 'pill focusable modal-btn danger', U.t('Remove'));
 
         cancel.__onselect = function () { closeModal(); };
         rename.__onselect = function () {
             closeModal();
             App.openEntry({
-                title: 'Rename IPTV playlist',
-                hint: 'Type a name (up to 60 characters), then Confirm. Empty uses the playlist’s own name, or its server’s. RETURN cancels.',
+                title: U.t('Rename IPTV playlist'),
+                hint: U.t('Type a name (up to 60 characters), then Confirm. Empty uses the playlist’s own name, or its server’s. RETURN cancels.'),
                 value: playlist.name || '', placeholder: label,
-                validate: function (v) { return ('' + v).trim().length > 60 ? 'Up to 60 characters' : null; },
+                validate: function (v) { return ('' + v).trim().length > 60 ? U.t('Up to 60 characters') : null; },
                 onConfirm: function (v) {
                     Stremio.iptvRenamePlaylist(playlist.id, v);
                     refreshAddonRows('local:iptv');   // (channels show the playlist they're from)
-                    U.toast(('' + v).trim() ? 'Playlist renamed' : 'Playlist name cleared');
+                    U.toast(('' + v).trim() ? U.t('Playlist renamed') : U.t('Playlist name cleared'));
                     App.back(); renderSettings();
                 }
             });
@@ -370,20 +370,20 @@ var ViewParts = {};
             closeModal();
             Stremio.iptvSetPlaylistOff(playlist.id, !playlist.off);
             refreshAddonRows('local:iptv');
-            U.toast(playlist.off ? 'Playlist on: its channels are back' : 'Playlist off: its channels are hidden (nothing is deleted)', 3000);
+            U.toast(playlist.off ? U.t('Playlist on: its channels are back') : U.t('Playlist off: its channels are hidden (nothing is deleted)'), 3000);
             renderSettings();
         };
         edit.__onselect = function () {
             closeModal();
             App.openEntry({
-                title: 'Edit IPTV playlist', phone: 'playlist',
-                hint: 'Update the M3U/M3U8 playlist URL, then Confirm. RETURN cancels.',
+                title: U.t('Edit IPTV playlist'), phone: 'playlist',
+                hint: U.t('Update the M3U/M3U8 playlist URL, then Confirm. RETURN cancels.'),
                 value: playlist.url, placeholder: 'https://example.com/playlist.m3u',
                 validate: function (v) { return U.urlProblem(v) || null; },   // (U.parseUrl: http(s), a real host, no user:password@)
                 onConfirm: function (v) {
                     Stremio.iptvUpdatePlaylist(playlist.id, v);
                     refreshAddonRows('local:iptv');   // just the IPTV rows
-                    U.toast('Playlist updated');
+                    U.toast(U.t('Playlist updated'));
                     App.back(); renderSettings();
                 }
             });
@@ -391,26 +391,26 @@ var ViewParts = {};
         guide.__onselect = function () {   // its TV guide: yours, or the playlist's own (empty)
             closeModal();
             App.openEntry({
-                title: 'TV guide link', phone: 'playlist',
-                hint: 'An XMLTV guide (.xml or .xml.gz), then Confirm. Empty uses the playlist’s own (the one it names, or an Xtream playlist’s). RETURN cancels.',
+                title: U.t('TV guide link'), phone: 'playlist',
+                hint: U.t('An XMLTV guide (.xml or .xml.gz), then Confirm. Empty uses the playlist’s own (the one it names, or an Xtream playlist’s). RETURN cancels.'),
                 value: playlist.guide || '', placeholder: 'https://example.com/guide.xml.gz',
                 validate: function (v) { return ('' + v).trim() ? (U.urlProblem(v) || null) : null; },
                 onConfirm: function (v) {
                     Stremio.iptvSetPlaylistGuide(playlist.id, v);
-                    U.toast(('' + v).trim() ? 'Guide link set: reading it…' : 'Back to the playlist’s own guide', 3000);
+                    U.toast(('' + v).trim() ? U.t('Guide link set: reading it…') : U.t('Back to the playlist’s own guide'), 3000);
                     App.back(); renderSettings();
                 }
             });
         };
         reload.__onselect = function () {
             closeModal();
-            U.toast('Reloading playlist…', 4000);
+            U.toast(U.t('Reloading playlist…'), 4000);
             if (typeof XtVod !== 'undefined' && XtVod.reload) { XtVod.reload(playlist.id); }   // (an Xtream account: its films and series too)
             if (typeof StVod !== 'undefined' && StVod.reload) { StVod.reload(playlist.id); }   // (a Stalker portal: the same)
             Stremio.iptvReload(playlist.id).then(function () {
                 refreshAddonRows('local:iptv');
                 var st = Stremio.iptvStatus(playlist.id);
-                U.toast(st.error ? ('Reload failed: ' + st.error) : ('Loaded ' + st.count + ' channels'), 4000);
+                U.toast(st.error ? U.t('Reload failed: {why}', { why: st.error }) : U.t('Loaded {n} channels', { n: st.count }), 4000);
                 renderSettings();
             });
         };
@@ -418,7 +418,7 @@ var ViewParts = {};
             closeModal();
             Stremio.iptvRemovePlaylist(playlist.id);
             refreshAddonRows('local:iptv');
-            U.toast('Playlist removed');
+            U.toast(U.t('Playlist removed'));
             setTimeout(renderSettings, 300);
         };
 
@@ -485,12 +485,12 @@ var ViewParts = {};
         var go = U.el('div', 'pill focusable modal-btn');
         function ticked() { return items.filter(function (it) { return on[it.key]; }).map(function (it) { return it.key; }); }
         function drawGo() { go.textContent = opts.button(ticked().length); }
-        var all = U.el('div', 'pick-item focusable', can.length && can.every(function (it) { return on[it.key]; }) ? 'Select none' : 'Select all');   // (all ticked at first: an export's)
+        var all = U.el('div', 'pick-item focusable', can.length && can.every(function (it) { return on[it.key]; }) ? U.t('Select none') : U.t('Select all'));   // (all ticked at first: an export's)
         all.__onselect = function () {
             var every = can.every(function (it) { return on[it.key]; });
             can.forEach(function (it) { on[it.key] = !every; });
             nodes.forEach(function (n) { n.__draw(); });
-            all.textContent = every ? 'Select all' : 'Select none';
+            all.textContent = every ? U.t('Select all') : U.t('Select none');
             drawGo();
         };
         if (can.length > 1) { listEl.appendChild(all); }
@@ -498,11 +498,11 @@ var ViewParts = {};
             var n = U.el('div', 'pick-item focusable');
             n.__draw = function () {
                 n.textContent = (on[it.key] ? '✓  ' : '') + it.label +
-                    (it.have ? '   (' + (opts.haveText || 'already added') + ')' : it.note ? '   (' + it.note + ')' : '');
+                    (it.have ? '   (' + (opts.haveText || U.t('already added')) + ')' : it.note ? '   (' + it.note + ')' : '');
                 if (on[it.key]) { n.classList.add('sel'); } else { n.classList.remove('sel'); }
             };
             n.__onselect = function () {
-                if (it.have) { U.toast(opts.haveText ? 'That one is ' + opts.haveText : 'You already have that one', 2000); return; }
+                if (it.have) { U.toast(opts.haveText ? U.t('That one is {what}', { what: opts.haveText }) : U.t('You already have that one'), 2000); return; }
                 on[it.key] = !on[it.key]; n.__draw(); drawGo();
             };
             n.__draw();
@@ -513,12 +513,12 @@ var ViewParts = {};
         var row = U.el('div', 'modal-row');
         go.__onselect = function () {
             var keys = ticked();
-            if (!keys.length && !opts.none) { U.toast('Nothing ticked: OK on one ticks it', 2500); return; }
+            if (!keys.length && !opts.none) { U.toast(U.t('Nothing ticked: OK on one ticks it'), 2500); return; }
             closeModal();
             onDone(keys);
         };
         drawGo();
-        var cancel = U.el('div', 'pill focusable modal-btn', 'Cancel');
+        var cancel = U.el('div', 'pill focusable modal-btn', U.t('Cancel'));
         cancel.__onselect = function () { closeModal(); };
         row.appendChild(go);
         row.appendChild(cancel);
@@ -577,14 +577,14 @@ var ViewParts = {};
         }
         menuItems().forEach(function (m) {
             if (m.tab) { item('tab-pill', m.key, m.tab.label, m.tab.icon, function () { App.goHome(m.key); }, tabbar); }
-            else if (m.key === 'discover') { item('tab-pill', 'discover', 'Discover', '🔭', function () { App.openDiscover(); }, tabbar); }
-            else if (m.key === 'search') { item('hchip', 'search', 'Search', '🔍', function () { App.openSearch(); }, tabbar); }
+            else if (m.key === 'discover') { item('tab-pill', 'discover', U.t('Discover'), '🔭', function () { App.openDiscover(); }, tabbar); }
+            else if (m.key === 'search') { item('hchip', 'search', U.t('Search'), '🔍', function () { App.openSearch(); }, tabbar); }
         });
         // The items in one strip that scrolls sideways when they don't all fit (Focus keeps the
         // focused one in view); the StremioK name outside it, at the right.
         var strip = U.el('div', 'menu-scroll');
         strip.appendChild(tabbar);
-        item('hchip', 'settings', 'Settings', '⚙', function () { App.openSettings(); }, strip);
+        item('hchip', 'settings', U.t('Settings'), '⚙', function () { App.openSettings(); }, strip);
         head.appendChild(strip);
         setTimeout(function () { showActiveItem(strip); }, 0);   // (once it's on screen)
         var brand = U.el('div', 'brand');
@@ -760,17 +760,17 @@ var ViewParts = {};
             U.spinner(false);
             if (!hold.still()) { return; }   // (left meanwhile)
             var fav = IPTV.isFavorite(meta.id), t = Date.now() / 1000, at = 'play';
-            var items = [['play', '▶  Watch now'], ['fav', fav ? '★  Remove from favorites' : '★  Add to favorites']];
+            var items = [['play', U.t('▶  Watch now')], ['fav', fav ? U.t('★  Remove from favorites') : U.t('★  Add to favorites')]];
             list.forEach(function (p, i) {
                 var on = p.start <= t && t < p.stop;
                 if (on) { at = 'p' + i; }
                 items.push(['p' + i, (on ? '●  ' : '') + EPG.dayTime(p.start) + '   ' + p.title]);
             });
-            pickList((meta.name || '') + (list.length ? '  ·  TV guide' : ''), items, at, function (v) {
+            pickList((meta.name || '') + (list.length ? '  ·  ' + U.t('TV guide') : ''), items, at, function (v) {
                 if (v === 'play') { card.__onselect(); return; }
                 if (v === 'fav') {
                     IPTV.setFavorite(meta.id, !fav);
-                    U.toast(fav ? 'Removed from favorites' : 'Added to favorites: ★ Favorites, first on the IPTV tab', 3000);
+                    U.toast(fav ? U.t('Removed from favorites') : U.t('Added to favorites: ★ Favorites, first on the IPTV tab'), 3000);
                     refreshAddonRows('local:iptv');
                     return;
                 }
@@ -819,21 +819,21 @@ var ViewParts = {};
         return Stremio.getMeta(type, meta.id).then(null, function () { return null; }).then(function (full) {
             var m = Object.assign({ id: meta.id, type: type }, meta, full || {});
             var eps = (type === 'series') ? (m.videos || []) : null;
-            var opts = [['details', 'Details']];
+            var opts = [['details', U.t('Details')]];
             if (type === 'movie' || eps.length) {
-                opts.push(['np', inNowPlaying(type, m.id) ? 'Remove from Continue Watching' : 'Add to Continue Watching']);
+                opts.push(['np', inNowPlaying(type, m.id) ? U.t('Remove from Continue Watching') : U.t('Add to Continue Watching')]);
             }
             var watched = (type === 'movie') ? Player.isWatched('movie', m.id) : (eps.length > 0 && eps.every(episodeWatched));
             if (type === 'movie' || eps.length) {
-                opts.push(['watched', watched ? 'Mark unwatched' : (type === 'series' ? 'Mark whole series watched' : 'Mark watched')]);
+                opts.push(['watched', watched ? U.t('Mark unwatched') : (type === 'series' ? U.t('Mark whole series watched') : U.t('Mark watched'))]);
             }
             // Your Stremio account's Library (connected): in it, or not
             var lib = typeof StremioSync !== 'undefined' && StremioSync.isConnected() && (type === 'movie' || type === 'series');
-            if (lib) { opts.push(['lib', StremioSync.inLibrary(type, m.id) ? 'Remove from Stremio Library' : 'Add to Stremio Library']); }
+            if (lib) { opts.push(['lib', StremioSync.inLibrary(type, m.id) ? U.t('Remove from Stremio Library') : U.t('Add to Stremio Library')]); }
             // Rate on Trakt (connected, a title with an IMDb id): yours shown once rated
             var canRate = typeof Trakt !== 'undefined' && Trakt.isConnected() && Trakt.rate && /^tt\d+$/.test(m.id);
             var mine = canRate ? Trakt.myRating(type, m.id) : null;
-            if (canRate) { opts.push(['rate', mine ? 'Your rating: ' + mine + ' · change' : 'Rate on Trakt']); }
+            if (canRate) { opts.push(['rate', mine ? U.t('Your rating: {n} · change', { n: mine }) : U.t('Rate on Trakt')]); }
             return { name: m.name || m.title || '', items: opts, run: function (v) {
                 if (v === 'details') { App.openDetail(type, m.id, meta); }
                 else if (v === 'np') { toggleNowPlaying(type, m); }
@@ -846,14 +846,14 @@ var ViewParts = {};
 
     // 1 to 10, as Trakt words them; Remove rating when it has yours. kind: 'movie' | 'series' |
     // 'season' (id 'tt…:N').
-    var TRAKT_RATINGS = ['Weak Sauce', 'Terrible', 'Bad', 'Poor', 'Meh', 'Fair', 'Good', 'Great', 'Superb', 'Totally Ninja!'];
+    var TRAKT_RATINGS = [U.t('Weak Sauce'), U.t('Terrible'), U.t('Bad'), U.t('Poor'), U.t('Meh'), U.t('Fair'), U.t('Good'), U.t('Great'), U.t('Superb'), U.t('Totally Ninja!')];
     function rateOnTrakt(kind, id, name) {
         var mine = Trakt.myRating(kind, id), opts = [];
         for (var n = 10; n >= 1; n--) { opts.push(['' + n, n + ' · ' + TRAKT_RATINGS[n - 1]]); }
-        if (mine) { opts.push(['0', 'Remove rating']); }
-        pickList('Rate “' + name + '” on Trakt', opts, mine ? '' + mine : null, function (v) {
+        if (mine) { opts.push(['0', U.t('Remove rating')]); }
+        pickList(U.t('Rate “{name}” on Trakt', { name: name }), opts, mine ? '' + mine : null, function (v) {
             Trakt.rate(kind, id, +v);
-            U.toast(+v ? 'Rated ' + v + ' on Trakt' : 'Rating removed on Trakt');
+            U.toast(+v ? U.t('Rated {n} on Trakt', { n: v }) : U.t('Rating removed on Trakt'));
         });
     }
     V.rateOnTrakt = rateOnTrakt;
@@ -870,7 +870,7 @@ var ViewParts = {};
         }
         watchedTicks(m.id, on);
         markHomeDirty();
-        U.toast(on ? 'Marked watched' : 'Marked unwatched');
+        U.toast(on ? U.t('Marked watched') : U.t('Marked unwatched'));
     }
     // Every card of this title on screen, in every row (Home, Discover, Search): its ✓.
     function watchedTicks(id, on) {
@@ -927,27 +927,27 @@ var ViewParts = {};
                 if (e._trakt) { if (Trakt.dismiss) { Trakt.dismiss(e.type, e.id); } } else if (!e._stremio) { Player.removeProgress(e.type, e.id); }
                 if (typeof StremioSync !== 'undefined' && StremioSync.dismiss) { StremioSync.dismiss(e.type, e.id); }
             });
-            U.toast('Removed from Continue Watching');
+            U.toast(U.t('Removed from Continue Watching'));
         } else if (type === 'movie') {
             Player.addToContinue({ id: m.id, type: 'movie', name: m.name || m.title, poster: m.poster, background: m.background, parent: m.id });
-            U.toast('Added to Continue Watching');
+            U.toast(U.t('Added to Continue Watching'));
         } else {
             var v = nextUp(m).v;
             Player.addToContinue({ id: v.id, type: 'series', name: (m.name || '') + '  ' + epCode(v), poster: m.poster, background: m.background, parent: m.id });
-            U.toast('Added to Continue Watching');
+            U.toast(U.t('Added to Continue Watching'));
         }
         markHomeDirty();
     }
     // The button's label, for a title page's meta (checked by the same id toggleNowPlaying
     // adds and removes by: the id the title's details came with, which can differ from the
     // one it was opened by, e.g. a TMDB id in Discover for an IMDb one).
-    function nowPlayingLabel(type, id) { return inNowPlaying(type, id) ? '✓  In Continue Watching' : '+  Add to Continue Watching'; }
+    function nowPlayingLabel(type, id) { return inNowPlaying(type, id) ? U.t('✓  In Continue Watching') : U.t('+  Add to Continue Watching'); }
     // Your Stremio account's Library (Settings › Integrations › Stremio account): a title in it or not.
-    function libraryLabel(type, id) { return StremioSync.inLibrary(type, id) ? '✓  In Stremio Library' : '+  Stremio Library'; }
+    function libraryLabel(type, id) { return StremioSync.inLibrary(type, id) ? U.t('✓  In Stremio Library') : U.t('+  Stremio Library'); }
     function toggleLibrary(type, m) {
         var on = !StremioSync.inLibrary(type, m.id);
         StremioSync.setInLibrary(type, { id: m.id, name: m.name || m.title || '', poster: m.poster || '' }, on);
-        U.toast(on ? 'Added to your Stremio Library' : 'Removed from your Stremio Library');
+        U.toast(on ? U.t('Added to your Stremio Library') : U.t('Removed from your Stremio Library'));
     }
     function libraryOn() { return typeof StremioSync !== 'undefined' && StremioSync.isConnected(); }
 
@@ -959,7 +959,7 @@ var ViewParts = {};
         if (!_holdHint) {
             var app = U.byId('app');
             if (!app) { return; }
-            _holdHint = U.el('div', 'hidden', 'Hold OK for more');
+            _holdHint = U.el('div', 'hidden', U.t('Hold OK for more'));
             _holdHint.id = 'hold-hint';
             app.appendChild(_holdHint);
         }

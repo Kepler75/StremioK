@@ -34,7 +34,7 @@ var StVod = (function () {
     function setKeepMinutes(m) { U.store.set(KEEP_KEY, KEEPS.indexOf(+m) !== -1 ? +m : 10); }
     // The service's answer ({ why }: an error).
     function ask(acc, more) {
-        if (typeof YTPlay === 'undefined' || !YTPlay.stalkerVod) { return Promise.reject(new Error('Stalker portals are read by StremioK’s service (not in a desktop browser)')); }
+        if (typeof YTPlay === 'undefined' || !YTPlay.stalkerVod) { return Promise.reject(new Error(U.t('Stalker portals are read by StremioK’s service (not in a desktop browser)'))); }
         return YTPlay.stalkerVod(acc.url, acc.mac, more + '&keep=' + keepMinutes()).then(function (r) {
             if (!r || r.why) { throw new Error((r && r.why) || 'no answer'); }
             return r;
@@ -205,7 +205,7 @@ var StVod = (function () {
         if (list(it.cast).length) { m.cast = list(it.cast); }
         if (list(it.director).length) { m.director = list(it.director); }
         if (it.rating > 0) { m.imdbRating = (+it.rating).toFixed(1); }
-        if (it.mins > 0) { m.runtime = it.mins + ' min'; }
+        if (it.mins > 0) { m.runtime = U.t('{n} min', { n: it.mins }); }
         if (it.year) { m.releaseInfo = '' + it.year; m.year = '' + it.year; }
         return m;
     }
@@ -221,10 +221,10 @@ var StVod = (function () {
         return seasons(x.acc, x).then(function (l) {
             if (!it && !l.length) { return null; }
             if (it) { remember(x.base, it); }
-            var m = details({ id: x.base, type: 'series', name: it ? it.name : 'Series', _from: x.acc.label }, it || {});
+            var m = details({ id: x.base, type: 'series', name: it ? it.name : U.t('Series'), _from: x.acc.label }, it || {});
             m.videos = [];
             l.forEach(function (se) {
-                (se.eps || []).forEach(function (ep) { m.videos.push({ id: x.base + ':' + se.season + ':' + ep.n, season: se.season, episode: ep.n, title: ep.name || 'Episode ' + ep.n }); });
+                (se.eps || []).forEach(function (ep) { m.videos.push({ id: x.base + ':' + se.season + ':' + ep.n, season: se.season, episode: ep.n, title: ep.name || U.t('Episode {n}', { n: ep.n }) }); });
             });
             return m;
         });

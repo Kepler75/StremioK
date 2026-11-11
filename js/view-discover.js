@@ -28,7 +28,7 @@
     // until you search a name; OK on one opens their page (their movies and series). Shaped
     // like an addon's catalog, so the pickers, search field, paging and focus work as they do
     // for titles; loadMore asks TMDB a page at a time (Stremio.tmdbPeople).
-    var PEOPLE = { type: 'people', id: 'people', name: 'Popular', label: 'Popular', __people: true,
+    var PEOPLE = { type: 'people', id: 'people', name: 'Popular', label: U.t('Popular'), __people: true,
         addon: { url: 'tmdb:people', base: 'tmdb:people', __local: true, manifest: { id: 'tmdb.people', name: 'TMDB' } },
         def: { extra: [{ name: 'search' }, { name: 'skip' }] } };
     function withPeople(cats) {
@@ -49,10 +49,10 @@
         var out = cats.slice();
         ['movie', 'series'].forEach(function (type) {
             var kind = type === 'series' ? 'tv' : 'movie';
-            out.push(browseCat(type, 'trending', 'Trending this week', { list: 'trending' }));
-            out.push(browseCat(type, 'popular', 'Popular', { list: 'popular' }));
+            out.push(browseCat(type, 'trending', U.t('Trending this week'), { list: 'trending' }));
+            out.push(browseCat(type, 'popular', U.t('Popular'), { list: 'popular' }));
             var provs = Stremio.tmdbProvidersKept(kind);
-            if (provs) { provs.forEach(function (p) { out.push(browseCat(type, 'p' + p.id, 'On ' + p.name, { list: 'provider', provider: p.id })); }); }
+            if (provs) { provs.forEach(function (p) { out.push(browseCat(type, 'p' + p.id, U.t('On {service}', { service: p.name }), { list: 'provider', provider: p.id })); }); }
             else if (!_provAsked[kind]) {   // (asked once: when they come, Discover is drawn again with them)
                 _provAsked[kind] = true;
                 Stremio.tmdbProviders(kind).then(function (list) {
@@ -90,7 +90,7 @@
         if (!opts && def.genres) { opts = def.genres; required = (def.extraRequired || []).indexOf('genre') !== -1; }
         if (!opts || !opts.length) { return null; }
         var years = opts.every(function (o) { return /^\d{4}$/.test('' + o); });
-        return { options: opts, required: required, label: years ? 'Year' : 'Genre' };
+        return { options: opts, required: required, label: years ? U.t('Year') : U.t('Genre') };
     }
     // Where a search in this catalog goes: the catalog itself when it takes an optional
     // search (IPTV's do), else its addon's search catalog for the same type (a genre doesn't
@@ -143,7 +143,7 @@
         if (empty) { all[k] = { t: Date.now(), n: (all[k] ? all[k].n : 0) + 1 }; } else if (all[k]) { delete all[k]; } else { return; }
         U.store.set(EMPTY_KEY, all);
     }
-    function catLabel(c) { return c.label + '  ·  ' + ((c.addon.manifest && c.addon.manifest.name) || 'Addon'); }
+    function catLabel(c) { return c.label + '  ·  ' + ((c.addon.manifest && c.addon.manifest.name) || U.t('Addon')); }
     function save() {
         U.store.set(DISCOVER_KEY, { type: _dv.type, cat: Stremio.catalogKey(_dv.cat), value: _dv.value || '' });
     }
@@ -189,7 +189,7 @@
             return;
         }
         _dv = { cats: null, items: [], seen: {}, gen: 0, focusFirst: true };
-        s.querySelector('.discover-grid').appendChild(U.el('div', 'row-empty', 'Loading…'));
+        s.querySelector('.discover-grid').appendChild(U.el('div', 'row-empty', U.t('Loading…')));
         Focus.setScope(s, s.querySelector('.tab-pill.active') || undefined);
         Stremio.listCatalogs().then(function (all) {
             var cats = extras(all.filter(browsable));
@@ -220,15 +220,15 @@
             return p;
         }
         var types = typesOf(_dv.cats);
-        pill('Type:  ' + Stremio.prettyType(_dv.type) + '  ▾', function () {
-            pickList('Type', types.map(function (t) { return [t, Stremio.prettyType(t)]; }), _dv.type, function (t) {
+        pill(U.t('Type:') + '  ' + Stremio.prettyType(_dv.type) + '  ▾', function () {
+            pickList(U.t('Type'), types.map(function (t) { return [t, Stremio.prettyType(t)]; }), _dv.type, function (t) {
                 if (t === _dv.type) { return; }
                 choose(t); reload();
             });
         });
         var ofType = _dv.cats.filter(function (c) { return c.type === _dv.type; });
-        pill('Catalog:  ' + catLabel(_dv.cat) + '  ▾', function () {   // (.discover-cat: the one cut short when the bar is full)
-            pickList('Catalog', ofType.map(function (c) { return [Stremio.catalogKey(c), catLabel(c)]; }), Stremio.catalogKey(_dv.cat), function (k) {
+        pill(U.t('Catalog:') + '  ' + catLabel(_dv.cat) + '  ▾', function () {   // (.discover-cat: the one cut short when the bar is full)
+            pickList(U.t('Catalog'), ofType.map(function (c) { return [Stremio.catalogKey(c), catLabel(c)]; }), Stremio.catalogKey(_dv.cat), function (k) {
                 var c = ofType.filter(function (x) { return Stremio.catalogKey(x) === k; })[0];
                 if (!c || c === _dv.cat) { return; }
                 choose(_dv.type, c); reload();
@@ -236,7 +236,7 @@
         }).className += ' discover-cat';
         var f = genreFilter(_dv.cat);
         if (f) {
-            pill(f.label + ':  ' + (_dv.value ? genreLabel(_dv.value) : 'All') + '  ▾', function () { genrePicker(f, false); });
+            pill(f.label + ':  ' + (_dv.value ? genreLabel(_dv.value) : U.t('All')) + '  ▾', function () { genrePicker(f, false); });
         }
         // Search this catalog: type, then OK / the keyboard's Done
         var target = searchTarget(_dv.cat);
@@ -244,7 +244,7 @@
             var input = document.createElement('input');
             input.type = 'text';
             input.className = 'focusable discover-search';
-            input.placeholder = _dv.cat.__people ? '🔍  Search a name' : '🔍  Search';
+            input.placeholder = '🔍  ' + (_dv.cat.__people ? U.t('Search a name') : U.t('Search'));
             input.value = _dv.query || '';
             input.__onselect = function () { input.focus(); };
             var apply = function () { setQuery(input.value); };
@@ -256,7 +256,7 @@
                 setTimeout(function () { if (Focus.current() === input && ('' + input.value).trim() !== (_dv.query || '')) { apply(); } }, 0);
             }, false);
             bar.appendChild(input);
-            if (_dv.query) { pill('✕  Clear', function () { setQuery(''); }); }
+            if (_dv.query) { pill('✕  ' + U.t('Clear'), function () { setQuery(''); }); }
         }
         bar.appendChild(U.el('div', 'discover-count'));
         updateCount();
@@ -267,8 +267,8 @@
         var gone = emptyGenres(), ck = Stremio.catalogKey(_dv.cat) + '|';
         var left = all ? [] : f.options.filter(function (o) { return leftOut(gone[ck + o]) && '' + o !== _dv.value; });
         var shown = f.options.filter(function (o) { return left.indexOf(o) === -1; });
-        var opts = (f.required ? [] : [['', 'All']]).concat(shown.map(function (o) { return ['' + o, genreLabel(o)]; }));
-        if (left.length) { opts.push([SHOW_ALL, 'Show ' + left.length + ' left out (empty lately)']); }
+        var opts = (f.required ? [] : [['', U.t('All')]]).concat(shown.map(function (o) { return ['' + o, genreLabel(o)]; }));
+        if (left.length) { opts.push([SHOW_ALL, U.t('Show {n} left out (empty lately)', { n: left.length })]); }
         pickList(f.label, opts, _dv.value || '', function (v) {
             if (v === SHOW_ALL) { genrePicker(f, true); return; }
             if (v === (_dv.value || '')) { return; }
@@ -278,7 +278,7 @@
     function searchAddonName() {
         if (_dv.cat && _dv.cat.__people) { return 'TMDB'; }
         var t = searchTarget(_dv.cat), a = t && t.cat.addon;
-        return (a && a.manifest && a.manifest.name) || 'The addon';
+        return (a && a.manifest && a.manifest.name) || U.t('The addon');
     }
     function setQuery(q) {
         q = ('' + (q || '')).trim();
@@ -292,10 +292,10 @@
         var el = scr('discover').querySelector('.discover-count');
         if (!el) { return; }
         var n = _dv.items.length;
-        var what = _dv.query ? (n === 1 ? ' result' : ' results') + ' for “' + _dv.query + '”' : (_dv.cat && _dv.cat.__people ? (n === 1 ? ' person' : ' people') : ' titles');
-        el.textContent = _dv.loading ? (n ? n + what + '  ·  loading more…' : (_dv.query ? 'Searching…' : 'Loading…'))
-            : _dv.error ? (_dv.query ? 'Search failed' : 'Couldn’t load this catalog')
-            : (_dv.done ? n + what : n + what + ' so far') + (_dv.stale ? '  ·  from earlier: the addon sent nothing just now' : '');
+        var count = _dv.query ? U.tn(n, '{n} result for “{q}”', '{n} results for “{q}”', { q: _dv.query }) : (_dv.cat && _dv.cat.__people ? U.tn(n, '{n} person', '{n} people') : U.t('{n} titles', { n: n }));
+        el.textContent = _dv.loading ? (n ? count + '  ·  ' + U.t('loading more…') : (_dv.query ? U.t('Searching…') : U.t('Loading…')))
+            : _dv.error ? (_dv.query ? U.t('Search failed') : U.t('Couldn’t load this catalog'))
+            : (_dv.done ? count : U.t('{count} so far', { count: count })) + (_dv.stale ? '  ·  ' + U.t('from earlier: the addon sent nothing just now') : '');
     }
 
     // A new type / catalog / filter: start over from its first page, then focus its first title.
@@ -348,20 +348,20 @@
         _dv.cardEls = []; _dv.cols = 0;
         if (_dv.offset === undefined || _dv.offset > _dv.items.length) { _dv.offset = 0; }
         if (_dv.cats && !_dv.cats.length) {
-            grid.appendChild(U.el('div', 'row-empty', 'No catalogs to browse. Add catalog addons in Settings.'));
+            grid.appendChild(U.el('div', 'row-empty', U.t('No catalogs to browse. Add catalog addons in Settings.')));
             return;
         }
         appendCards(_dv.items.slice(_dv.offset, _dv.offset + WINDOW));
         if (_dv.done && !_dv.items.length) {
             // (addons can answer nothing when they're busy, YouTubio among them: a way to ask again)
-            var retry = U.el('div', 'pill focusable discover-retry', '↻  Try again');
+            var retry = U.el('div', 'pill focusable discover-retry', U.t('↻  Try again'));
             retry.__onselect = function () { reload(); };
             var empty = U.el('div', 'discover-empty');   // (the message, then the button under it: a line of their own, not cards)
             grid.appendChild(empty);
-            empty.appendChild(U.el('div', 'row-empty', _dv.error ? (_dv.query ? searchAddonName() + ' didn’t answer this search (its search can be slow or busy). OK on the search field tries again.' : 'Couldn’t load this catalog.')
-                : _dv.query ? (_dv.cat && _dv.cat.__people ? 'No one called “' + _dv.query + '” on TMDB.' : 'Nothing matches “' + _dv.query + '”.') : !_dv.value ? 'Nothing here.'
-                : 'Nothing here. The addon lists “' + genreLabel(_dv.value) + '” but has nothing in it ' + (leftOut(emptyGenres()[Stremio.catalogKey(_dv.cat) + '|' + _dv.value])
-                    ? 'again; it’s left out of the list for a day.' : 'just now.')));
+            empty.appendChild(U.el('div', 'row-empty', _dv.error ? (_dv.query ? U.t('{addon} didn’t answer this search (its search can be slow or busy). OK on the search field tries again.', { addon: searchAddonName() }) : U.t('Couldn’t load this catalog.'))
+                : _dv.query ? (_dv.cat && _dv.cat.__people ? U.t('No one called “{q}” on TMDB.', { q: _dv.query }) : U.t('Nothing matches “{q}”.', { q: _dv.query })) : !_dv.value ? U.t('Nothing here.')
+                : (leftOut(emptyGenres()[Stremio.catalogKey(_dv.cat) + '|' + _dv.value])
+                    ? U.t('Nothing here. The addon lists “{genre}” but has nothing in it again; it’s left out of the list for a day.', { genre: genreLabel(_dv.value) }) : U.t('Nothing here. The addon lists “{genre}” but has nothing in it just now.', { genre: genreLabel(_dv.value) }))));
             empty.appendChild(retry);
         }
     }

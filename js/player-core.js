@@ -148,7 +148,7 @@ var PlayerParts = {};
                 applyAspect(true);
             } catch (e) {
                 U.log('player', 'The TV\'s player couldn\'t be restored after the background: opening the stream again');
-                reopen('Opening the stream again…');
+                reopen(U.t('Opening the stream again…'));
                 return;
             }
         }
@@ -230,7 +230,7 @@ var PlayerParts = {};
     }
     function chapterLabel(i) {
         var list = chapters(), c = list[i];
-        return c ? (i + 1) + '/' + list.length + '  ·  ' + (c.title || 'Chapter ' + (i + 1)) : '';
+        return c ? (i + 1) + '/' + list.length + '  ·  ' + (c.title || U.t('Chapter {n}', { n: i + 1 })) : '';
     }
     // A gap in the bar where each chapter starts (but the first), as on YouTube; redrawn
     // only when the chapters or the length change.
@@ -332,12 +332,12 @@ var PlayerParts = {};
                 var t = Date.now() / 1000;
                 U.byId('osd-bar').style.display = '';
                 U.byId('osd-progress').style.width = Math.max(0, Math.min(100, Math.round((t - g.now.start) / (g.now.stop - g.now.start) * 100))) + '%';
-                cur.textContent = '● LIVE   ' + clock(g.now.start) + '–' + clock(g.now.stop) + '   ' + g.now.title;
-                U.byId('osd-dur').textContent = g.next ? 'Next  ' + clock(g.next.start) + '   ' + g.next.title : '';
+                cur.textContent = '● ' + U.t('LIVE') + '   ' + clock(g.now.start) + '–' + clock(g.now.stop) + '   ' + g.now.title;
+                U.byId('osd-dur').textContent = g.next ? U.t('Next') + '  ' + clock(g.next.start) + '   ' + g.next.title : '';
                 return;
             }
             U.byId('osd-bar').style.display = 'none';
-            cur.textContent = '● LIVE';
+            cur.textContent = U.t('● LIVE');
             U.byId('osd-dur').textContent = '';
             return;
         }
@@ -391,7 +391,7 @@ var PlayerParts = {};
         Object.keys(old).forEach(function (k) { if (!/^_(relay|relayFor|relayCc|ccOffer|liveChecked)$/.test(k)) { ctx[k] = old[k]; } });
         ctx.switching = true;
         play(ctx, _onExit);
-        U.spinner(true, 'Opening it as ' + (fmt === 'hls' ? 'HLS' : 'MPEG-TS') + '…');
+        U.spinner(true, U.t('Opening it as {format}…', { format: fmt === 'hls' ? 'HLS' : 'MPEG-TS' }));
     }
     P.liveFormat = function () { return S.active && S.ctx && S.isLive && S.ctx._ownUrl ? liveFormat(S.ctx.url) : ''; };
     P.setLiveFormat = setLiveFormat;
@@ -436,7 +436,7 @@ var PlayerParts = {};
         // (private viewing, a link played as it is, or one started from a private playback —
         // a video followed from it, another source: nothing recorded, see player-store)
         ctx.private = !ctx.trailer && (ctx.private === true || !!ctx.link || isPrivate());
-        if (ctx.private && !ctx.switching) { U.toast('Private viewing: not tracked', 2500); }
+        if (ctx.private && !ctx.switching) { U.toast(U.t('Private viewing: not tracked'), 2500); }
         if (_exitTimer) { clearTimeout(_exitTimer); _exitTimer = null; }
         if (U.crumb) { U.crumb('play ' + (ctx.type || '') + ' ' + (ctx.private ? '(private)' : /^file:/i.test(ctx.url || '') ? 'file .' + ('' + ctx.url).split('.').pop() : ('' + (ctx.url || '')).replace(/^https?:\/\/([^\/?#]+).*$/i, '$1'))); }   // (Diagnostics, after an unexpected close)
         S.active = true; S.cur = 0; S.dur = 0; _bg = null; S.actual = null;
@@ -450,7 +450,7 @@ var PlayerParts = {};
             var jfAt = Jellyfin.resumeFor(ctx.stream._jf, P.progressFor ? P.progressFor(ctx.type, ctx.id) : null, S.ctx.resumeSec);
             if (jfAt !== S.ctx.resumeSec) {
                 S.ctx.resumeSec = jfAt;
-                if (jfAt > 5) { U.toast('Carrying on from where ' + (Jellyfin.sourceKind ? Jellyfin.sourceKind(ctx.stream._jf) : 'Jellyfin') + ' had it: ' + U.fmtTime(jfAt), 3500); }
+                if (jfAt > 5) { U.toast(U.t('Carrying on from where {server} had it: {at}', { server: Jellyfin.sourceKind ? Jellyfin.sourceKind(ctx.stream._jf) : 'Jellyfin', at: U.fmtTime(jfAt) }), 3500); }
             }
         }
 
@@ -470,7 +470,7 @@ var PlayerParts = {};
         document.body.style.background = 'transparent';
         showOSD(true);
         renderOSD();   // show the NEW title immediately (not the previous item's)
-        U.spinner(true, ctx.switching ? 'Switching source…' : ctx.initialQualityHeight ? 'Opening stream at ' + ctx.initialQualityHeight + 'p…' : 'Opening stream…');
+        U.spinner(true, ctx.switching ? U.t('Switching source…') : ctx.initialQualityHeight ? U.t('Opening stream at {height}p…', { height: ctx.initialQualityHeight }) : U.t('Opening stream…'));
 
         engineFor(ctx);   // (the TV's player, or a ClearKey channel's own: see startShaka)
         // (a TorrServer torrent that doesn't say which of its files: its file list asked for first)
@@ -480,13 +480,13 @@ var PlayerParts = {};
             ++_playToken; _openedAt = 0;
             if (useAV) { try { avplay.stop(); } catch (e0) {} try { avplay.close(); } catch (e1) {} }
             else if (S.videoEl) { try { S.videoEl.pause(); S.videoEl.removeAttribute('src'); } catch (e2) {} }
-            U.spinner(true, 'Asking your streaming server for the torrent’s files…');
+            U.spinner(true, U.t('Asking your streaming server for the torrent’s files…'));
             var ep = /:(\d+):(\d+)$/.exec(ctx.id || ''), look = _fileLook = U.cancelToken();
             Stremio.torrentFile(ctx.stream, ep ? +ep[1] : 0, ep ? +ep[2] : 0, look).then(function (url) {
                 if (look.cancelled || S.ctx !== ctx || !S.active) { return; }
                 _fileLook = null;
                 if (url) { ctx.url = url; go(); return; }
-                var why = 'The torrent has no file for S' + ep[1] + 'E' + ep[2];   // (another episode isn't played in its place)
+                var why = U.t('The torrent has no file for {ep}', { ep: 'S' + ep[1] + 'E' + ep[2] });   // (another episode isn't played in its place)
                 U.log('player', why);
                 U.spinner(false);
                 if (nextSourceOnFail({ text: why })) { return; }
@@ -523,7 +523,7 @@ var PlayerParts = {};
                     .filter(function (g) { return g.mode !== 'off'; });
                 S.sponsor = segs;
                 var whole = segs.filter(function (g) { return g.action === 'full'; })[0];
-                if (whole) { U.toast('SponsorBlock: this whole video is marked “' + YouTube.SB_NAMES[whole.cat] + '”', 5000); }
+                if (whole) { U.toast(U.t('SponsorBlock: this whole video is marked “{what}”', { what: YouTube.SB_NAMES[whole.cat] }), 5000); }
                 if (!osdHidden()) { renderOSD(); }
             }, function () {});
         }
@@ -592,8 +592,8 @@ var PlayerParts = {};
     }
 
     function updateHint() {
-        var base = S.isLive ? 'OK: Play/Pause' : 'OK: Play/Pause   ←/→: Seek';
-        base += '   UP: Controls   DOWN: Menu   RETURN: Back';
+        var base = S.isLive ? U.t('OK: Play/Pause') : U.t('OK: Play/Pause   ←/→: Seek');
+        base += '   ' + U.t('UP: Controls   DOWN: Menu   RETURN: Back');
         var h = U.byId('osd-hint');
         if (h) { h.textContent = base; }
     }
@@ -698,7 +698,7 @@ var PlayerParts = {};
     function drmEvent(drm, data, token) {
         if (!drm || drm.sys !== 'widevine' || !data || data.name !== 'Challenge' || !data.challenge) { return; }
         var ctx = S.ctx;
-        if (typeof YTPlay === 'undefined' || !YTPlay.drmLicense) { ctx._drmWhy = 'StremioK’s service isn’t there'; return; }
+        if (typeof YTPlay === 'undefined' || !YTPlay.drmLicense) { ctx._drmWhy = U.t('StremioK’s service isn’t there'); return; }
         YTPlay.drmLicense(drm.url, drm.h, data.challenge, drm.b64).then(function (r) {
             if (!S.active || token !== _playToken) { return; }
             if (!r || !r.license) { throw new Error((r && r.why) || 'no answer'); }
@@ -709,14 +709,14 @@ var PlayerParts = {};
             U.log('player', 'DRM: no license for this channel (' + ctx._drmWhy + ')');
         });
     }
-    function drmName(d) { return { clearkey: 'ClearKey', widevine: 'Widevine', playready: 'PlayReady' }[d.sys] || 'its DRM'; }
+    function drmName(d) { return { clearkey: 'ClearKey', widevine: 'Widevine', playready: 'PlayReady' }[d.sys] || U.t('its DRM'); }
     var BUFFERS = { more: [8, 10], most: [15, 20] };
     function openAV(url, token) {
         var drm = S.ctx && S.ctx.stream && S.ctx.stream._drm;
         if (drm && !drm.ok) {   // (ClearKey, or a license StremioK can't ask for)
             U.log('player', 'Not played: ' + drmName(drm) + (drm.sys === 'clearkey' ? '' : ' without a license server StremioK can use') + ' (' + where(url) + ')');
             U.spinner(false);
-            failedStart(drm.sys === 'clearkey' ? 'This ClearKey channel’s keys can’t be read (its playlist’s #KODIPROP lines)' : 'This channel’s DRM can’t be played on the TV (' + drmName(drm) + ')');
+            failedStart(drm.sys === 'clearkey' ? U.t('This ClearKey channel’s keys can’t be read (its playlist’s #KODIPROP lines)') : U.t('This channel’s DRM can’t be played on the TV ({drm})', { drm: drmName(drm) }));
             return;
         }
         try {
@@ -741,7 +741,7 @@ var PlayerParts = {};
             avplay.setListener({
                 onbufferingstart: function () {
                     if (!S.active || token !== _playToken) { return; }
-                    S.buffering = true; U.spinner(true, S.playStarted ? 'Buffering…' : undefined);
+                    S.buffering = true; U.spinner(true, S.playStarted ? U.t('Buffering…') : undefined);
                 },
                 onbufferingcomplete: function () {
                     if (!S.active || token !== _playToken) { return; }
@@ -789,13 +789,13 @@ var PlayerParts = {};
                     // A live channel that played: its connection dropped → opened again (liveDropped).
                     if (S.playing && liveReconnects()) { U.log('player', 'Playback error: ' + err + ' (' + where(S.ctx.url) + ')'); liveDropped('Connection lost'); return; }
                     // A reconnect's try that didn't play → the next try.
-                    if (!S.playing && _reco.tries) { if (!relayFailed()) { liveDropped('Couldn’t reconnect'); } return; }
+                    if (!S.playing && _reco.tries) { if (!relayFailed()) { liveDropped(U.t('Couldn’t reconnect')); } return; }
                     // Failed before it ever played (opened, maybe, but nothing shown) → retry / step down / Auto.
                     if (!S.playing && (relayFailed() || tryFallback())) { return; }
                     reportStart(false, err);   // (unless it had already played)
                     U.log('player', 'Playback error: ' + err + ' (' + where(S.ctx && S.ctx.url) + ')');
-                    if (!S.playing) { failedStart('Playback error: ' + err); return; }
-                    U.toast('Playback error: ' + err);
+                    if (!S.playing) { failedStart(U.t('Playback error: {why}', { why: err })); return; }
+                    U.toast(U.t('Playback error: {why}', { why: err }));
                     exitLater();
                 }
             });
@@ -830,17 +830,17 @@ var PlayerParts = {};
                 if (!S.active || token !== _playToken) { return; }
                 U.spinner(false);
                 if (relayFailed()) { return; }
-                if (_reco.tries) { liveDropped('Couldn’t reconnect'); return; }   // (a reconnect's try: the next one)
+                if (_reco.tries) { liveDropped(U.t('Couldn’t reconnect')); return; }   // (a reconnect's try: the next one)
                 // Prepare failed → retry / step down / Auto.
                 if (tryFallback()) { return; }
                 U.log('player', 'Could not open: ' + (err && (err.name || err.message || err)) + ' (' + where(url) + ')');
                 reportStart(false, err && (err.name || err.message || err));
-                failedStart(S.ctx && S.ctx._drmWhy ? 'No license for this channel: ' + S.ctx._drmWhy : 'Could not open stream');
+                failedStart(S.ctx && S.ctx._drmWhy ? U.t('No license for this channel: {why}', { why: S.ctx._drmWhy }) : U.t('Could not open stream'));
             });
         } catch (e) {
             U.log('player', 'AVPlay failed: ' + (e && e.message));
             reportStart(false, e && e.message);
-            U.spinner(false); U.toast('AVPlay failed: ' + e.message); exitLater();
+            U.spinner(false); U.toast(U.t('AVPlay failed: {why}', { why: e.message })); exitLater();
         }
     }
     // What a log entry names: the link, or, playing privately, nothing that says what.
@@ -922,7 +922,7 @@ var PlayerParts = {};
     function shakaLoadInto(url, drm, token, fail) {
         loadShaka().then(function () {
             if (!S.active || token !== _playToken) { return; }
-            if (typeof shaka === 'undefined' || !shaka.Player.isBrowserSupported()) { throw new Error('this TV’s browser can’t play it'); }
+            if (typeof shaka === 'undefined' || !shaka.Player.isBrowserSupported()) { throw new Error(U.t('this TV’s browser can’t play it')); }
             return shakaStop().then(function () {
                 if (!S.active || token !== _playToken) { return; }
                 var pl = _shakaPl = new shaka.Player(), cfg = { streaming: { bufferingGoal: 10 } };
@@ -944,7 +944,7 @@ var PlayerParts = {};
             });
         }).then(null, function (e) { if (S.active && token === _playToken) { fail(shakaWhy(e)); } });
     }
-    function shakaWhy(e) { return e && e.code ? 'Shaka error ' + e.code : (e && e.message) || 'it didn’t start'; }
+    function shakaWhy(e) { return e && e.code ? U.t('Shaka error {code}', { code: e.code }) : (e && e.message) || U.t('it didn’t start'); }
     var HTML5_START_MS = 20000;
     function startHTML5(url) {
         url = opened(url);
@@ -956,7 +956,7 @@ var PlayerParts = {};
             reportStart(false, 'TIMEOUT');
             U.spinner(false);
             if (!drm) { U.log('player', 'Not played (the page’s video player): no start in ' + Math.round(HTML5_START_MS / 1000) + ' s (' + where(url) + ')'); }
-            U.toast('This stream didn\'t start'); exitLater();
+            U.toast(U.t('This stream didn\'t start')); exitLater();
         }, drm ? SHAKA_START_MS : HTML5_START_MS);
         S.videoEl.onloadedmetadata = function () {
             if (!S.active || token !== _playToken) { return; }
@@ -984,14 +984,14 @@ var PlayerParts = {};
             // (the page's player says little: its code, and a message where the engine has one)
             U.log('player', (loaded ? 'Stopped' : 'Not played') + ' (the page’s video player): ' + (['', 'aborted', 'a network error', 'the file couldn’t be decoded', 'a format or link it can’t play'][mcode] || 'an error') +
                 (me && me.message ? ' (' + me.message + ')' : '') + ' (' + where(url) + ')');
-            U.toast('Playback error'); exitLater();
+            U.toast(U.t('Playback error')); exitLater();
         };
         if (drm) {
             shakaLoadInto(url, drm, token, function (why) {
                 if (loaded) { U.log('player', 'ClearKey channel: ' + why); U.toast('Playback error: ' + why); exitLater(); return; }
                 U.log('player', 'ClearKey channel didn’t play (' + why + ')');
                 U.spinner(false);
-                failedStart('This ClearKey channel didn’t play (' + why + ')');
+                failedStart(U.t('This ClearKey channel didn’t play ({why})', { why: why }));
             });
         } else {
             var p = S.videoEl.play();
@@ -1020,9 +1020,9 @@ var PlayerParts = {};
     }
     function onEnded() {
         // a live channel whose stream ended (its server stopped it): opened again (liveDropped)
-        if (liveReconnects()) { liveDropped('The stream ended'); return; }
+        if (liveReconnects()) { liveDropped(U.t('The stream ended')); return; }
         if (isNotice()) {   // (back to its sources: another one, or this one later)
-            U.toast('That source isn\'t ready yet (the debrid service is still getting it): try another, or this one later', 6000);
+            U.toast(U.t('That source isn\'t ready yet (the debrid service is still getting it): try another, or this one later'), 6000);
             exit();
             return;
         }
@@ -1110,9 +1110,9 @@ var PlayerParts = {};
             var name = YouTube.SB_NAMES[g.cat] || 'section';
             if (g.mode === 'skip') {
                 seekTo(g.end);
-                U.toast('Skipped: ' + name + '  (' + U.fmtTime(g.end - g.start) + ')', 3000);
+                U.toast(U.t('Skipped: {what}  ({length})', { what: name, length: U.fmtTime(g.end - g.start) }), 3000);
             } else {
-                showSkip('sb', { end: g.end, label: 'Skip ' + name });
+                showSkip('sb', { end: g.end, label: U.t('Skip {what}', { what: name }) });
             }
             return;
         }
@@ -1183,7 +1183,7 @@ var PlayerParts = {};
     }
 
     function seekTo(sec) {
-        if (S.isLive) { showOSD(false); U.toast('Live — seeking unavailable', 1500); return; }
+        if (S.isLive) { showOSD(false); U.toast(U.t('Live — seeking unavailable'), 1500); return; }
         // keep a small margin from the very end (seeking to EOF can error)
         var maxT = S.dur ? Math.max(0, S.dur - 2) : 1e9;
         var target = Math.max(0, Math.min(maxT, sec));
@@ -1256,7 +1256,8 @@ var PlayerParts = {};
         try { n = c.nextSource(tried, c._avoid || []); } catch (e) { n = null; }
         if (!n || !n.source || !n.source.url) { return false; }
         c._tried = tried;   // (kept by the next one: not a source's own field)
-        var msg = (notice ? notice.text + '  ·  trying' : 'Didn’t start: trying') + ' the next source (' + (tried.length + 1) + ' of ' + Math.min(n.total, NEXT_TRIES + 1) + ')…';
+        var next = { n: tried.length + 1, of: Math.min(n.total, NEXT_TRIES + 1) };
+        var msg = notice ? notice.text + '  ·  ' + U.t('trying the next source ({n} of {of})…', next) : U.t('Didn’t start: trying the next source ({n} of {of})…', next);
         U.log('player', 'Source didn’t start: trying the next one (' + (tried.length + 1) + ')');
         replaceSource(n.source, true);
         U.spinner(true, msg); U.toast(msg, notice ? 7000 : 4000);
@@ -1271,7 +1272,7 @@ var PlayerParts = {};
         var u = (typeof Stremio !== 'undefined' && Stremio.convertUrl) ? Stremio.convertUrl(c.url) : null;
         if (!u) { return false; }
         c._converted = true; c._convertedFrom = c.url;   // (kept by what replaces it: Continue Watching saves its own link)
-        var msg = 'Didn’t start: converting it on your streaming server…';
+        var msg = U.t('Didn’t start: converting it on your streaming server…');
         U.log('player', 'Source didn’t start: converting it on the streaming server');
         replaceSource({ url: u, stream: c.stream, subExtra: c.subExtra, sourceSubs: c.sourceSubs, localSubs: c.localSubs, converted: true }, true);
         U.spinner(true, msg); U.toast(msg, 5000);
@@ -1318,13 +1319,14 @@ var PlayerParts = {};
     }
     function describeNotice(kind, st) {
         var d = (typeof Stremio !== 'undefined' && Stremio.debridOf) ? Stremio.debridOf(st) : null;
-        var svc = d ? d.name : 'The debrid service', addon = st._addon || 'the addon', key = d ? d.name + ' key' : 'debrid key';
+        var svc = d ? d.name : U.t('The debrid service'), addon = st._addon || U.t('the addon'), key = d ? U.t('{service} key', { service: d.name }) : U.t('debrid key');
         var n = { kind: kind, service: d ? d.name : '', tag: d ? d.tag : '', account: false, text: '' };
-        if (/access|auth|unauthorized|forbidden|premium/.test(kind)) { n.account = true; n.text = svc + ' refused access (' + addon + '): check its ' + key + ' in the addon’s settings'; }
-        else if (/limit|too_many|exceeded/.test(kind)) { n.account = true; n.text = svc + ': your limit is reached for now (' + addon + ')'; }
-        else if (/infring|blocked|dmca|removed/.test(kind)) { n.text = svc + ' won’t give this file (' + addon + '): try another source'; }
-        else if (/download|caching|queued/.test(kind)) { n.text = 'Still downloading on ' + svc + ' (' + addon + '): try again later'; }
-        else { n.text = svc + ' couldn’t give this file (' + addon + ': “' + kind.replace(/_/g, ' ') + '”)'; }
+        var w = { service: svc, addon: addon, key: key, what: kind.replace(/_/g, ' ') };
+        if (/access|auth|unauthorized|forbidden|premium/.test(kind)) { n.account = true; n.text = U.t('{service} refused access ({addon}): check its {key} in the addon’s settings', w); }
+        else if (/limit|too_many|exceeded/.test(kind)) { n.account = true; n.text = U.t('{service}: your limit is reached for now ({addon})', w); }
+        else if (/infring|blocked|dmca|removed/.test(kind)) { n.text = U.t('{service} won’t give this file ({addon}): try another source', w); }
+        else if (/download|caching|queued/.test(kind)) { n.text = U.t('Still downloading on {service} ({addon}): try again later', w); }
+        else { n.text = U.t('{service} couldn’t give this file ({addon}: “{what}”)', w); }
         return n;
     }
     // Not playing after AV_START_MS (no answer from the server, or opened and nothing shown): the
@@ -1337,12 +1339,12 @@ var PlayerParts = {};
     }
     function startCheck() {
         if (!S.active || S.playing || !useAV || !_openedAt || Date.now() - _openedAt < startMs()) { return; }
-        if (_reco.tries) { liveDropped('Couldn’t reconnect'); return; }   // (a reconnect's try: the next one)
+        if (_reco.tries) { liveDropped(U.t('Couldn’t reconnect')); return; }   // (a reconnect's try: the next one)
         if (nextSourceOnFail()) { return; }
         if (S.playStarted && isPaused()) { return; }
         U.log('player', 'Didn’t start: nothing played in ' + (startMs() / 1000) + ' s (' + where(S.ctx && S.ctx.url) + ')');
         U.spinner(false);
-        U.toast('Didn’t start: nothing played in ' + (startMs() / 1000) + ' seconds. Try another source.', 6000);
+        U.toast(U.t('Didn’t start: nothing played in {n} seconds. Try another source.', { n: startMs() / 1000 }), 6000);
         exitLater();
     }
     P.startCheck = startCheck;
@@ -1427,9 +1429,9 @@ var PlayerParts = {};
         var known = liveKnown(ctx.url), cc = ctx._relayCc || null, raw = !!(known && known.raw);
         liveKeep(ctx.url, repack, known ? ccOf(known) : null, true);   // (its hls answer kept)
         U.log('player', 'Live sound ' + (repack ? 'repacked by StremioK\'s service' : 'straight from the server') + ': your choice for this channel');
-        var msg = repack ? 'Repacking this channel’s sound…' : 'Playing the sound straight from the server…';
+        var msg = repack ? U.t('Repacking this channel’s sound…') : U.t('Playing the sound straight from the server…');
         if (!repack && !cc) { ctx._relay = null; ctx._relayFor = null; ctx._relayFix = false; reopen(msg); return; }
-        function failed() { if (S.ctx === ctx && S.active) { U.toast('StremioK’s service didn’t answer: the sound stays as it was', 5000); } }
+        function failed() { if (S.ctx === ctx && S.active) { U.toast(U.t('StremioK’s service didn’t answer: the sound stays as it was'), 5000); } }
         YTPlay.liveOpen(ctx.url, ctx._headers, true, { fix: !!repack, cc: raw ? null : cc, raw: raw }).then(function (r) {
             if (S.ctx !== ctx || !S.active) { return; }
             if (!relayed(ctx, r, cc, repack)) { failed(); return; }
@@ -1497,10 +1499,10 @@ var PlayerParts = {};
             liveKeep(url, fix, cc, false, hls, !!r.raw);
             if (S.ctx !== ctx || !S.active || ctx.url !== url) { return; }
             if (cc && cc.length && !ctx._relayCc) { ctx._ccOffer = cc; }
-            if (cc && cc.length && ccWanted(ctx, cc)) { ccOn(ctx, 'Adding this channel’s captions…'); return; }
+            if (cc && cc.length && ccWanted(ctx, cc)) { ccOn(ctx, U.t('Adding this channel’s captions…')); return; }
             if (known || !fix || ctx._relay || !relayed(ctx, r, null, true)) { return; }   // (the sound: restarted for on its first look only)
             U.log('player', 'Live sound repacked by StremioK\'s service (' + (r.why || '') + ')');
-            reopen('Fixing this channel’s sound…');
+            reopen(U.t('Fixing this channel’s sound…'));
         }, function () {});
     }
     // The channel again through the relay with its closed captions as subtitle tracks (the sound
@@ -1518,7 +1520,7 @@ var PlayerParts = {};
             return true;
         }, function () { return false; });
     }
-    P.ccOn = function (want) { return S.ctx ? ccOn(S.ctx, 'Adding this channel’s captions…', want) : Promise.resolve(false); };
+    P.ccOn = function (want) { return S.ctx ? ccOn(S.ctx, U.t('Adding this channel’s captions…'), want) : Promise.resolve(false); };
     // The relay didn't start (StremioK's service gone): the channel as it is.
     function relayFailed() {
         if (S.playStarted || !S.ctx || !S.ctx._relay) { return false; }
@@ -1539,12 +1541,12 @@ var PlayerParts = {};
         var now = Date.now();
         if (S.buffering) {
             if (!_stall.bufSince) { _stall.bufSince = now; }
-            else if (now - _stall.bufSince > BUFFER_STALL_SECS * 1000) { recoverStall('Stream stopped loading'); }
+            else if (now - _stall.bufSince > BUFFER_STALL_SECS * 1000) { recoverStall(U.t('Stream stopped loading')); }
             return;
         }
         _stall.bufSince = 0;
         if (isPaused() || S.cur !== _stall.t) { _stall.t = S.cur; _stall.since = now; return; }
-        if (_stall.since && now - _stall.since > STALL_SECS * 1000) { recoverStall('Playback stalled'); }
+        if (_stall.since && now - _stall.since > STALL_SECS * 1000) { recoverStall(U.t('Playback stalled')); }
     }
     function recoverStall(why) {
         if (liveReconnects()) { liveDropped(why); return; }
@@ -1552,12 +1554,12 @@ var PlayerParts = {};
         _stall.recoveries = _stall.recoveries.filter(function (t) { return now - t < STALL_WINDOW_MS; });
         if (_stall.recoveries.length >= STALL_MAX) {
             U.spinner(false);
-            U.toast('This source keeps stalling — try another one', 4000);
+            U.toast(U.t('This source keeps stalling — try another one'), 4000);
             exit();
             return;
         }
         _stall.recoveries.push(now);
-        reopen(why + ' — reloading…');
+        reopen(U.t('{why} — reloading…', { why: why }));
     }
 
     // ---------- a live channel that drops ----------
@@ -1578,20 +1580,20 @@ var PlayerParts = {};
         var mode = P.playerCfg().reconnect, now = Date.now();
         if (mode === 'off') {
             U.log('player', 'Live channel: ' + why + '; reconnecting is off');
-            U.spinner(false); U.toast(why + ': the channel stopped (reconnecting is off)', 5000);
+            U.spinner(false); U.toast(U.t('{why}: the channel stopped (reconnecting is off)', { why: why }), 5000);
             exitLater();
             return;
         }
         _stall.recoveries = _stall.recoveries.filter(function (t) { return now - t < STALL_WINDOW_MS; });
         if (mode !== 'always' && _stall.recoveries.length >= STALL_MAX) {
             U.log('player', 'Live channel: ' + why + '; dropped ' + STALL_MAX + ' times in ' + (STALL_WINDOW_MS / 60000) + ' minutes, given up');
-            U.spinner(false); U.toast('This channel keeps dropping — try it again later', 5000);
+            U.spinner(false); U.toast(U.t('This channel keeps dropping — try it again later'), 5000);
             exit();
             return;
         }
         _stall.recoveries.push(now);
         var n = ++_reco.tries, wait = RECO_WAIT_S[Math.min(n - 1, RECO_WAIT_S.length - 1)] * 1000, ctx = S.ctx;
-        var msg = why + ' — reconnecting' + (n > 1 ? ' (try ' + n + ')' : '') + '…';
+        var msg = n > 1 ? U.t('{why} — reconnecting (try {n})…', { why: why, n: n }) : U.t('{why} — reconnecting…', { why: why });
         U.log('player', 'Live channel: ' + why + ', reconnecting (try ' + n + (wait ? ', in ' + (wait / 1000) + ' s' : '') + ')');
         if (!wait) { reopen(msg); return; }
         U.spinner(true, msg);
@@ -1668,5 +1670,5 @@ var PlayerParts = {};
     P.sponsorHighlight = sponsorHighlight;
     P.chapters = chapters; P.chapterAt = chapterAt; P.chapterLabel = chapterLabel;
     P.seekTo = seekTo; P.doAVSeek = doAVSeek; P.seekBy = seekBy; P.exit = exit;
-    P.reload = function () { if (S.active && S.ctx) { reopen(S.isLive ? 'Reloading the channel…' : 'Reloading…'); } };   // (the menu's Reload)
+    P.reload = function () { if (S.active && S.ctx) { reopen(S.isLive ? U.t('Reloading the channel…') : U.t('Reloading…')); } };   // (the menu's Reload)
 })(PlayerParts);

@@ -135,32 +135,32 @@
     }
 
     // Display names for language codes (the aliases above, plus other common ones).
-    var LANG_NAMES = { eng: 'English', spa: 'Spanish', fre: 'French', ger: 'German', ita: 'Italian', por: 'Portuguese',
-        dut: 'Dutch', rus: 'Russian', ara: 'Arabic', tur: 'Turkish', pol: 'Polish',
-        jpn: 'Japanese', ja: 'Japanese', kor: 'Korean', ko: 'Korean', chi: 'Chinese', zho: 'Chinese', zh: 'Chinese',
-        hin: 'Hindi', hi: 'Hindi', swe: 'Swedish', sv: 'Swedish', nor: 'Norwegian', no: 'Norwegian', nob: 'Norwegian',
-        dan: 'Danish', da: 'Danish', fin: 'Finnish', fi: 'Finnish', gre: 'Greek', ell: 'Greek', el: 'Greek',
-        heb: 'Hebrew', he: 'Hebrew', hun: 'Hungarian', hu: 'Hungarian', cze: 'Czech', ces: 'Czech', cs: 'Czech',
-        rum: 'Romanian', ron: 'Romanian', ro: 'Romanian', ukr: 'Ukrainian', uk: 'Ukrainian', tha: 'Thai', th: 'Thai',
-        vie: 'Vietnamese', vi: 'Vietnamese', ind: 'Indonesian', id: 'Indonesian', cat: 'Catalan', ca: 'Catalan',
-        bul: 'Bulgarian', bg: 'Bulgarian', hrv: 'Croatian', hr: 'Croatian', srp: 'Serbian', sr: 'Serbian',
-        per: 'Persian', fas: 'Persian', fa: 'Persian', slo: 'Slovak', slv: 'Slovenian', may: 'Malay', fil: 'Filipino',
-        baq: 'Basque', glg: 'Galician', est: 'Estonian', lav: 'Latvian', lit: 'Lithuanian', ice: 'Icelandic',
-        tam: 'Tamil', tel: 'Telugu', ben: 'Bengali', mul: 'Multiple languages', zxx: 'No language',
-        afr: 'Afrikaans', alb: 'Albanian', arg: 'Aragonese', arm: 'Armenian', ast: 'Asturian', aze: 'Azerbaijani',
-        bel: 'Belarusian', bos: 'Bosnian', bre: 'Breton', bur: 'Burmese', prs: 'Dari', epo: 'Esperanto', ext:
-        'Extremaduran', gla: 'Scottish Gaelic', geo: 'Georgian', ibo: 'Igbo', ina: 'Interlingua', gle: 'Irish', kan:
-        'Kannada', kaz: 'Kazakh', khm: 'Khmer', kur: 'Kurdish', ltz: 'Luxembourgish', mac: 'Macedonian', mal:
-        'Malayalam', mni: 'Manipuri', mar: 'Marathi', mon: 'Mongolian', mne: 'Montenegrin', nav: 'Navajo', nep:
-        'Nepali', sme: 'Northern Sami', oci: 'Occitan', ori: 'Odia', pan: 'Punjabi', pus: 'Pashto', sat: 'Santali',
-        snd: 'Sindhi', sin: 'Sinhala', som: 'Somali', swa: 'Swahili', syr: 'Syriac', tat: 'Tatar', tok: 'Toki Pona',
-        tuk: 'Turkmen', urd: 'Urdu', uzb: 'Uzbek', wel: 'Welsh',
-        und: 'Unknown language', '': 'Unknown language' };
+    var LANG_NAMES = { eng: U.t('English'), spa: U.t('Spanish'), fre: U.t('French'), ger: U.t('German'), ita: U.t('Italian'), por: U.t('Portuguese'),
+        dut: U.t('Dutch'), rus: U.t('Russian'), ara: U.t('Arabic'), tur: U.t('Turkish'), pol: U.t('Polish'),
+        jpn: U.t('Japanese'), ja: U.t('Japanese'), kor: U.t('Korean'), ko: U.t('Korean'), chi: U.t('Chinese'), zho: U.t('Chinese'), zh: U.t('Chinese'),
+        hin: U.t('Hindi'), hi: U.t('Hindi'), swe: U.t('Swedish'), sv: U.t('Swedish'), nor: U.t('Norwegian'), no: U.t('Norwegian'), nob: U.t('Norwegian'),
+        dan: U.t('Danish'), da: U.t('Danish'), fin: U.t('Finnish'), fi: U.t('Finnish'), gre: U.t('Greek'), ell: U.t('Greek'), el: U.t('Greek'),
+        heb: U.t('Hebrew'), he: U.t('Hebrew'), hun: U.t('Hungarian'), hu: U.t('Hungarian'), cze: U.t('Czech'), ces: U.t('Czech'), cs: U.t('Czech'),
+        rum: U.t('Romanian'), ron: U.t('Romanian'), ro: U.t('Romanian'), ukr: U.t('Ukrainian'), uk: U.t('Ukrainian'), tha: U.t('Thai'), th: U.t('Thai'),
+        vie: U.t('Vietnamese'), vi: U.t('Vietnamese'), ind: U.t('Indonesian'), id: U.t('Indonesian'), cat: U.t('Catalan'), ca: U.t('Catalan'),
+        bul: U.t('Bulgarian'), bg: U.t('Bulgarian'), hrv: U.t('Croatian'), hr: U.t('Croatian'), srp: U.t('Serbian'), sr: U.t('Serbian'),
+        per: U.t('Persian'), fas: U.t('Persian'), fa: U.t('Persian'), slo: U.t('Slovak'), slv: U.t('Slovenian'), may: U.t('Malay'), fil: U.t('Filipino'),
+        baq: U.t('Basque'), glg: U.t('Galician'), est: U.t('Estonian'), lav: U.t('Latvian'), lit: U.t('Lithuanian'), ice: U.t('Icelandic'),
+        tam: U.t('Tamil'), tel: U.t('Telugu'), ben: U.t('Bengali'), mul: U.t('Multiple languages'), zxx: U.t('No language'),
+        afr: U.t('Afrikaans'), alb: U.t('Albanian'), arg: U.t('Aragonese'), arm: U.t('Armenian'), ast: U.t('Asturian'), aze: U.t('Azerbaijani'),
+        bel: U.t('Belarusian'), bos: U.t('Bosnian'), bre: U.t('Breton'), bur: U.t('Burmese'), prs: U.t('Dari'), epo: U.t('Esperanto'), ext:
+        U.t('Extremaduran'), gla: U.t('Scottish Gaelic'), geo: U.t('Georgian'), ibo: U.t('Igbo'), ina: U.t('Interlingua'), gle: U.t('Irish'), kan:
+        U.t('Kannada'), kaz: U.t('Kazakh'), khm: U.t('Khmer'), kur: U.t('Kurdish'), ltz: U.t('Luxembourgish'), mac: U.t('Macedonian'), mal:
+        U.t('Malayalam'), mni: U.t('Manipuri'), mar: U.t('Marathi'), mon: U.t('Mongolian'), mne: U.t('Montenegrin'), nav: U.t('Navajo'), nep:
+        U.t('Nepali'), sme: U.t('Northern Sami'), oci: U.t('Occitan'), ori: U.t('Odia'), pan: U.t('Punjabi'), pus: U.t('Pashto'), sat: U.t('Santali'),
+        snd: U.t('Sindhi'), sin: U.t('Sinhala'), som: U.t('Somali'), swa: U.t('Swahili'), syr: U.t('Syriac'), tat: U.t('Tatar'), tok: U.t('Toki Pona'),
+        tuk: U.t('Turkmen'), urd: U.t('Urdu'), uzb: U.t('Uzbek'), wel: U.t('Welsh'),
+        und: U.t('Unknown language'), '': U.t('Unknown language') };
     function langName(lang) {
         var k = langKey(lang);
         if (LANG_NAMES[k]) { return LANG_NAMES[k]; }
         var raw = ('' + (lang || '')).trim();
-        return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'Unknown language';
+        return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : U.t('Unknown language');
     }
     // Order for language groups: current choice, then the preferred languages, then by name.
     function langRank(k, prefs) {

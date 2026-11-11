@@ -94,22 +94,22 @@ var Plex = (function () {
             function poll() {
                 timer = setTimeout(function () {
                     if (stopped) { return; }
-                    if (Date.now() - t0 > PIN_FOR) { fail('The code ran out: start again.'); return; }
+                    if (Date.now() - t0 > PIN_FOR) { fail(U.t('The code ran out: start again.')); return; }
                     U.getJSON(TV + '/api/v2/pins/' + enc(pin.id), 10000, 65536, null, headers(''), null, true).then(function (p) {
                         if (stopped) { return; }
                         if (!p || !p.authToken) { poll(); return; }
                         stopped = true;
                         accountServers('' + p.authToken).then(function (list) {
-                            if (!list.length) { cb.onError('Your Plex account has no servers.'); return; }
+                            if (!list.length) { cb.onError(U.t('Your Plex account has no servers.')); return; }
                             cb.onServers(list);
-                        }, function (e) { cb.onError('Couldn’t list your Plex servers (' + U.problem(e) + ').'); });
+                        }, function (e) { cb.onError(U.t('Couldn’t list your Plex servers ({why}).', { why: U.problem(e) })); });
                     }, function (e) {
-                        if (/HTTP 404/.test(e && e.message)) { fail('The code ran out: start again.'); } else { poll(); }
+                        if (/HTTP 404/.test(e && e.message)) { fail(U.t('The code ran out: start again.')); } else { poll(); }
                     });
                 }, PIN_EVERY);
             }
             poll();
-        }).then(null, function (e) { fail('Couldn’t get a code from Plex (' + U.problem(e) + ').'); });
+        }).then(null, function (e) { fail(U.t('Couldn’t get a code from Plex ({why}).', { why: U.problem(e) })); });
         return function () { stopped = true; clearTimeout(timer); };
     }
     // The account's servers (plex.tv's resources), each with its connections and its own token.
@@ -143,7 +143,7 @@ var Plex = (function () {
     function add(res) {
         var list = candidates(res), tried = [];
         function next(i) {
-            if (i >= list.length) { return Promise.reject(new Error('No address of “' + res.name + '” answered' + (tried.length ? ' (' + tried.join(', ') + ')' : '') + '.')); }
+            if (i >= list.length) { return Promise.reject(new Error(tried.length ? U.t('No address of “{name}” answered ({tried}).', { name: res.name, tried: tried.join(', ') }) : U.t('No address of “{name}” answered.', { name: res.name }))); }
             return U.getJSON(list[i] + '/identity', 6000, 65536, null, { 'Accept': 'application/json' }, null, true).then(function (r) {
                 if (('' + mc(r).machineIdentifier) !== res.machineId) { throw new Error('another server'); }
                 return list[i];
@@ -197,7 +197,7 @@ var Plex = (function () {
             _libsAsked[srv.id] = true;
             return get(srv, '/library/sections').then(function (r) {
                 var list = U.listOf(mc(r).Directory, 50, function (x) { return x.key != null && (x.type === 'movie' || x.type === 'show'); }).map(function (x) {
-                    return { id: clean(x.key, 20), name: clean(x.title) || (x.type === 'movie' ? 'Movies' : 'Shows'), type: x.type === 'movie' ? 'movie' : 'series' };
+                    return { id: clean(x.key, 20), name: clean(x.title) || (x.type === 'movie' ? U.t('Movies') : U.t('Shows')), type: x.type === 'movie' ? 'movie' : 'series' };
                 });
                 if (!server(srv.id)) { return; }
                 var all = libsAll(), keep = {}, before = JSON.stringify(all[srv.id] && all[srv.id].list);
@@ -219,8 +219,8 @@ var Plex = (function () {
         servers().forEach(function (srv) {
             var libs = libsOf(srv), on = many ? ' · ' + srv.name : '';
             if (!libs.length) { return; }
-            if (libs.some(function (l) { return l.type === 'movie'; })) { out.push({ type: 'movie', id: 'px.' + srv.id + '.resume', name: 'Continue watching' + on, extra: [] }); }
-            if (libs.some(function (l) { return l.type === 'series'; })) { out.push({ type: 'series', id: 'px.' + srv.id + '.nextup', name: 'Next up' + on, extra: [] }); }
+            if (libs.some(function (l) { return l.type === 'movie'; })) { out.push({ type: 'movie', id: 'px.' + srv.id + '.resume', name: U.t('Continue watching') + on, extra: [] }); }
+            if (libs.some(function (l) { return l.type === 'series'; })) { out.push({ type: 'series', id: 'px.' + srv.id + '.nextup', name: U.t('Next up') + on, extra: [] }); }
             libs.forEach(function (lib) {
                 out.push({ type: lib.type, id: 'px.' + srv.id + '.' + lib.id, name: lib.name + on, extra: [{ name: 'search' }, { name: 'skip' }] });
             });
@@ -361,12 +361,12 @@ var Plex = (function () {
             if (tags(it.Genre).length) { m.genres = tags(it.Genre); }
             if (tags(it.Role).length) { m.cast = tags(it.Role); }
             if (tags(it.Director).length) { m.director = tags(it.Director); }
-            if (+it.duration > 0 && t === 'movie') { m.runtime = Math.round(it.duration / 60000) + ' min'; }
+            if (+it.duration > 0 && t === 'movie') { m.runtime = U.t('{n} min', { n: Math.round(it.duration / 60000) }); }
             if (m.releaseInfo) { m.year = m.releaseInfo; }
             if (t === 'movie') { return m; }
             return episodes(srv, it.ratingKey).then(function (eps) {
                 m.videos = eps.map(function (e) {
-                    var v = { id: showId + ':' + e.season + ':' + e.episode, season: e.season, episode: e.episode, title: clean(e.it.title, 200) || 'Episode ' + e.episode };
+                    var v = { id: showId + ':' + e.season + ':' + e.episode, season: e.season, episode: e.episode, title: clean(e.it.title, 200) || U.t('Episode {n}', { n: e.episode }) };
                     if (e.it.summary) { v.overview = ('' + e.it.summary).slice(0, 1000); }
                     if (e.it.thumb) { v.thumbnail = img(srv, e.it.thumb, 640, 360); }
                     var rel = Date.parse(e.it.originallyAvailableAt || '');
