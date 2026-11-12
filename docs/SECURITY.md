@@ -11,7 +11,7 @@ already.
 
 | Version | Fixes |
 |---------|-------|
-| 2.2.x (latest) | Yes |
+| 2.3.x (latest) | Yes |
 | Older | No: update through TizenBrew, or install the latest `.wgt` |
 
 ## Reporting a vulnerability
