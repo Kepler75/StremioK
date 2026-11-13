@@ -121,7 +121,7 @@ to add (OK adds one; hidden system apps on request). On the TV only.
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Add a network folder* | | A WebDAV folder's address, then its user name and password, if any (see the [user guide](USER-GUIDE.md#a-network-folder-webdav)). |
+| *Add a network folder* | WebDAV, SMB share, DLNA server | Its address and sign-in, a share to pick, or a server found (see the [user guide](USER-GUIDE.md#a-network-folder)). |
 | Each folder | *Turn off* / *on*, *Index again*, *Remove* | Off: its sources set aside, its index kept. |
 
 ### Media servers
@@ -145,16 +145,15 @@ Only on 2017 and newer TVs, with the sideloaded app (2018–2020 ones: experimen
 
 ### Import configuration file
 
-A link to a text file (up to 256 KB) with one addon link, playlist link or API key per line;
-`#` lines are ignored. From your phone: its link, or the file (chosen or pasted). What it has
-is listed to tick and import. See [Getting started](USER-GUIDE.md#add-your-addons).
+A link to a text file (up to 1.5 MB) with one addon link, playlist link or API key per line;
+`#` lines are ignored. From your phone: its link, or the file (chosen or pasted); or a backup
+on a USB drive. What it has is listed to tick and import. See [Getting started](USER-GUIDE.md#add-your-addons).
 
 ### Export configuration
 
-Your addons (in order), playlists and Stalker portals (names, guide links), API keys
-and settings (not your Trakt sign-in, history or progress), as a file your phone copies or
-downloads, to import later. It holds your passwords and keys: keep it private. Imported
-settings replace yours (StremioK restarts).
+Addons (in order), playlists, portals, API keys, settings and, if ticked, your history
+(progress, watched marks, Continue Watching), as a file for your phone, or saved to a USB drive
+(`StremioK/stremiok-backup.txt`). It holds passwords: keep it private. An import replaces yours (StremioK restarts).
 
 ## Playback
 
@@ -186,6 +185,7 @@ settings replace yours (StremioK restarts).
 | *Edge* | **Drop shadow**, Outline, None | |
 | *Position* | Lower, **Bottom**, Raised, Higher | Lower is close to the screen's edge; Raised is above a widescreen film's black bars. |
 | *Font* | **the TV's**, Roboto, Atkinson Hyperlegible, Nunito, Cousine | |
+| *The file's colors* | **Off**, On | A file's own colors instead of *Color*. |
 
 ### Skipping
 
@@ -201,6 +201,7 @@ settings replace yours (StremioK restarts).
 | *Seek step* | 5, **10**, 15, 30 seconds | How far LEFT / RIGHT jump. FF / REW jump three steps; holding a direction speeds up. |
 | *Reconnect live channels* | Off, **A few times**, Keep trying | A channel that drops (lost, frozen or ended) opens again at the live edge: 3 times in 5 minutes, or with no limit, up to a minute apart (BACK stops it). Off: the player closes. |
 | *Buffer* | **Normal (the TV's own)**, More, Most | What the TV's player loads before starting and after running dry (More: 8 and 10 seconds; Most: 15 and 20): slower to start, dry less often. |
+| *Read the file's details* | **USB drives only**, All files, Off | Its codec, HDR and tracks, read from its start for Stream info. Links and network folders: a few requests more as it starts. |
 | *HLS through StremioK's service* | **Off**, Sources that need headers, All HLS sources | The service fetches it with the source's own headers (the TV's player can't always send them): a step more to start. Hold OK on a source: once. Files that need headers the player can't send always go through it. |
 
 ### Source ranking
@@ -308,7 +309,9 @@ whether its YouTube service is running. Nothing in Diagnostics leaves the TV.
 ### Logs
 
 The last 200 problems since StremioK started (failed downloads, playback and script errors,
-storage full), newest first, with keys, tokens and passwords masked; *Clear log*. When
+storage full), newest first, with keys, tokens and passwords masked; *Clear log*; *Send to
+your phone* (a text file of the logs and *Startup*, oldest first, with StremioK's version, how
+it's installed and the TV's model and Tizen version, to attach to a report). When
 StremioK closed without being exited (a crash, or the TV closing it), the next launch says so,
 with its last steps. *Startup* shows how long this launch and the one before took. See
 [Troubleshooting](TROUBLESHOOTING.md#where-to-look).

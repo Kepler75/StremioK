@@ -53,23 +53,43 @@ var YTPlay = (function () {
     // An export (a configuration file) given to the phone: a one-time page to copy or download it
     // -> { url, token } (polled like an entry: { seen }; closed with entryClose). POSTed: the token,
     // or the guide ticket (the page's POST carries an Origin the header alone doesn't pass).
-    function entryGive(text) {
+    // kind: 'logs' for Settings › Diagnostics › Logs › Send to your phone (its own page and file name).
+    function entryGive(text, kind) {
         if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
         return ensureService().then(entryAuth).then(function (a) {
             return (a.q ? Promise.resolve(a.q) : ticketOf(a)).then(function (cred) {
-                return U.postJSON(PROXY + '/entry/give' + (cred ? '?' + cred.replace(/^&/, '') : ''), text, 10000, 65536, a.h);
+                var q = (cred ? cred.replace(/^&/, '') : '') + (kind === 'logs' ? (cred ? '&' : '') + 'kind=logs' : '');
+                return U.postJSON(PROXY + '/entry/give' + (q ? '?' + q : ''), text, 10000, 65536, a.h);
             });
+        });
+    }
+    // A backup (kind 'backup') or the logs ('logs') written to a USB drive (its mount point,
+    // /opt/media/…), into its StremioK folder: -> { file, size }. POSTed as entryGive is.
+    function bakWrite(drive, kind, text) {
+        if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
+        return ensureService().then(entryAuth).then(function (a) {
+            return (a.q ? Promise.resolve(a.q) : ticketOf(a)).then(function (cred) {
+                var q = 'drive=' + encodeURIComponent(drive) + '&kind=' + (kind === 'logs' ? 'logs' : 'backup') + (cred ? '&' + cred.replace(/^&/, '') : '');
+                return U.postJSON(PROXY + '/bak/write?' + q, text, 20000, 4096, a.h);
+            });
+        });
+    }
+    // The backup on a USB drive -> { text, at }; rejects when there's none.
+    function bakRead(drive) {
+        if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
+        return ensureService().then(entryAuth).then(function (a) {
+            return U.getJSON(PROXY + '/bak/read?drive=' + encodeURIComponent(drive) + a.q, 15000, 3 * 1048576, null, a.h);
         });
     }
     function entryOpen(what) {
         return entryAuth().then(function (a) { return U.getJSON(PROXY + '/entry/open?what=' + encodeURIComponent(what || 'link') + a.q, 8000, undefined, null, a.h); });
     }
     function entryPoll(token) {
-        return entryAuth().then(function (a) { return U.getJSON(PROXY + '/entry/poll?t=' + encodeURIComponent(token) + a.q, 5000, undefined, null, a.h); })
+        return entryAuth().then(function (a) { return U.getJSON(PROXY + '/entry/poll?t=' + encodeURIComponent(token) + a.q, 5000, 4194304, null, a.h); })
             .then(function (r) { return (r && typeof r.text === 'string') ? r.text : null; });
     }
     function entrySeen(token) {   // (an export's page: kept open by asking, and whether the phone has opened it)
-        return entryAuth().then(function (a) { return U.getJSON(PROXY + '/entry/poll?t=' + encodeURIComponent(token) + a.q, 5000, undefined, null, a.h); })
+        return entryAuth().then(function (a) { return U.getJSON(PROXY + '/entry/poll?t=' + encodeURIComponent(token) + a.q, 5000, 4194304, null, a.h); })
             .then(function (r) { return !!(r && r.seen); });
     }
     function entryClose(token) {
@@ -96,6 +116,14 @@ var YTPlay = (function () {
         if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
         return ensureService().then(entryAuth).then(function (a) {
             return U.getJSON(PROXY + '/live/file?u=' + encodeURIComponent(url) + headerQuery(h) + (lan ? '&lan=1' : '') + a.q, 5000, 65536, null, a.h);
+        });
+    }
+    // What's in a source's file, from its header (the service's /live/mi: its container, codecs,
+    // audio and subtitle tracks with their names; see the service's mediaInfo). h, lan: as fileOpen.
+    function mediaInfo(url, h, lan, cancel) {
+        if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
+        return ensureService().then(entryAuth).then(function (a) {
+            return U.getJSON(PROXY + '/live/mi?u=' + encodeURIComponent(url) + headerQuery(h) + (lan ? '&lan=1' : '') + a.q, 25000, 262144, cancel, a.h, null, true);
         });
     }
     // Where a Nuvio plugin's Worker sends its requests (js/plugins.js): { url, headers }, the
@@ -329,6 +357,6 @@ var YTPlay = (function () {
         return MODE === 'tizenbrew' ? U.t('TizenBrew module') : MODE === 'wgt' ? U.t('Sideloaded app (.wgt)') : U.t('Browser (development)');
     }
 
-    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, fileOpen: fileOpen, pluginNet: pluginNet, hlsMaster: hlsMaster, aiomAddons: aiomAddons, stalkerList: stalkerList, stalkerVod: stalkerVod, drmLicense: drmLicense, stalkerPlayUrl: stalkerPlayUrl, stalkerGenres: stalkerGenres, stalkerLink: stalkerLink, xtvodAsk: xtvodAsk, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, entryGive: entryGive, entrySeen: entrySeen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
+    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, fileOpen: fileOpen, mediaInfo: mediaInfo, pluginNet: pluginNet, hlsMaster: hlsMaster, aiomAddons: aiomAddons, stalkerList: stalkerList, stalkerVod: stalkerVod, drmLicense: drmLicense, stalkerPlayUrl: stalkerPlayUrl, stalkerGenres: stalkerGenres, stalkerLink: stalkerLink, xtvodAsk: xtvodAsk, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, entryGive: entryGive, bakWrite: bakWrite, bakRead: bakRead, entrySeen: entrySeen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
         installLabel: installLabel, unavailableMessage: unavailableMessage, isRunning: isRunning, port: PORT };
 })();

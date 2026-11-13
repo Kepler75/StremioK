@@ -151,14 +151,19 @@
             if (prefs.length && cfg.lang2 !== 'none' && cfg.lang2 !== cfg.lang) { prefs.push(cfg.lang2); }
             // (the track playing already in that language: kept, not swapped for another
             // track in it, e.g. the first English one when the file plays its second)
-            var playing = -1;
+            // (a commentary track, by the file's header, only when the language has nothing else)
+            var playing = -1, own = P.fileTracks ? P.fileTracks('audio', tracks) : null;
+            var talk = function (i) { return !!(own && own[i] && own[i].commentary); };
             for (var k = 0; k < tracks.length; k++) { if (tracks[k].index === _audioIdx) { playing = k; break; } }
             for (var p = 0; p < prefs.length && pos < 0; p++) {
-                if (playing >= 0 && langMatches(prefs[p], infoLang(trackInfo(tracks[playing])))) { pos = playing; break; }
+                if (playing >= 0 && !talk(playing) && langMatches(prefs[p], infoLang(trackInfo(tracks[playing])))) { pos = playing; break; }
+                var first = -1;
                 for (var i = 0; i < tracks.length; i++) {
-                    var info = trackInfo(tracks[i]);
-                    if (langMatches(prefs[p], infoLang(info))) { pos = i; break; }
+                    if (!langMatches(prefs[p], infoLang(trackInfo(tracks[i])))) { continue; }
+                    if (first < 0) { first = i; }
+                    if (!talk(i)) { pos = i; break; }
                 }
+                if (pos < 0 && first >= 0) { pos = first; }
             }
         }
         return pos;
@@ -190,14 +195,16 @@
     }
     // Menu wording: "English  ·  6ch  ·  EAC3  (eng)"; the raw tag keeps regional
     // variants apart (es-419 vs es-ES).
-    function audioMenuLabel(tr, n) {
+    function audioMenuLabel(tr, n, own) {
         var info = trackInfo(tr), lang = infoLang(info);
         var ch = info.channels || info.channel, codec = info.fourCC || info.codec || '';
         var parts = [lang && lang !== 'und' ? langName(lang) : U.t('Audio {n}', { n: n + 1 })];
         if (ch) { parts.push(ch + 'ch'); }
         if (codec) { parts.push(('' + codec).toUpperCase()); }
         var label = parts.join('  ·  ');
-        return (lang && lang !== 'und' && langName(lang).toLowerCase() !== ('' + lang).toLowerCase()) ? label + '  (' + lang + ')' : label;
+        label = (lang && lang !== 'und' && langName(lang).toLowerCase() !== ('' + lang).toLowerCase()) ? label + '  (' + lang + ')' : label;
+        var note = own && P.fileTrackNote ? P.fileTrackNote(own) : '';   // (its own name, from the file's header: "Commentary with the director")
+        return note ? label + '  ·  ' + note : label;
     }
 
     // force: the track picked is the one the TV already reports. If you can still hear
@@ -316,7 +323,8 @@
     // same language's tracks sit together.
     function audioMenu() {
         var cfg = getAudioCfg(), prefs = [cfg.lang, cfg.lang2].filter(function (x) { return x && x !== 'default' && x !== 'none'; });
-        var tracks = getAudioTracks().map(function (tr, i) { return { tr: tr, n: i, k: langKey(trackLang(tr)) }; });
+        var all = getAudioTracks(), own = P.fileTracks ? P.fileTracks('audio', all) : null;
+        var tracks = all.map(function (tr, i) { return { tr: tr, n: i, k: langKey(trackLang(tr)) }; });
         tracks.sort(function (a, b) {
             var ra = langRank(a.k, prefs), rb = langRank(b.k, prefs);
             if (ra !== rb) { return ra - rb; }
@@ -327,7 +335,7 @@
         var items = tracks.map(function (x, i) {
             var tr = x.tr;
             if (tr.index === _audioIdx) { idx = i; }
-            return { label: audioMenuLabel(tr, x.n), sel: (tr.index === _audioIdx),
+            return { label: audioMenuLabel(tr, x.n, own && own[x.n]), sel: (tr.index === _audioIdx),
                 run: function () {
                     if (stuck) { closeMenu(); U.toast(cantSwitchText(), 6000); return; }
                     // re-picking the checked track re-applies it (see selectAudio)

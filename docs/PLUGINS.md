@@ -31,9 +31,10 @@ browser don't show it: plugins need StremioK's own service.
 Plugins need a [TMDB key](SETTINGS.md#integrations) (Settings › Content › Integrations): they
 look titles up by their TMDB number.
 
-Their sources show on title pages with your addons' (*From: Nuvio plugins*), ranked with the
-rest, and placed like an addon in Settings › Playback › Source ranking (*Feed sources order*).
-*↻ Refresh* gets a repository's latest plugins; StremioK never fetches them on its own.
+Their sources show on title pages with your addons' (*From: Nuvio plugins*), within the time
+addons get (*Wait for addons*), ranked with the rest, and placed like an addon in Settings › Playback › Source ranking (*Feed sources order*).
+*↻ Refresh* gets a repository's latest plugins; StremioK never fetches them on its own. When
+nothing comes: [Troubleshooting](TROUBLESHOOTING.md#nuvio-plugins).
 
 ## How it works
 - **The code** is downloaded when you add or refresh a repository (up to 1 MB a plugin, 50

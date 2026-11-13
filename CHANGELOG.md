@@ -3,6 +3,23 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.3.7 — 2026-11-13
+- **Windows / NAS shares (SMB) and DLNA media servers** as network folders (Settings › Content ›
+  Network folders): a share's server, sign-in (or a guest) and one of its shares; or a media
+  server found on your network. WebDAV folders with Digest sign-in work too.
+- **What's in the file:** Stream info shows its codec, HDR, what its Dolby Vision plays as on
+  your TV, and each audio and subtitle track with its own name (also in the colored keys' lists).
+  USB drives' by default (*Read the file's details*).
+- **Subtitle styling:** italics, bold, underline and the file's colors (SRT, ASS / SSA; colors
+  with *The file's colors*), lines that overlap shown together; SAMI, MicroDVD, MPL2 and TMPlayer
+  files; Central European and Cyrillic encodings; USB subtitles in a `Subs` folder or by episode.
+- **Backup and logs:** Export configuration can include your history and progress, and saves to
+  a USB drive too; *Restore from a USB drive*. Diagnostics › Logs › *Send to your phone* or *Save
+  to a USB drive*, oldest first, with the TV's model; Troubleshooting says how to report a problem.
+- **Nuvio plugins** no longer hold up a title: they get the time addons do, and *No sources
+  found* names each that failed.
+- **Fixed: playback jumping ahead after a pause**, by as long as it was paused.
+
 ## 2.3.6 — 2026-11-11
 - **Nuvio plugins** (Settings › Content › Nuvio plugins; 2017 and newer TVs, sideloaded
   app): add a repository made for the Nuvio apps and turn on its plugins; their sources show on

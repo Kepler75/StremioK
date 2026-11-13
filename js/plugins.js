@@ -94,7 +94,7 @@ var Plugins = (function () {
             list = list.filter(function (x) { var k = idOf(x.id); if (seen[k]) { return false; } seen[k] = true; return true; });
             return Promise.all(list.map(function (x) {
                 var types = (Array.isArray(x.supportedTypes) ? x.supportedTypes : ['movie', 'tv']).filter(function (t) { return t === 'movie' || t === 'tv'; });
-                var p = { id: idOf(x.id), name: str(x.name, 80) || idOf(x.id), version: str(x.version, 20), file: resolve(url, x.filename), types: types, on: false };
+                var p = { id: idOf(x.id), name: str(x.name, 80) || idOf(x.id), version: str(x.version, 20), file: resolve(url, x.filename), types: types, on: false, authorOff: x.enabled === false };
                 return U.getText(p.file, 20000, CODE_MAX).then(function (code) { p.code = '' + code; p.size = p.code.length; p.hash = hashOf(p.code); return p; },
                     function (e) { p.error = U.problem(e); return p; });
             })).then(function (plugins) { return { name: str(m.name, 80) || url.replace(/^https?:\/\//, '').replace(/\/manifest\.json.*$/i, ''), plugins: plugins }; });
@@ -116,7 +116,7 @@ var Plugins = (function () {
                 if (p.error) { failed++; return was || null; }
                 if (!was) { added++; } else if (was.hash !== p.hash) { changed++; }
                 writes.push(U.bigStore.set(CODE + rid + '.' + p.id, p.code));
-                return { id: p.id, name: p.name, version: p.version, file: p.file, types: p.types, on: !!(was && was.on), size: p.size, hash: p.hash };
+                return { id: p.id, name: p.name, version: p.version, file: p.file, types: p.types, on: !!(was && was.on), size: p.size, hash: p.hash, authorOff: !!p.authorOff };   // (authorOff: its repository marks it off, often as broken)
             }).filter(Boolean);
             return Promise.all(writes).then(function () {
                 if (old) { old.plugins.forEach(function (p) { if (!plugins.some(function (q) { return q.id === p.id; })) { U.bigStore.remove(CODE + rid + '.' + p.id); } }); }
@@ -224,30 +224,66 @@ var Plugins = (function () {
         if (!imdb || typeof Stremio === 'undefined' || !Stremio.tmdbFind) { return Promise.resolve(null); }
         return Stremio.tmdbFind(imdb[1], type === 'series' ? 'tv' : 'movie').then(function (n) { return n ? '' + n : null; });
     }
+    // A title's sources from the plugins that are on, within the time addons get (Settings ›
+    // Content › Addons › Wait for addons: a slower plugin is left out, the runtime started over so
+    // the next title doesn't wait behind it). The list carries _notes: [{ plugin, why }] for each
+    // that gave nothing (failed, too slow, no TMDB number), shown on No sources found.
+    function waitMs() {
+        var w = typeof Stremio !== 'undefined' && Stremio.getPrefs ? (+Stremio.getPrefs().addonWait || 0) * 1000 : 0;
+        return Math.max(w, 15000);
+    }
     function streams(type, id, meta) {
         if (!isEnabled()) { return Promise.resolve([]); }
         var kind = type === 'series' ? 'tv' : type === 'movie' ? 'movie' : '';
         var todo = enabledPlugins().filter(function (x) { return kind && x.p.types.indexOf(kind) !== -1; });
         if (!todo.length) { return Promise.resolve([]); }
         var ep = /:(\d+):(\d+)$/.exec(id || '');
+        function noted(list, notes) { list._notes = notes; return list; }
         return tmdbOf(type, id || '', meta).then(function (tmdb) {
-            if (!tmdb) { U.log('plugins', 'No TMDB number for ' + id + ' (a TMDB key is needed: Settings › Content › Integrations)'); return []; }
+            if (!tmdb) {
+                U.log('plugins', 'No TMDB number for ' + id + ' (a TMDB key is needed: Settings › Content › Integrations)');
+                return noted([], todo.map(function (x) { return { plugin: x.p.name, why: U.t('no TMDB number for this title (a TMDB key is needed: Settings › Content › Integrations)') }; }));
+            }
             var args = [tmdb, kind, ep ? +ep[1] : null, ep ? +ep[2] : null];
             return YTPlay.pluginNet(lanAllowed()).then(function (net) {
-                var out = [];
-                return U.settleAll(todo.map(function (x) {
+                var out = [], notes = [], over = false, state = {};
+                var all = U.settleAll(todo.map(function (x) {
                     return function () {
+                        if (over) { return Promise.resolve(); }
+                        state[x.p.id] = 'running';
                         return U.bigStore.get(CODE + x.repo.id + '.' + x.p.id).then(function (code) {
                             if (typeof code !== 'string' || !code) { throw new Error('its code isn’t on the TV: refresh its repository'); }
                             return runOne(code, x.p, args, net);
                         }).then(function (r) {
+                            if (over) { return; }
                             (r.logs || []).slice(0, 20).forEach(function (l) { U.log('plugins', x.p.name + ': ' + l); });
                             if (r.type !== 'done') { throw new Error(r.why || 'failed'); }
                             var list = (Array.isArray(r.streams) ? r.streams : []).slice(0, MAX_RESULTS).map(function (s, n) { return toSource(s, x.p, n); }).filter(Boolean);
+                            state[x.p.id] = 'done';
+                            if (!list.length) { notes.push({ plugin: x.p.name, why: U.t('no sources for this') }); }
                             out = out.concat(list);
-                        }).then(null, function (e) { U.log('plugins', x.p.name + ' (' + args.slice(0, 2).join(' ') + '): ' + ((e && e.message) || e)); });
+                        }).then(null, function (e) {
+                            if (over) { return; }
+                            var why = '' + ((e && e.message) || e);
+                            state[x.p.id] = 'failed';
+                            U.log('plugins', x.p.name + ' (' + args.slice(0, 2).join(' ') + '): ' + why);
+                            notes.push({ plugin: x.p.name, why: why });
+                        });
                     };
-                }), legacy() ? 1 : AT_ONCE).then(function () { return out; });
+                }), legacy() ? 1 : AT_ONCE);
+                return new Promise(function (resolve) {
+                    var timer = setTimeout(function () {
+                        over = true;
+                        var late = todo.filter(function (x) { return state[x.p.id] !== 'done' && state[x.p.id] !== 'failed'; });
+                        late.forEach(function (x) {
+                            U.log('plugins', x.p.name + ' (' + args.slice(0, 2).join(' ') + '): too slow, left out after ' + Math.round(waitMs() / 1000) + ' s');
+                            notes.push({ plugin: x.p.name, why: U.t('too slow: left out after {n} s (Wait for addons)', { n: Math.round(waitMs() / 1000) }) });
+                        });
+                        if (late.length) { fail('too slow'); }   // (the runtime started over: the next title doesn't wait behind them)
+                        resolve(noted(out, notes));
+                    }, waitMs());
+                    all.then(function () { if (over) { return; } over = true; clearTimeout(timer); resolve(noted(out, notes)); });
+                });
             }, function () { return []; });
         });
     }

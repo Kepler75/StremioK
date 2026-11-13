@@ -289,6 +289,11 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
   choice you made for a title wins over both. The second subtitle is the first addon subtitle in
   its language, and isn't shown when it's the language already at the bottom; *Off* in the
   subtitle languages turns both off for that title.
+- **Formats:** SRT, WebVTT, ASS / SSA, SAMI, MicroDVD (23.976 frames a second unless its first
+  line says), MPL2 and TMPlayer, told by their content.
+- **Styling:** italics, bold, underline and colors (SRT tags; ASS styles and `{\i1}`-style
+  overrides) kept; no positions, karaoke or drawings. Overlapping lines show
+  together.
 - **WebVTT:** comments (`NOTE` blocks: some subtitle addons put the line their own banner
   overlaps there), `STYLE` and `REGION` blocks aren't shown; codes such as `&amp;` show as the
   characters they stand for.
@@ -296,8 +301,8 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
   hold it back (shown when playback gets there; a jump in between drops it) but not show it
   sooner. A built-in track picked on its own at the start is picked once more after a few
   seconds of playback: the TV can take the first pick without showing its lines.
-- **Subtitle files on a USB drive:** SRT and WebVTT as they are, ASS / SSA turned into SRT, old
-  Windows-1252 and UTF-16 files read correctly. Those next to a playing USB video are there as
+- **Subtitle files on a USB drive:** read in their own encoding: UTF-8, UTF-16, or old Windows
+  ones told apart by their letters (Western, Central European, Cyrillic). Those next to a playing USB video are there as
   soon as playback starts (one that's your choice or language shows at once; the addons' join
   later without replacing it). For streams, a drive's subtitles come from its saved index (its
   files aren't read again), with a drive plugged in only; one already on the drive isn't offered
@@ -646,7 +651,14 @@ them.
 ## Network folders
 
 - **WebDAV:** listed with `PROPFIND`, one level at a time, always through StremioK's service (no
-  CORS rules, and certificates checked as below). Basic sign-in only.
+  CORS rules, and certificates checked as below). Basic or Digest (MD5, `qop=auth`) sign-in.
+- **SMB:** 2.0.2 / 2.1 with NTLMv2 or a guest, signed when the server asks (or it's a real
+  session); no SMB 1, no SMB 3 encryption. Shares listed through the srvsvc pipe. Home network only.
+- **DLNA:** found with SSDP when asked (multicast and broadcast), browsed with ContentDirectory
+  `Browse`; folders known by id, their names kept by the service to find a path again. Videos only.
+- **Through the service** (Digest, SMB, DLNA): the player gets `/net/<ticket>/f?p=…`, a random
+  ticket kept in memory for that folder and sign-in (6 h unused); a share's byte ranges become SMB
+  reads, a DLNA file is sent on to its own link (on that server only).
 - **The service keeps nothing:** each request names the folder's address in its link and carries
   the sign-in (and a trusted certificate) in headers, never in a link.
 - **Certificates:** checked against the bundled list. One no known authority signed is read
@@ -772,7 +784,7 @@ from a broken or hostile server can't fill the TV's memory (many answers kept to
 add up: the session caches are bounded by how many entries they keep, not by size): JSON answers (manifests, catalogs, streams, API
 answers) 2 MB, a title's details 4 MB (One Piece's episode list is 1.4 MB), subtitles and
 other text 5 MB, IPTV playlists 20 MB, HLS quality lists 512 KB, the configuration import
-256 KB. Answers are checked before use (a list must be a list; junk items are dropped) and
+1.5 MB. Answers are checked before use (a list must be a list; junk items are dropped) and
 capped: 1,000 titles a catalog page, 500 sources an addon, 300 subtitle tracks, 5,000
 episodes, 200 catalogs an addon, 30,000 channels a playlist. An addon that doesn't load says
 why in Settings › Content › Addons ("too large (over 2 MB)", "not an addon manifest", "timed out"…),
@@ -859,7 +871,9 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 | Health | `/health` | "ok": the app waits for it before playing | nothing |
 | YouTube | `/yt`, `/ytinfo`, `/ytsubs`, `/ytsb`, `/ytlist` | A video's HLS master; its audio languages, end screen, cards and chapters; its captions as WebVTT; SponsorBlock sections and DeArrow; searches, channels and playlists | local address, no `Origin` |
 | USB drives | `/fslist`, `/fswalk`, `/fssub`, `/fshash`, `/fsfile` | A folder's listing; every video and subtitle file under a folder (the index); a subtitle file as UTF-8; a video's OpenSubtitles hash; a file served with ranges | + token or header |
-| Network folders | `/dav/list`, `/dav/walk`, `/dav/sub` | A folder's listing; every video and subtitle file under it; a subtitle file as UTF-8 | + token or header |
+| Network folders | `/dav/…`, `/smb/…`, `/dlna/…`: `list`, `walk`, `sub`, `mi`, `open`; `/smb/shares`, `/dlna/discover` | A folder's listing, index, subtitle file and details; a player's ticket; a server's shares; the media servers found | + token or header |
+| Network files | `/net/<ticket>/f` | A Digest, SMB or DLNA folder's file, for the player | its ticket |
+| USB backup | `/bak/write` (a POST), `/bak/read` | The backup or logs saved to a drive; the backup read back | + token, header or the guide ticket |
 | Downloads | `/fsdl/add`, `list`, `cancel`, `clear`, `space` | Downloads to a USB drive, and a drive's free space | + token or header |
 | Phone page | `/entry/open`, `poll`, `close` | Opens, polls and closes the one-time page | + token or header |
 | AIOManager | `/aiom/addons` | Reads an account's addons | + token or header |
@@ -867,6 +881,7 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 | Stalker | `/stalker/list`, `/stalker/link`, `/stalker/genres`, `/stalker/vod`, `/stalker/play` | A portal's channels as an M3U playlist; a channel's link to play; its genres; its films and series; a film's or episode's link, redirected to | + token or header (`play`: or the guide ticket) |
 | TV guide | `/epg/load`, `/epg/get` | Reads a playlist's guide for your channels; their programs | + token or header |
 | DRM | `/drm/license` (a POST) | Posts a Widevine channel's license request to its license server | + token or the guide ticket |
+| File details | `/live/mi`, `/fsmi`, `/dav/mi` | A video's header: codecs, HDR, tracks | + token or header |
 | Live relay | `/live/open`, then `/live/<id>/…` | Checks a channel's sound and captions; relays it repacked, captions as subtitles | open: + token or header |
 
 ### YouTube
@@ -928,8 +943,8 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 - A drive must be mounted (listed in `/proc/mounts`). Its free space is read with `df`, run
   directly with the drive as its argument, never through a shell, and without holding up the
   service.
-- `/fssub` reads subtitle files up to 5 MB: SRT and WebVTT as they are, ASS / SSA turned into
-  SRT, Windows-1252 and UTF-16 converted. `/fshash` reads a video's size and its first and last
+- `/fssub` reads subtitle files up to 5 MB, in their own encoding (UTF-8, UTF-16, Windows-1250,
+  -1251 or -1252), as text for the page to read. `/fshash` reads a video's size and its first and last
   64 KB. `/fsfile` serves a file with ranges, for the 2017 TV's player, which can't read past
   2 GB of a file straight from the drive.
 - Bounded: 12 file lookups at a time for the whole service, 4 listings at once, and one drive
@@ -944,7 +959,10 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 - `/dav/list` reads one `PROPFIND` answer up to 2 MB within 20 s, 2,000 entries. `/dav/walk`
   covers up to 2,000 folders and 20,000 files, 12 levels deep, 4 listings at once, one walk at a
   time, and starts nothing new after 90 s. `/dav/sub` reads a subtitle file up to 5 MB, converted
-  as `/fssub` does.
+  as `/fssub` does. SMB and DLNA: the same limits, 2 listings at once; SMB 4 connections, closed
+  2 minutes unused, 8 MB a message, 15 s a request; DLNA 8 MB an answer, 8 s each.
+- **USB backup:** only `StremioK/stremiok-backup.txt` and `StremioK/stremiok-logs-<date>.txt` on a
+  mounted drive, 1.5 MB, written to a `.part` file, flushed, then renamed.
 
 ### Downloads
 
@@ -1005,6 +1023,9 @@ Not YouTube, DRM or USB files. A film's (`&film=1`) keeps every link it named (a
 keeps its last 400), relays its keys, init sections and encrypted pieces too, asks a byte range
 as one, and is dropped after 3 hours unused. If the service doesn't answer, the source plays as
 it is.
+
+**File details** (`/live/mi`, `/fsmi`, `/dav/mi`): the playing source's header only (MKV, MP4),
+in byte ranges: 16 MB, 10 reads, 20 s at most, two at once; redirects as the file relay's.
 
 **Files through StremioK's service** (`/live/file`, `/live/<id>/f`): a non-HLS source needing
 headers the TV's player can't send (Origin, Accept, Accept-Language; any, under TizenBrew), or

@@ -144,7 +144,7 @@ var ViewParts = {};
     // that shows it to copy or download; kept open while the QR is on screen (asked every
     // GIVE_POLL_MS, which also says once the phone has it), closed with Done.
     var GIVE_POLL_MS = 3000;
-    function phoneGive(title, text, note) {
+    function phoneGive(title, text, note, kind) {   // (kind: 'logs' for the logs' own page; else a configuration)
         var existing = document.querySelector('.modal-overlay');
         if (existing) { existing.parentNode.removeChild(existing); }
         var overlay = U.el('div', 'modal-overlay'), box = U.el('div', 'modal-box qr-box');
@@ -171,7 +171,7 @@ var ViewParts = {};
             }, GIVE_POLL_MS);
         }
         if (typeof YTPlay === 'undefined' || !YTPlay.entryGive) { how.textContent = U.t('It needs StremioK’s service on the TV (not in a desktop browser).'); return; }
-        YTPlay.entryGive(text).then(function (r) {
+        YTPlay.entryGive(text, kind).then(function (r) {
             if (over) { if (r && r.token) { YTPlay.entryClose(r.token); } return; }
             if (!r || !r.url) { throw new Error('no page'); }
             token = r.token;

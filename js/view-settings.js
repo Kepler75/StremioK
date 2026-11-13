@@ -942,10 +942,11 @@
                 if (imported.tmdb) { parts.push(U.t('TMDB key')); }
                 if (imported.mdblist) { parts.push(U.t('MDBList key')); }
                 if (imported.settings) { parts.push(U.t('your settings')); }
+                if (imported.history) { parts.push(U.t('your history')); }
                 if (imported.addons || imported.playlists) { clearCatalogCache(); }
                 var message = parts.length ? U.t('Imported: {what}', { what: parts.join(', ') }) : U.t('Nothing imported');
                 if (parsed.ignored) { message += ' ' + U.t('({n} ignored)', { n: parsed.ignored }); }
-                if (imported.settings) {   // (every part of StremioK reads them afresh)
+                if (imported.settings || imported.history) {   // (every part of StremioK reads them afresh)
                     U.toast(message + '. StremioK starts again with them…', 4000);
                     setTimeout(function () { try { window.location.reload(); } catch (e) {} }, 2500);
                     return;
@@ -954,7 +955,27 @@
                 renderSettings();
             });
     }
-    // Settings › Content › Export configuration: what goes in, all ticked at first, given to your
+    // A USB drive to save to or read from (the only one, else picked): then(drive). None: said so.
+    function usbDrive(then) {
+        if (typeof LocalMedia === 'undefined' || !LocalMedia.drives) { U.toast(U.t('No USB drive found'), 3000); return; }
+        LocalMedia.drives().then(function (list) {
+            var usb = (list || []).filter(function (d) { return /^\/opt\/media\/[^\/]+$/.test(d.root || ''); });
+            if (!usb.length) { U.toast(U.t('No USB drive found'), 3000); return; }
+            if (usb.length === 1) { then(usb[0]); return; }
+            pickList(U.t('Which USB drive?'), usb.map(function (d) { return [d.root, d.label || d.root]; }), null, function (root) {
+                then(usb.filter(function (d) { return d.root === root; })[0]);
+            });
+        }, function () { U.toast(U.t('No USB drive found'), 3000); });
+    }
+    // Written to a drive's StremioK folder (the service: YTPlay.bakWrite), said so.
+    function saveToDrive(d, kind, text) {
+        U.toast(U.t('Saving to {drive}…', { drive: d.label || d.root }), 3000);
+        YTPlay.bakWrite(d.root, kind, text).then(function (r) {
+            U.toast(U.t('Saved to {drive}: {file}. Wait a few seconds before you take the drive out.', { drive: d.label || d.root, file: r && r.file || 'StremioK' }), 6000);
+        }, function (e) { U.toast(U.t('Couldn’t save to the drive: {why}', { why: U.problem(e) }), 6000); });
+    }
+    function canUseDrives() { return typeof YTPlay !== 'undefined' && YTPlay.bakWrite && YTPlay.installMode() !== 'browser'; }
+    // Settings › Content › Export configuration: what goes in, ticked at first (not your history), given to your
     // phone (V.phoneGive) as the file Import configuration file reads (Stremio.exportSetup).
     function settingsExport(wrap) {
         wrap.appendChild(U.el('h2', null, U.t('Export configuration')));
@@ -964,12 +985,25 @@
         row.__onselect = function () {
             var groups = Stremio.exportGroups();
             pickMany(U.t('Tick what to export'), groups.map(function (g) { return { key: g.key, label: g.label }; }),
-                { on: groups.map(function (g) { return g.key; }), button: function (n) { return U.t('Export {n}', { n: n }); } }, function (keys) {
+                { on: groups.filter(function (g) { return !g.off; }).map(function (g) { return g.key; }), button: function (n) { return U.t('Export {n}', { n: n }); } }, function (keys) {
                     V.phoneGive(U.t('Export configuration'), Stremio.exportSetup(keys, appVersion()),
-                        U.t('It holds your addon links, playlist logins, API keys and MAC addresses: keep the file private. Not in it: your Trakt sign-in, history and progress.'));
+                        U.t('It holds your addon links, playlist logins, API keys and MAC addresses: keep the file private. Not in it: your Trakt sign-in.'));
                 });
         };
         wrap.appendChild(row);
+        if (canUseDrives()) {   // (the same file on a USB drive, for when the phone's page can't be reached)
+            var usb = U.el('div', 'addon-item focusable add-row');
+            usb.appendChild(U.el('div', 'a-name', U.t('⇩  Save to a USB drive')));
+            usb.appendChild(U.el('div', 'a-url', U.t('The same file, in a StremioK folder on the drive (the last one replaced)')));
+            usb.__onselect = function () {
+                var groups = Stremio.exportGroups();
+                pickMany(U.t('Tick what to export'), groups.map(function (g) { return { key: g.key, label: g.label }; }),
+                    { on: groups.filter(function (g) { return !g.off; }).map(function (g) { return g.key; }), button: function (n) { return U.t('Export {n}', { n: n }); } }, function (keys) {
+                        usbDrive(function (d) { saveToDrive(d, 'backup', Stremio.exportSetup(keys, appVersion())); });
+                    });
+            };
+            wrap.appendChild(usb);
+        }
         wrap.appendChild(U.el('div', 'hint', U.t('To restore it (after a reinstall, or on another TV): Import configuration file › ▣ From your phone, then choose the file there (or paste it).')));
         focusSettings();
     }
@@ -997,7 +1031,7 @@
                     // you're on stays: back to Settings only from this entry, still showing)
                     var entry = scr('addaddon'), mine = ++_importGen;
                     function here() { return mine === _importGen && !/\bhidden\b/.test(entry.className); }
-                    U.getText(v, 15000, 256 * 1024).then(function (text) {   // (a list of URLs and keys: 256 KB is plenty)
+                    U.getText(v, 15000, 1536 * 1024).then(function (text) {   // (a list of URLs and keys, your history too: 1.5 MB at most)
                         importText(text, here);
                     }, function (err) {
                         if (!here()) { return; }
@@ -1012,6 +1046,22 @@
             });
         };
         wrap.appendChild(listRow);
+        if (canUseDrives()) {   // (a backup Export configuration saved on a USB drive)
+            var fromUsb = U.el('div', 'addon-item focusable add-row');
+            fromUsb.appendChild(U.el('div', 'a-name', U.t('⇧  Restore from a USB drive')));
+            fromUsb.appendChild(U.el('div', 'a-url', U.t('A backup saved there: StremioK/stremiok-backup.txt')));
+            fromUsb.__onselect = function () {
+                usbDrive(function (d) {
+                    YTPlay.bakRead(d.root).then(function (r) {
+                        ++_importGen;
+                        importText(r && typeof r.text === 'string' ? r.text : '', function () { return false; });
+                    }, function (e) {
+                        U.toast(/HTTP 404/.test((e && e.message) || '') ? U.t('No backup on {drive}', { drive: d.label || d.root }) : U.t('Couldn’t read the drive: {why}', { why: U.problem(e) }), 5000);
+                    });
+                });
+            };
+            wrap.appendChild(fromUsb);
+        }
         wrap.appendChild(U.el('div', 'hint',
             U.t('Accepted lines: addon URLs, M3U/M3U8 URLs, and OMDb, TMDB or MDBList API keys.')));
         focusSettings();
@@ -1787,7 +1837,7 @@
                 var pr = U.el('div', 'addon-item focusable cfg-row');
                 pr.appendChild(U.el('div', 'a-name', '      ' + (p.on ? '✓  ' : '○  ') + p.name + (p.version ? '  ' + p.version : '')));
                 var kinds = p.types.map(function (t) { return t === 'tv' ? U.t('Series') : U.t('Movies'); }).join(', ');
-                pr.appendChild(U.el('div', 'a-url', '      ' + kinds + '   ·   ' + (p.on ? U.t('On') : U.t('Off')) + '   ·   ' + (p.on ? U.t('OK to turn off') : U.t('OK to turn on'))));
+                pr.appendChild(U.el('div', 'a-url', '      ' + kinds + '   ·   ' + (p.on ? U.t('On') : U.t('Off')) + (p.authorOff ? '   ·   ' + U.t('off in its repository (often broken)') : '') + '   ·   ' + (p.on ? U.t('OK to turn off') : U.t('OK to turn on'))));
                 pr.__onselect = function () { _focusChild = 'pp:' + r.id + '.' + p.id; Plugins.setPlugin(r.id, p.id, !p.on); renderSettings(); };
                 if (_focusChild === 'pp:' + r.id + '.' + p.id) { focus = pr; }
                 wrap.appendChild(pr);
@@ -2011,6 +2061,7 @@
         wrap.appendChild(subPickRow(U.t('Edge'), plain(Player.SUB_EDGES), 'edge'));
         wrap.appendChild(subPickRow(U.t('Position'), plain(Player.SUB_POSITIONS), 'pos'));
         wrap.appendChild(subPickRow(U.t('Font'), Player.SUB_FONTS, 'font'));
+        wrap.appendChild(subPickRow(U.t('The file\'s colors'), SUB_ONLY, 'fileColors'));   // (a file's own colors instead of Color: player-subs' drawCues)
         focusSettings();
     }
 
@@ -2026,14 +2077,16 @@
     var RECONNECTS = [['off', U.t('Off')], ['few', U.t('A few times (3 in 5 minutes)')], ['always', U.t('Keep trying')]];
     // (an HLS source through the service, with its own headers on every piece: see player-core's viaService)
     var HLS_ROUTES = [['off', U.t('Off')], ['headers', U.t('Sources that need headers')], ['all', U.t('All HLS sources')]];
+    var FILE_INFOS = [['usb', U.t('USB drives only')], ['all', U.t('All files')], ['off', U.t('Off')]];
     function settingsSeeking(wrap) {
         wrap.appendChild(U.el('h2', null, U.t('Seeking & buffering')));
-        var store = { get: function () { var c = Player.playerCfg(); return { seek: '' + c.seek, buffer: c.buffer, reconnect: c.reconnect, hls: c.hls }; },
-            set: function (cfg) { Player.setPlayerCfg({ seek: +cfg.seek || 10, buffer: cfg.buffer, reconnect: cfg.reconnect, hls: cfg.hls }); } };
+        var store = { get: function () { var c = Player.playerCfg(); return { seek: '' + c.seek, buffer: c.buffer, reconnect: c.reconnect, hls: c.hls, fileInfo: c.fileInfo }; },
+            set: function (cfg) { Player.setPlayerCfg({ seek: +cfg.seek || 10, buffer: cfg.buffer, reconnect: cfg.reconnect, hls: cfg.hls, fileInfo: cfg.fileInfo }); } };
         wrap.appendChild(subPickRow(U.t('Seek step'), [['5', '5 s'], ['10', '10 s'], ['15', '15 s'], ['30', '30 s']], 'seek', store));
         wrap.appendChild(subPickRow(U.t('Buffer'), [['normal', U.t('Normal (the TV’s own)')], ['more', U.t('More')], ['most', U.t('Most')]], 'buffer', store));
         wrap.appendChild(subPickRow(U.t('Reconnect live channels'), RECONNECTS, 'reconnect', store));
         wrap.appendChild(subPickRow(U.t('HLS through StremioK’s service'), HLS_ROUTES, 'hls', store));
+        wrap.appendChild(subPickRow(U.t('Read the file’s details'), FILE_INFOS, 'fileInfo', store));   // (its codec, HDR, tracks and their names: player-core's fileInfoAsk)
         wrap.appendChild(U.el('div', 'hint', 'Seek step: FF / REW jump three. Buffer: More or Most starts slower but stops less on a slow connection. Reconnect: a live channel that drops opens again (BACK stops it). HLS through StremioK’s service: for a host that wants headers the TV’s player can’t send; a step more before it starts.'));
         focusSettings();
     }
@@ -2073,6 +2126,20 @@
             clear.appendChild(U.el('div', 'a-name', U.t('Clear log')));
             clear.__onselect = function () { U.clearLog(); renderSettings(); };
             wrap.appendChild(clear);
+        }
+        var send = U.el('div', 'addon-item focusable');
+        send.appendChild(U.el('div', 'a-name', U.t('⇧  Send to your phone')));
+        send.appendChild(U.el('div', 'a-url', U.t('These logs and Startup, with StremioK’s version and the TV’s, as a text file to attach to a report')));
+        send.__onselect = function () {
+            V.phoneGive(U.t('Send the logs to your phone'), logsText(), U.t('Keys and passwords are masked; still, look it over before sharing it publicly.'), 'logs');
+        };
+        wrap.appendChild(send);
+        if (canUseDrives()) {
+            var toUsb = U.el('div', 'addon-item focusable');
+            toUsb.appendChild(U.el('div', 'a-name', U.t('⇩  Save to a USB drive')));
+            toUsb.appendChild(U.el('div', 'a-url', U.t('The same text file, in a StremioK folder on the drive')));
+            toUsb.__onselect = function () { usbDrive(function (d) { saveToDrive(d, 'logs', logsText()); }); };
+            wrap.appendChild(toUsb);
         }
         startupLines(wrap);
         focusSettings();
@@ -2156,8 +2223,12 @@
         }
         var add = U.el('div', 'addon-item focusable cfg-row');
         add.appendChild(U.el('div', 'a-name', U.t('+ Add a network folder')));
-        add.appendChild(U.el('div', 'a-url', U.t('Its WebDAV address, then the user name and password it asks for, if any')));
-        add.__onselect = function () { askNetAddress(''); };
+        add.appendChild(U.el('div', 'a-url', U.t('A WebDAV folder, a Windows / NAS share (SMB) or a media server (DLNA)')));
+        add.__onselect = function () {
+            pickList(U.t('Add a network folder'), [['dav', U.t('WebDAV folder (http:// or https://)')], ['smb', U.t('Windows / NAS share (SMB)')], ['dlna', U.t('Media server on your network (DLNA)')]], null, function (k) {
+                if (k === 'smb') { askSmbHost(''); } else if (k === 'dlna') { findDlna(); } else { askNetAddress(''); }
+            });
+        };
         wrap.appendChild(add);
         var focus = null;
         NetFolders.all().forEach(function (f) {
@@ -2190,13 +2261,13 @@
             if (_focusChild === 'nf:' + f.id) { focus = r; }
             wrap.appendChild(r);
         });
-        wrap.appendChild(U.el('div', 'hint', 'A NAS (Synology, QNAP), Nextcloud, or a computer running rclone (rclone serve webdav). Home › Local shows each folder; its videos play as they are (nothing converted), so the TV must play their format.'));
+        wrap.appendChild(U.el('div', 'hint', 'A NAS (Synology, QNAP), Nextcloud, a Windows share or rclone (rclone serve webdav). Home › Local shows each folder; its videos play as they are (nothing converted), so the TV must play their format.'));
         if (focus) { _focusChild = null; Focus.setScope(scr('settings'), focus); } else { focusSettings(); }
     }
     function netFolderLine(f) {
         if (f.off) { return f.url + '   ·   ' + U.t('its sources set aside, its index kept'); }
         var st = LocalMedia.status(NetFolders.driveOf(f));
-        return f.url + (f.user ? '   ·   ' + U.t('as {user}', { user: f.user }) : '') + (f.cert ? '   ·   ' + U.t('its certificate trusted') : '') + '   ·   ' + usbDriveLine(st, true);
+        return (NetFolders.isDlna(f) ? 'DLNA  ·  ' + ((('' + f.control).match(/^https?:\/\/([^\/]+)/) || [])[1] || '') : f.url) + (f.user ? '   ·   ' + U.t('as {user}', { user: f.user }) : '') + (f.cert ? '   ·   ' + U.t('its certificate trusted') : '') + '   ·   ' + usbDriveLine(st, true);
     }
     function askNetAddress(value) {
         App.openEntry({
@@ -2222,10 +2293,61 @@
             }
         });
     }
+    // A Windows / NAS share: its server, a user name (none: a guest) and password, then one of
+    // its shares to pick (the server's own list).
+    function askSmbHost(value) {
+        App.openEntry({
+            title: U.t('Share: the server'),
+            hint: U.t('Its name or address on your network, like 192.168.0.50 or nas.local. RETURN cancels.'),
+            value: value || '', placeholder: '192.168.0.50',
+            validate: function (v) { return NetFolders.smbHostOf(v) ? null : U.t('A name or address on your network, like 192.168.0.50'); },
+            onConfirm: function (v) {
+                var host = NetFolders.smbHostOf(v);
+                App.back();
+                App.openEntry({
+                    title: U.t('Share: user name'), hint: U.t('Its user name (DOMAIN\\name for a domain); leave it empty to go in as a guest. RETURN cancels.'), value: '', placeholder: U.t('user name'),
+                    validate: function () { return null; },
+                    onConfirm: function (user) {
+                        App.back();
+                        user = ('' + user).trim();
+                        if (!user) { smbShares(host, '', ''); return; }
+                        App.openEntry({
+                            title: U.t('Share: password'), hint: U.t('Its password (kept on the TV, sent only to that server). RETURN cancels.'), value: '', placeholder: U.t('password'), secret: true,
+                            validate: function () { return null; },
+                            onConfirm: function (pass) { App.back(); smbShares(host, user, '' + pass); }
+                        });
+                    }
+                });
+            }
+        });
+    }
+    // The media servers on your network, looked for now (a few seconds), one to pick: added as a
+    // network folder (none added unasked).
+    function findDlna() {
+        U.spinner(true, U.t('Looking for media servers on your network…'));
+        NetFolders.discover().then(function (list) {
+            U.spinner(false);
+            if (!list.length) { U.toast(U.t('No media server answered (or all are added already)'), 6000); return; }
+            pickList(U.t('Media servers: pick one'), list.map(function (x, i) { return ['' + i, x.name + '  ·  ' + (('' + x.control).match(/^https?:\/\/([^\/:]+)/) || [])[1]]; }), null, function (i) {
+                var srv = list[+i];
+                netProbe('', '', '', '', 'dlna', srv);
+            });
+        }, function (e) { U.spinner(false); U.toast((e && e.message) || U.t('It failed'), 7000); });
+    }
+    function smbShares(host, user, pass) {
+        U.spinner(true, U.t('Asking the server for its shares…'));
+        NetFolders.shares(host, user, pass).then(function (list) {
+            U.spinner(false);
+            if (!list.length) { U.toast(U.t('It lists no shares you can open'), 6000); return; }
+            pickList(U.t('Its shares: pick one'), list.map(function (x) { return [x.name, x.name + (x.remark ? '  ·  ' + x.remark : '')]; }), null, function (name) {
+                netProbe('smb://' + host + '/' + name + '/', user, pass, '', 'smb');
+            });
+        }, function (e) { U.spinner(false); U.toast((e && e.message) || U.t('It failed'), 7000); });
+    }
     // Ask the folder with that sign-in; a certificate it made itself: asked about first.
-    function netProbe(url, user, pass, cert) {
+    function netProbe(url, user, pass, cert, kind, server) {
         U.spinner(true, U.t('Asking the folder…'));
-        NetFolders.probe(url, user, pass, cert).then(function (p) {
+        NetFolders.probe(url, user, pass, cert, kind, server).then(function (p) {
             U.spinner(false);
             var f;
             try { f = NetFolders.add(p); } catch (e) { U.toast(e.message, 5000); return; }
@@ -2447,6 +2569,36 @@
         STARTUP_STEPS.forEach(function (st) { if (m && typeof m[st[0]] === 'number') { parts.push(st[1] + ' ' + (m[st[0]] / 1000).toFixed(1) + ' s'); } });
         return parts.join('   ·   ');
     }
+    // Settings › Diagnostics › Logs › Send to your phone: the logs (masked as they are in the list),
+    // Startup, StremioK's version and how it's installed, and the TV (its browser, which names its
+    // Tizen version; model and firmware where the TV says), as plain text in English.
+    function logsText() {
+        function two(n) { return (n < 10 ? '0' : '') + n; }
+        function when(t) { var d = new Date(t); return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes()) + ':' + two(d.getSeconds()); }
+        // (the model: Samsung's productinfo (config.xml's productinfo privilege), else Tizen's own system info)
+        var tv = [], pi = window.webapis && webapis.productinfo, model = '', ver = '';
+        function cap(k) { try { return typeof tizen !== 'undefined' && tizen.systeminfo && tizen.systeminfo.getCapability ? '' + (tizen.systeminfo.getCapability(k) || '') : ''; } catch (e) { return ''; } }
+        try { model = pi && pi.getRealModel ? pi.getRealModel() : pi && pi.getModel ? pi.getModel() : ''; } catch (e) { model = ''; }
+        if (!model) { model = cap('http://tizen.org/system/model_name'); }
+        if (model) { tv.push('Model: ' + model); }
+        try { if (pi && pi.getFirmware) { tv.push('Firmware: ' + pi.getFirmware()); } } catch (e2) {}
+        ver = cap('http://tizen.org/feature/platform.version');
+        var tz = ver ? [ver, ver] : /Tizen (\d+(?:\.\d+)*)/.exec(navigator.userAgent || '');
+        var lines = ['StremioK logs', 'StremioK ' + (appVersion() || '?') + '   ·   Installed as: ' + (typeof YTPlay !== 'undefined' && YTPlay.installLabel ? YTPlay.installLabel() : '?') +
+            '   ·   Video player: ' + ((window.webapis && webapis.avplay) ? 'the TV’s own' : 'the page’s'),
+            'TV: ' + (tz ? 'Tizen ' + tz[1] : 'not a Tizen TV') + (tv.length ? '   ·   ' + tv.join('   ·   ') : ''),
+            'Browser: ' + (navigator.userAgent || '?'), 'Sent: ' + when(Date.now()), ''];
+        var now = U.startupMarks ? startupText(U.startupMarks()) : '', before = U.startupMarks ? startupText(U.startupMarks(true)) : '';
+        lines.push('Startup');
+        lines.push('  This launch: ' + (now || '—'));
+        lines.push('  Launch before: ' + (before || '—'));
+        lines.push('');
+        var list = (U.logEntries ? U.logEntries() : []).slice().reverse();   // (the file reads oldest first, as they happened; the page shows the newest first)
+        lines.push('Logs (' + list.length + ', oldest first)');
+        list.forEach(function (e) { lines.push(when(e.t) + '  ' + e.src + (e.n > 1 ? ' ×' + e.n : '') + '  ' + e.msg); });
+        if (!list.length) { lines.push('  (none since StremioK started)'); }
+        return lines.join('\n') + '\n';
+    }
     function startupLines(wrap) {
         if (!U.startupMarks) { return; }
         var now = startupText(U.startupMarks()), before = startupText(U.startupMarks(true));
@@ -2609,7 +2761,7 @@
             list: function () {
                 return Promise.resolve(V.menuOrder().map(function (k) {
                     var t = (V.HOME_TABS || []).filter(function (x) { return x.key === k; })[0];
-                    return { key: k, name: MENU_FIXED[k] || (t ? t.label : k) + (k === 'local' ? ' ' + U.t('(with a USB drive in)') : k === 'guide' ? ' ' + U.t('(once a TV guide is read)') : '') };
+                    return { key: k, name: MENU_FIXED[k] || (t ? t.label : k) + (k === 'local' ? ' ' + U.t('(with a USB drive or network folder)') : k === 'guide' ? ' ' + U.t('(once a TV guide is read)') : '') };
                 }));
             },
             keyOf: function (x) { return x.key; },

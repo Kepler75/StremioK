@@ -97,7 +97,8 @@
             font: subFontFamily(d.font) ? d.font : 'default',   // an unknown font -> TV default
             skip: skipWords(d.skip),   // lines with one of these aren't shown (none by default: see player-subs' skipLines)
             second: typeof d.second === 'string' && /^[a-z]{2,3}$/.test(d.second) ? d.second : 'off',   // a second subtitle at the top (player-subs; Off by default)
-            only: d.only === 'on' ? 'on' : 'off' };   // the subtitle menu: only your languages (player-subs' langMenu; Off by default)
+            only: d.only === 'on' ? 'on' : 'off',   // the subtitle menu: only your languages (player-subs' langMenu; Off by default)
+            fileColors: d.fileColors === 'on' ? 'on' : 'off' };   // a file's own colors (ASS, <font color>) instead of yours (player-subs' drawCues; Off by default)
     }
     // Settings › Subtitles › Skip lines with: words (or bits, ".srt"), capitals or not; at most 20.
     function skipWords(x) {
@@ -261,7 +262,11 @@
             buffer: d.buffer === 'more' || d.buffer === 'most' ? d.buffer : 'normal',
             reconnect: d.reconnect === 'off' || d.reconnect === 'always' ? d.reconnect : 'few',
             phone: d.phone === 'infuse' || d.phone === 'link' ? d.phone : 'vlc',   // (Continue on phone: what the QR opens)
-            hls: d.hls === 'headers' || d.hls === 'all' ? d.hls : 'off' };   // (HLS through StremioK's service: see player-core's viaService)
+            hls: d.hls === 'headers' || d.hls === 'all' ? d.hls : 'off',   // (HLS through StremioK's service: see player-core's viaService)
+            // (the file's details read from its start: player-core's fileInfoAsk. A USB drive's by
+            // default, read off the drive itself; a link's or a network folder's are more requests
+            // as it starts, so only when chosen)
+            fileInfo: d.fileInfo === 'all' || d.fileInfo === 'off' ? d.fileInfo : 'usb' };
     }
     function setPlayerCfg(cfg) {   // (what's given changes; the rest stays)
         var d = U.store.get(PLAYERCFG_KEY, {}) || {};

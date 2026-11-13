@@ -846,6 +846,73 @@
         var tags = (info && Stremio.formatTags) ? Stremio.formatTags(info, S.actual) : '';
         if (tags) { lines.push([U.t('Format'), tags]); }
     }
+    // What the file's header says (S.mi: player-core's startFileInfo): its container and video,
+    // what its Dolby Vision does on this TV, and its audio and subtitle tracks, each with its
+    // language, codec and own name (MI_SHOW of each, then how many more).
+    var MI_SHOW = 6;
+    var CODEC_NAMES = { h264: 'H.264', hevc: 'HEVC', av1: 'AV1', vp9: 'VP9', vp8: 'VP8', mpeg2: 'MPEG-2', mpeg4: 'MPEG-4', aac: 'AAC', ac3: 'Dolby Digital', eac3: 'Dolby Digital Plus',
+        dts: 'DTS', truehd: 'Dolby TrueHD', flac: 'FLAC', opus: 'Opus', vorbis: 'Vorbis', mp3: 'MP3', mp2: 'MP2', pcm: 'PCM', alac: 'ALAC', srt: 'SRT', ass: 'ASS', ssa: 'SSA',
+        vtt: 'WebVTT', pgs: 'PGS', vobsub: 'VobSub', dvb: 'DVB', mov_text: 'MP4 text', ttml: 'TTML', cc608: 'CEA-608', textst: 'TextST', usf: 'USF' };
+    function codecName(c) { return CODEC_NAMES[c] || (c ? ('' + c).toUpperCase() : ''); }
+    function channelsName(n) { return ({ 1: '1.0', 2: '2.0', 3: '2.1', 6: '5.1', 7: '6.1', 8: '7.1' })[n] || (n ? n + 'ch' : ''); }
+    // Samsung TVs have no Dolby Vision: what's underneath plays (HDR10, HLG or SDR); a profile 5
+    // file has nothing underneath, so its colors come out wrong (green and purple).
+    function dvNote(dv) {
+        var p = dv.profile || '';
+        if (dv.compat === 1 || dv.compat === 6) { return U.t('Dolby Vision {p}: plays as HDR10', { p: p }); }
+        if (dv.compat === 4) { return U.t('Dolby Vision {p}: plays as HLG', { p: p }); }
+        if (dv.compat === 2) { return U.t('Dolby Vision {p}: plays as SDR', { p: p }); }
+        if (p) { return U.t('Dolby Vision {p}: no HDR10 layer, its colors look wrong on this TV', { p: p }); }
+        return U.t('Dolby Vision');
+    }
+    function trackLine(t) {
+        var lang = t.lang && !/^(und|zxx|mis)$/i.test(t.lang) ? P.langName(t.lang) : '';
+        var bits = [lang, codecName(t.codec), channelsName(t.channels)];
+        if (t.name && t.name.toLowerCase() !== lang.toLowerCase()) { bits.push('“' + t.name + '”'); }
+        if (t.forced && !/forced/i.test(t.name || '')) { bits.push(U.t('forced')); }
+        if (t.commentary && !/commentary/i.test(t.name || '')) { bits.push(U.t('commentary')); }
+        if (t.hi && !/\bSDH\b/i.test(t.name || '')) { bits.push('SDH'); }
+        return bits.filter(Boolean).join(' ');
+    }
+    // A track's own name and marks, for the menus (no language: the menu says it): "“Signs &
+    // songs”  ·  forced", a picture subtitle (PGS, VobSub) said not shown (the TV hands over none).
+    function fileTrackNote(t) {
+        if (!t) { return ''; }
+        var bits = [];
+        if (t.name) { bits.push('“' + t.name + '”'); }
+        if (t.forced && !/forced/i.test(t.name || '')) { bits.push(U.t('forced')); }
+        if (t.commentary && !/commentary/i.test(t.name || '')) { bits.push(U.t('commentary')); }
+        if (t.hi && !/\bSDH\b/i.test(t.name || '')) { bits.push('SDH'); }
+        if (t.text === false && /^(pgs|vobsub|dvb)$/.test(t.codec || '')) { bits.push(U.t('{codec}: pictures, not shown', { codec: codecName(t.codec) })); }
+        return bits.join('  ·  ');
+    }
+    P.fileTrackNote = fileTrackNote;
+    function trackList(list) {
+        var out = list.slice(0, MI_SHOW).map(trackLine);
+        if (list.length > MI_SHOW) { out.push(U.t('{n} more', { n: list.length - MI_SHOW })); }
+        return out.join('  ·  ');
+    }
+    // The file in short, for a start that failed (player-core's formatFailText): its video and
+    // the audio that plays first. '' when the header said neither.
+    function fileSummary(mi) {
+        var v = mi.video, a = (mi.audio || []).filter(function (x) { return x.default; })[0] || (mi.audio || [])[0], out = [];
+        if (v && v.codec) { out.push([codecName(v.codec), v.bitDepth > 8 ? U.t('{n}-bit', { n: v.bitDepth }) : '', v.hdr === 'hdr10' && !v.dv ? 'HDR10' : v.hdr === 'hlg' && !v.dv ? 'HLG' : ''].filter(Boolean).join(' ')); }
+        if (v && v.dv) { out.push(v.dv.profile ? 'Dolby Vision ' + v.dv.profile : 'Dolby Vision'); }
+        if (a && a.codec) { out.push([codecName(a.codec), channelsName(a.channels)].filter(Boolean).join(' ')); }
+        return out.join(' · ');
+    }
+    P.fileSummary = fileSummary;
+    function fileLines(lines) {
+        var mi = S.mi;
+        if (!mi || !mi.container) { return; }
+        var v = mi.video, parts = [('' + mi.container).toUpperCase()];
+        if (v) { parts.push([codecName(v.codec), v.bitDepth > 8 ? U.t('{n}-bit', { n: v.bitDepth }) : '', v.hdr === 'hdr10' ? 'HDR10' : v.hdr === 'hlg' ? 'HLG' : ''].filter(Boolean).join(' ')); }
+        if (mi.duration > 0) { parts.push(U.fmtTime(mi.duration)); }
+        lines.push([U.t('In the file'), parts.filter(Boolean).join('  ·  ')]);
+        if (v && v.dv) { lines.push([U.t('Dolby Vision'), dvNote(v.dv)]); }
+        if (mi.audio && mi.audio.length) { lines.push([U.t('Audio tracks'), trackList(mi.audio)]); }
+        if (mi.subs && mi.subs.length) { lines.push([U.t('Subtitle tracks'), trackList(mi.subs)]); }
+    }
     // How it reaches the player (no link): straight from its server, or through StremioK's service.
     function howItPlays() {
         var c = S.ctx;
@@ -860,6 +927,7 @@
         if (!el || !S.ctx) { return; }
         var lines = [], video = null, audio = null;
         sourceLines(lines);
+        fileLines(lines);
         if (P.useAV) {
             try {
                 var now = avplay.getCurrentStreamInfo() || [];

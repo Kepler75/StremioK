@@ -95,10 +95,12 @@ var PlayerParts = {};
 
     // Jumps ahead the player makes on its own (see checkJump): the last play time and when
     // it came, and where one was last undone.
-    var JUMP_SLACK_SECS = 5;
+    var JUMP_SLACK_SECS = 5, JUMP_BACK_MS = 20000;
     var _tick = null;        // { pos (s), wall (ms) }
     var _jumpUndone = null;  // the position (s) a jump was last taken back to
     var _pausedOnce = false; // paused since this was opened (it only happens after pauses)
+    var _pausedSince = 0;    // when it was paused (Date.now), 0 playing: a long pause re-anchors the TV's player (play_)
+    var _jumpBack = null;    // a jump taken back: { to (s), at (ms), tries }, checked on the next play times (checkJump)
 
     function init() {
         objEl = U.byId('av-player');
@@ -426,6 +428,60 @@ var PlayerParts = {};
         play(ctx, _onExit);
     }
 
+    // What's in the file playing, from its header (StremioK's service reads it: its container,
+    // codecs, HDR, every audio and subtitle track with its name; see the service's mediaInfo):
+    // asked once for the source as it opens, never for a list of them; the last MI_KEEP kept.
+    // S.mi: the answer for what's playing, else null (not asked yet, not read, or not a file:
+    // HLS, DASH, YouTube, a live channel, a trailer).
+    var MI_KEEP = 40, _miSeen = U.lru(MI_KEEP), _miLook = null;
+    function fileInfoAsk(ctx) {
+        if (!ctx || ctx.yt || ctx.trailer || S.isLive) { return null; }
+        // (Settings › Playback › Seeking & buffering › Read the file's details: a USB drive's only
+        // unless All files — the others are more requests to their server as playback starts)
+        var want = P.playerCfg().fileInfo;
+        if (want === 'off' || (want !== 'all' && !(ctx.localFile && !ctx.localFile.dav))) { return null; }
+        var url = '' + (ctx.url || ''), size = ctx.stream && ctx.stream.behaviorHints ? +ctx.stream.behaviorHints.videoSize || 0 : 0;
+        if (ctx.localFile) {
+            if (typeof LocalMedia === 'undefined' || !LocalMedia.fileInfo) { return null; }
+            return { key: 'file:' + (ctx.localFile.dav || '') + ':' + ctx.localFile.abs + ':' + (ctx.localFile.size || 0), ask: function (c) { return LocalMedia.fileInfo(ctx.localFile, c); } };
+        }
+        if (!/^https?:\/\//i.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)[:\/]/i.test(url) || HLS_LINK.test(url) || /\.mpd(?:[?#]|$)/i.test(url)) { return null; }
+        if (ctx.formatInfo && ctx.formatInfo.container === 'hls') { return null; }
+        if (typeof YTPlay === 'undefined' || !YTPlay.mediaInfo || YTPlay.installMode() === 'browser') { return null; }
+        var lan = typeof Stremio !== 'undefined' && Stremio.getPrefs ? !!Stremio.getPrefs().allowLocal : false;
+        return { key: 'link:' + url.split(/[?#]/)[0] + ':' + (size || url), ask: function (c) { return YTPlay.mediaInfo(url, U.sanitizeHeaders(ctx._headers), lan, c); } };   // (the link without its query, and the file's size: a new token, the same file)
+    }
+    function startFileInfo(ctx) {
+        if (_miLook) { _miLook.cancel(); _miLook = null; }
+        S.mi = null;
+        var job = fileInfoAsk(ctx);
+        if (!job) { return; }
+        var known = _miSeen.get(job.key);
+        if (known) { fileInfoIn(ctx, known); return; }
+        var look = _miLook = U.cancelToken();
+        job.ask(look).then(function (mi) {
+            if (look.cancelled || !mi || typeof mi !== 'object' || !mi.container) { return; }
+            _miSeen.set(job.key, mi);
+            if (S.ctx === ctx && S.active) { fileInfoIn(ctx, mi); }
+        }, function (e) { if (!look.cancelled) { U.log('player', 'The file\'s details couldn\'t be read: ' + ((e && e.message) || 'unknown')); } });
+    }
+    // The answer in: S.mi, and the source's details corrected by it (Stremio.withFileInfo): what
+    // the player shows (its tags, Stream info) and what Formats learns from it are the file's.
+    function fileInfoIn(ctx, mi) {
+        S.mi = mi;
+        if (typeof Stremio !== 'undefined' && Stremio.withFileInfo) { ctx.formatInfo = Stremio.withFileInfo(ctx.formatInfo || (Stremio.streamInfo ? Stremio.streamInfo({ url: ctx.url, name: ctx.name }) : null), mi); }
+        if (!osdHidden()) { renderOSD(); }
+    }
+    // A start that failed for its format (not the network or the link), its file's header read:
+    // what's in the file said ("HEVC 10-bit · Dolby Vision 5 · Dolby TrueHD 7.1"), else why as given.
+    var NOT_FORMAT_ERR = /CONNECTION|NETWORK|DISCONNECT|INVALID_URI|TIMEOUT|TIMED_OUT|HTTP|license/i;
+    function formatFailText(why, err) {
+        if (!S.mi || !P.fileSummary || NOT_FORMAT_ERR.test('' + (err || '')) || (S.ctx && S.ctx._drmWhy)) { return why; }
+        var what = P.fileSummary(S.mi);
+        return what ? U.t('This TV didn’t play this file: {what}', { what: what }) : why;
+    }
+    P.fileInfoFor = function (ctx) { var j = fileInfoAsk(ctx); return j ? _miSeen.get(j.key) || null : null; };
+
     function play(ctx, onExit) {
         // Replacing a YouTube stream that's playing (CH+/CH− to the next channel): the TV's
         // player can freeze on an open straight after closing it, so settle first (startAV).
@@ -463,7 +519,7 @@ var PlayerParts = {};
         recoReset();
         _prefetchedNext = false; S.playStarted = false; S.playing = false;
         _segments = null; _creditsSec = null; _creditsHandled = false; _segmentsFor = null;
-        S.buffering = false; S.pendingSeek = null; S.lastSeekAt = 0; S.settleFrom = 0; _seekRecovering = false; _jumpUndone = null; _pausedOnce = false;
+        S.buffering = false; S.pendingSeek = null; S.lastSeekAt = 0; S.settleFrom = 0; _seekRecovering = false; _jumpUndone = null; _pausedOnce = false; _pausedSince = 0; _jumpBack = null;
         updateHint();
 
         U.byId('app').className = 'hidden';
@@ -478,6 +534,13 @@ var PlayerParts = {};
             if (fileViaService(ctx)) { startFileRelay(ctx, settle); return; }
             if (useAV) { startLive(ctx, settle); } else { startHTML5(ctx.url); }
         };
+        // (a network folder's file that plays through the service — Digest sign-in: its ticket
+        // first, LocalMedia.prepare; asked or not, it then plays)
+        var prep = ctx.localFile && typeof LocalMedia !== 'undefined' && LocalMedia.prepare ? LocalMedia.prepare(ctx.url) : null;
+        if (prep) {
+            var plain = go;
+            go = function () { prep.then(function () { if (S.ctx === ctx && S.active) { plain(); } }, function () { if (S.ctx === ctx && S.active) { plain(); } }); };
+        }
         if (ctx.stream && ctx.stream._pickFile && typeof Stremio !== 'undefined' && Stremio.torrentFile) {
             // (the source before stopped first: its callbacks are about it, not this one)
             ++_playToken; _openedAt = 0;
@@ -511,6 +574,8 @@ var PlayerParts = {};
                 if (!osdHidden()) { renderOSD(); }
             }, function () {});
         }
+
+        startFileInfo(ctx);
 
         // A trailer is just watched: no skip segments, progress or watched state. Its subtitles
         // (your language, else your second choice) from its own captions (see startSubtitles).
@@ -797,7 +862,7 @@ var PlayerParts = {};
                     if (!S.playing && (relayFailed() || tryFallback())) { return; }
                     reportStart(false, err);   // (unless it had already played)
                     U.log('player', 'Playback error: ' + err + ' (' + where(S.ctx && S.ctx.url) + ')');
-                    if (!S.playing) { failedStart(U.t('Playback error: {why}', { why: err })); return; }
+                    if (!S.playing) { failedStart(formatFailText(U.t('Playback error: {why}', { why: err }), err)); return; }
                     U.toast(U.t('Playback error: {why}', { why: err }));
                     exitLater();
                 }
@@ -838,7 +903,7 @@ var PlayerParts = {};
                 if (tryFallback()) { return; }
                 U.log('player', 'Could not open: ' + (err && (err.name || err.message || err)) + ' (' + where(url) + ')');
                 reportStart(false, err && (err.name || err.message || err));
-                failedStart(S.ctx && S.ctx._drmWhy ? U.t('No license for this channel: {why}', { why: S.ctx._drmWhy }) : U.t('Could not open stream'));
+                failedStart(S.ctx && S.ctx._drmWhy ? U.t('No license for this channel: {why}', { why: S.ctx._drmWhy }) : formatFailText(U.t('Could not open stream'), err && (err.name || err.message || err)));
             });
         } catch (e) {
             U.log('player', 'AVPlay failed: ' + (e && e.message));
@@ -1171,8 +1236,20 @@ var PlayerParts = {};
         if (useAV) { return state() !== 'PLAYING'; }
         return S.videoEl.paused;
     }
-    function play_() { if (useAV) { try { avplay.play(); } catch (e) {} } else { S.videoEl.play(); } screenSaver(false); }
-    function pause_() { _pausedOnce = true; jfTell('pause'); if (useAV) { try { avplay.pause(); } catch (e) {} } else { S.videoEl.pause(); } screenSaver(true); }
+    // After a pause of LONG_PAUSE_MS or more the TV's player can jump ahead at its next buffering,
+    // to where it would be had it never paused (its clock ran on: seen 115 s and 501 s on the Tizen
+    // 6 TV): so it's set again at the paused place first (a jump to where it is), and plays on from
+    // there. A short pause: as it is.
+    var LONG_PAUSE_MS = 20000;
+    function play_() {
+        if (useAV) {
+            if (_pausedSince && Date.now() - _pausedSince >= LONG_PAUSE_MS && !S.isLive && S.cur > 0) { doAVSeek(S.cur, 0); }
+            _pausedSince = 0;
+            try { avplay.play(); } catch (e) {}
+        } else { S.videoEl.play(); }
+        screenSaver(false);
+    }
+    function pause_() { _pausedOnce = true; _pausedSince = Date.now(); jfTell('pause'); if (useAV) { try { avplay.pause(); } catch (e) {} } else { S.videoEl.pause(); } screenSaver(true); }
 
     // The TV's screensaver stays off while a video plays and is allowed again when it's
     // paused or stopped. No-op where the Samsung appcommon API isn't available.
@@ -1190,7 +1267,7 @@ var PlayerParts = {};
         // keep a small margin from the very end (seeking to EOF can error)
         var maxT = S.dur ? Math.max(0, S.dur - 2) : 1e9;
         var target = Math.max(0, Math.min(maxT, sec));
-        S.cur = target;
+        S.cur = target; _jumpBack = null;   // (a jump you asked for: not taken back)
         renderOSD();
         showOSD(false);
         if (useAV) {
@@ -1226,6 +1303,16 @@ var PlayerParts = {};
     // Returns true when it took one back (that play time isn't shown).
     function checkJump(pos) {
         var now = Date.now(), t = _tick;
+        // (a jump taken back: did the TV go back? One it ignored — asked while it buffered — is
+        // asked again, twice at most, within JUMP_BACK_MS)
+        var jb = _jumpBack;
+        if (jb) {
+            if (pos <= jb.to + JUMP_SLACK_SECS + 2 || now - jb.at > JUMP_BACK_MS) { _jumpBack = null; }
+            else if (!S.buffering && S.pendingSeek == null && now - S.lastSeekAt > 1500) {
+                if (jb.tries >= 2) { _jumpBack = null; U.log('player', 'Playback jumped ahead and didn\'t go back to ' + U.fmtTime(jb.to) + ': left at ' + U.fmtTime(pos)); }
+                else { jb.tries++; _tick = { pos: jb.to, wall: now }; S.cur = jb.to; doAVSeek(jb.to, 0); return true; }
+            } else { return true; }   // (on its way back: that play time isn't shown)
+        }
         _tick = { pos: pos, wall: now };
         if (!t || !_pausedOnce || S.isLive || !useAV || scrubbing() || S.pendingSeek != null || S.lastSeekAt >= t.wall) { return false; }
         var ahead = (pos - t.pos) - (now - t.wall) / 1000;
@@ -1239,7 +1326,10 @@ var PlayerParts = {};
         _jumpUndone = t.pos;
         _tick = { pos: t.pos, wall: now };
         S.cur = t.pos;
-        doAVSeek(t.pos, 0);
+        _jumpBack = { to: t.pos, at: now, tries: 0 };
+        // (it jumps as it buffers, when the TV ignores a seek: then asked once the buffering's done,
+        // as any seek made then)
+        if (S.buffering) { S.pendingSeek = t.pos; } else { doAVSeek(t.pos, 0); }
         return true;
     }
 

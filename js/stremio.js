@@ -570,14 +570,16 @@ var Stremio = (function () {
     // The file import reads (parseSetupList): a line an addon link, playlist link or API key, what
     // any StremioK imports, and #!stremiok <kind> <JSON> lines, comments to an older one: playlist
     // (a playlist's name, guide link, off), stalker (a portal) and store (one of EXPORT_STORE, what
-    // you chose in Settings: not caches, history, progress or your Trakt sign-in; integrations
-    // without the three keys, which have their own lines, or Trakt's). Imported settings replace
-    // yours, only those in EXPORT_STORE.
+    // you chose in Settings: not caches or your Trakt sign-in; integrations without the three keys,
+    // which have their own lines, or Trakt's) and history (one of HISTORY_STORE, when ticked: where
+    // you stopped, watched marks…). Imported settings and history replace yours, only those listed.
     var EXPORT_LINE = '#!stremiok ';
     var EXPORT_STORE = ['stremiok.prefs', 'stremiok.feeds', 'stremiok.searchfeeds', 'stremiok.sourcefeeds', 'stremiok.ranking', 'stremiok.server', 'stremiok.formats',
         'stremiok.resblock', 'stremiok.subcfg', 'stremiok.audiocfg', 'stremiok.playercfg', 'stremiok.private', 'stremiok.youtube', 'stremiok.appshortcuts',
         'stremiok.appsallowed', 'stremiok.aiomanager', 'stremiok.iptv.stalkerall', 'stremiok.iptv.stalkerkeep', 'stremiok.iptv.every', 'stremiok.local.matching', 'stremiok.local.hidden',
         'stremiok.addonsoff', 'stremiok.integrations'];
+    var HISTORY_STORE = ['stremiok.progress', 'stremiok.watched', 'stremiok.cworder', 'stremiok.subhist', 'stremiok.audiohist', 'stremiok.playedsrc', 'stremiok.seriessrc',
+        'stremiok.unsuitable', 'stremiok.aspects', 'stremiok.iptv.favs', 'stremiok.local.matches', 'stremiok.local.fixes'];
     function plural(n, one) { return n + ' ' + one + (n === 1 ? '' : 's'); }
     function iptvLists() { return (_hasIptv && IPTV.getPlaylists) ? IPTV.getPlaylists() : []; }
     // What there is to export: [{ key, label }] (settings always).
@@ -590,6 +592,7 @@ var Stremio = (function () {
         if (st) { out.push({ key: 'stalker', label: U.tn(st, '{n} Stalker portal (their MAC addresses)', '{n} Stalker portals (their MAC addresses)') }); }
         if (keys.length) { out.push({ key: 'keys', label: U.t('API keys: {keys}', { keys: keys.join(', ') }) }); }
         out.push({ key: 'settings', label: U.t('Your settings: look, Home, playback, subtitles, sources, streaming server, YouTube…') });
+        if (HISTORY_STORE.some(function (k) { return U.store.get(k, null) != null; })) { out.push({ key: 'history', label: U.t('Your history: where you stopped, watched marks, Continue Watching…'), off: true }); }
         return out;
     }
     function settingsValue(key) {
@@ -634,11 +637,18 @@ var Stremio = (function () {
                 if (v !== null && v !== undefined) { out.push(EXPORT_LINE + 'store ' + JSON.stringify({ k: key.replace(/^stremiok\./, ''), v: v })); }
             });
         }
+        if (want.history) {
+            out.push('');
+            HISTORY_STORE.forEach(function (key) {
+                var v = U.store.get(key, null);
+                if (v !== null && v !== undefined) { out.push(EXPORT_LINE + 'history ' + JSON.stringify({ k: key.replace(/^stremiok\./, ''), v: v })); }
+            });
+        }
         return out.join('\n') + '\n';
     }
     function parseSetupList(text) {
         var out = { items: [], ignored: 0 }, seen = {}, mine = getAddonUrls(), integ = getIntegrations();
-        var have = iptvLists(), lists = have.map(function (x) { return x.url; }), details = {}, store = [];
+        var have = iptvLists(), lists = have.map(function (x) { return x.url; }), details = {}, store = [], hist = [];
         function push(it) { var k = it.kind + ' ' + it.value; if (seen[k]) { return; } seen[k] = 1; out.items.push(it); }
         function stremiokLine(rest) {   // (an export's own lines: see exportSetup)
             var m = /^([a-z]+)\s+(\{[\s\S]*\})$/.exec(rest), o = null;
@@ -652,6 +662,7 @@ var Stremio = (function () {
                 return;
             }
             if (m[1] === 'store' && typeof o.k === 'string' && EXPORT_STORE.indexOf('stremiok.' + o.k) !== -1 && o.v !== undefined && o.v !== null) { store.push(o); return; }
+            if (m[1] === 'history' && typeof o.k === 'string' && HISTORY_STORE.indexOf('stremiok.' + o.k) !== -1 && o.v !== undefined && o.v !== null) { hist.push(o); return; }
             out.ignored++;
         }
         ('' + (text || '')).split(/\r?\n/).forEach(function (line) {
@@ -678,6 +689,7 @@ var Stremio = (function () {
             if (d) { it.info = d; if (typeof d.name === 'string' && d.name) { it.label = U.t('IPTV playlist') + '  ·  ' + d.name.slice(0, 60); } }
         });
         if (store.length) { push({ kind: 'settings', value: 'settings', entries: store, label: U.tn(store.length, 'Your settings ({n} part)', 'Your settings ({n} parts)'), have: false, note: U.t('replaces yours') }); }
+        if (hist.length) { push({ kind: 'history', value: 'history', entries: hist, label: U.t('Your history and progress'), have: false, note: U.t('replaces yours') }); }
         return out;
     }
     function playlistDetails(id, d) {
@@ -687,7 +699,7 @@ var Stremio = (function () {
     }
     // Import the chosen lines (parseSetupList's items): what was added, as importSetupList says.
     function applySetupEntries(items) {
-        var result = { addons: 0, playlists: 0, omdb: false, tmdb: false, mdblist: false, settings: false, ignored: 0 };
+        var result = { addons: 0, playlists: 0, omdb: false, tmdb: false, mdblist: false, settings: false, history: false, ignored: 0 };
         (items || []).forEach(function (it) {
             if (KEY_NAMES[it.kind]) { setIntegration(it.kind, it.value); result[it.kind] = true; }
             else if (it.kind === 'playlist') {
@@ -710,6 +722,9 @@ var Stremio = (function () {
                     } else { U.store.set(key, o.v); }
                 });
                 result.settings = true;
+            } else if (it.kind === 'history') {
+                it.entries.forEach(function (o) { var key = 'stremiok.' + o.k; if (HISTORY_STORE.indexOf(key) !== -1) { U.store.set(key, o.v); } });
+                result.history = true;
             }
             else if (it.kind === 'addon') {
                 var added = addAddon(it.value);
@@ -1171,6 +1186,10 @@ var Stremio = (function () {
                                 var ph = s.behaviorHints && s.behaviorHints.proxyHeaders, h = ph && ph.request ? U.sanitizeHeaders(ph.request) : null;
                                 if (h) { s._headers = h; }
                             });
+                            // (StremioK's own source that says why parts of it gave nothing: Nuvio plugins, one line each)
+                            if (a.__impl && res.streams && Array.isArray(res.streams._notes)) {
+                                res.streams._notes.slice(0, 10).forEach(function (n) { notes.push({ addon: (a.manifest.name || U.t('Addon')) + ' · ' + ('' + n.plugin).slice(0, 60), title: ('' + n.why).replace(/\s+/g, ' ').slice(0, 160), text: '', rank: i }); });
+                            }
                             slots[i] = arr; okCount++;
                             if (!arr.length && notes.length === said) { note(a, i, U.t('no sources for this')); }   // (its notices say why, when it sent any)
                         }).then(function () { done(); }, function (err) {
@@ -2321,6 +2340,35 @@ var Stremio = (function () {
         if (info.container && info.container !== 'hls') { out.push(info.container.toUpperCase()); }
         return out.join(' · ');
     }
+    // A source's details corrected by its file's header (the player's S.mi: see the service's
+    // mediaInfo), where the header says: resolution (by width: a wide film is less tall), codec,
+    // bit depth, HDR (Dolby Vision with or without a layer under it), the audio track that plays
+    // first, the container. What the header doesn't say stays as the name had it.
+    var FILE_AUDIO = { truehd: 'truehd', dts: 'dts', eac3: 'eac3', ac3: 'ac3', aac: 'aac', opus: 'opus', flac: 'flac' };
+    function withFileInfo(info, mi) {
+        var i = {};
+        Object.keys(info || {}).forEach(function (k) { i[k] = info[k]; });
+        i.audio = ((info && info.audio) || []).slice();
+        if (!mi || typeof mi !== 'object') { return i; }
+        var v = mi.video;
+        if (v) {
+            var w = +v.width || 0, h = +v.height || 0;
+            if (w || h) { i.res = w >= 3200 || h >= 1800 ? 2160 : w >= 2400 || h >= 1300 ? 1440 : w >= 1700 || h >= 900 ? 1080 : w >= 1100 || h >= 650 ? 720 : 480; }
+            if (/^(h264|hevc|av1)$/.test(v.codec || '')) { i.codec = v.codec; }
+            if (v.bitDepth >= 10) { i.bits10 = true; } else if (v.bitDepth === 8) { i.bits10 = false; }
+            if (v.dv) { i.hdr = (v.dv.compat === 1 || v.dv.compat === 6 || v.dv.compat === 4 || v.dv.compat === 2) ? 'dv' : 'dv-only'; }
+            else if (v.hdr === 'hdr10' || v.hdr === 'hlg') { i.hdr = i.hdr === 'hdr10p' && v.hdr === 'hdr10' ? 'hdr10p' : 'hdr'; }
+        }
+        var tracks = mi.audio || [], first = tracks.filter(function (a) { return a.default; })[0] || tracks[0];
+        if (first && FILE_AUDIO[first.codec]) {
+            var a = FILE_AUDIO[first.codec];
+            if (a === 'dts' && i.audio.indexOf('dtshd') !== -1) { a = 'dtshd'; }   // (DTS-HD looks like DTS in a header: the name says which)
+            i.audio = (i.audio.indexOf('atmos') !== -1 && (a === 'truehd' || a === 'eac3') ? ['atmos'] : []).concat([a]);
+        }
+        if (/^(mkv|mp4|webm)$/.test(mi.container || '')) { i.container = mi.container; } else if (mi.container === 'mov') { i.container = 'mp4'; }
+        i.fromFile = true;
+        return i;
+    }
     function formatKeys(info) {
         var k = [], pk = profileKey(info);
         if (pk) { k.push(pk); }
@@ -2437,7 +2485,7 @@ var Stremio = (function () {
         isPlayable: isPlayable, youTubeSource: youTubeSource, torrentSource: torrentSource,
         keptSources: keptSources, torrentFile: torrentFile, server: server, setServer: setServer, testServer: testServer, convertUrl: convertUrl, serverAddressProblem: serverAddressProblem, streamLabel: streamLabel, streamName: streamName,
         streamSize: streamSize, streamDescription: streamDescription,
-        streamInfo: streamInfo, formatTags: formatTags, formatKeys: formatKeys, recordFormats: recordFormats, setFormat: setFormat,
+        streamInfo: streamInfo, formatTags: formatTags, formatKeys: formatKeys, withFileInfo: withFileInfo, recordFormats: recordFormats, setFormat: setFormat,
         resetFormats: resetFormats, badFormats: badFormats, formatList: formatList,
         resList: resList, setResAllowed: setResAllowed, blockedRes: blockedRes,
         importSetupList: importSetupList, savedManifest: savedManifest, isAddonOff: isAddonOff, setAddonOff: setAddonOff, onIptvReady: onIptvReady, streamListenerCount: function (type, id) { var e = _streamCache[type + ':' + id]; return e ? e.listeners.length : 0; },

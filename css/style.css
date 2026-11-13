@@ -229,6 +229,7 @@ html, body {
 #subs2 { position: absolute; left: 0; right: 0; top: 60px; z-index: 18; text-align: center; padding: 0 140px; }   /* (the second subtitle, at the top) */
 #subs2 span { display: inline-block; background: rgba(0,0,0,0.6); color: #fff; font-size: 36px; line-height: 1.4; padding: 4px 16px; border-radius: 6px; white-space: pre-wrap; text-shadow: 0 2px 3px #000; }
 #subs span { display: inline-block; background: rgba(0,0,0,0.6); color: #fff; font-size: 36px; line-height: 1.4; padding: 4px 16px; border-radius: 6px; white-space: pre-wrap; text-shadow: 0 2px 3px #000; }
+#subs span span { display: inline; background: none; color: inherit; font-size: inherit; padding: 0; border-radius: 0; text-shadow: inherit; }   /* (a line's styled pieces: player-subs' drawCues) */
 
 #sub-menu { position: absolute; right: 60px; bottom: 250px; width: 560px; max-height: 620px; overflow: hidden; z-index: 30; background: rgba(20,25,36,0.98); border-radius: 12px; padding: 18px; }
 #sub-menu .sm-title { font-size: 24px; font-weight: bold; margin-bottom: 12px; color: #c7cbd4; }

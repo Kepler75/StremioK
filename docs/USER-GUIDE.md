@@ -19,7 +19,7 @@ How to use StremioK, task by task. Also:
 - [IPTV and radio](#iptv-and-radio)
 - [YouTube](#youtube)
 - [Your USB drive](#your-usb-drive)
-- [A network folder (WebDAV)](#a-network-folder-webdav)
+- [A network folder](#a-network-folder)
 - [Your media server](#your-media-server)
 - [Trakt](#trakt)
 - [Your Stremio account](#your-stremio-account)
@@ -88,7 +88,8 @@ way can be combined with the others.
   *Import N*. What you have already can't be ticked; a key replaces the
   one you have, so the list says so.
 - **A backup:** [*Export configuration*](SETTINGS.md#export-configuration) gives your phone
-  such a file, settings included.
+  such a file (or saves it to a USB drive), settings included, and your history and progress
+  if you tick them.
 
 **Where an addon came from** shows as a small letter badge after its name: **S** (purple)
 from your Stremio account, **A** (teal) added or kept by an AIOManager sync, **C** (gray) from
@@ -136,7 +137,7 @@ where it came from.
 - **A USB drive:** plug it in and the Local tab appears (see
   [Your USB drive](#your-usb-drive)).
 - **A network folder** (Settings › Content › Network folders): a folder a NAS or computer shares
-  over WebDAV, in the Local tab too (see [A network folder](#a-network-folder-webdav)).
+  (WebDAV, SMB or DLNA), in the Local tab too (see [A network folder](#a-network-folder)).
 
 ## Getting around
 
@@ -488,15 +489,14 @@ The time of day shows at the top right of the screen, while the progress bar is 
 On a live channel the number keys pick a channel instead (see [IPTV and radio](#iptv-and-radio)).
 A colored key's list closes with BACK or the same key again.
 
-**The stream info** (blue) shows the source (its addon, name, file name and size, the addon's
-description), what it is in short (4K · HEVC · HDR10 · Atmos · MKV), the video and audio as the
-player has them, the subtitles, quality, bandwidth, server (its name only), how it plays
-(straight from the server, through StremioK's service, or YouTube's service), the buffer and
-the position.
+**The stream info** (blue) shows the source (addon, name, file, size, description), what it is
+in short, the video and audio as the player has them, the subtitles, quality, bandwidth, server
+name, how it plays (from the server, through StremioK's service or YouTube's), the buffer and
+the position. A file's start is read too: its codec, HDR, what its Dolby Vision plays as here,
+and each track's own name (also in the colored keys' lists).
 
-While the progress bar shows, the right side sums up what's playing: resolution, video format,
-bit depth, HDR / Dolby Vision, audio, channels and file type (`4K · HEVC · 10-bit · HDR10 ·
-Atmos · 5.1 · MKV`).
+While the progress bar shows, its right side sums up what's playing (`4K · HEVC · 10-bit ·
+HDR10 · Atmos · 5.1 · MKV`).
 
 ### Skipping intros, recaps and credits
 
@@ -778,8 +778,10 @@ the USB index* and *Forget matches*. The sideloaded app only.
 ### Subtitle files
 
 - Subtitle files next to a video are first in its subtitle menu: named like it (`Film.srt`,
-  `Film.en.srt`, `Film.forced.eng.srt`, the language from the name), or any in the folder when
-  it's the only video there. SRT, WebVTT, ASS / SSA.
+  `Film.en.srt`, `Film.forced.eng.srt`, the language from the name), with its episode number
+  (`Show 1x02.srt` for `Show.S01E02.mkv`), in a `Subs` or `Subtitles` folder beside it, or any in
+  the folder when it's the only video there. SRT, WebVTT, ASS / SSA (italics, bold and colors
+  kept), SAMI (`.smi`), MicroDVD, MPL2 and TMPlayer (`.sub`, `.txt` named like the video).
 - **Subtitle files of their own** (no video next to them: a season's `.srt` files) are matched
   to a movie or an episode by their names when the drive is indexed. Their language is the one
   their name says when StremioK knows it (`.en.srt`, `.spanish.srt`); otherwise *Unknown
@@ -809,16 +811,22 @@ drive*, or UP › *⬇ Download* while it plays.
 - Done, it's at once a source on its title page ("💾 USB drive"), matched to the title it was
   downloaded for, with its subtitle file.
 
-## A network folder (WebDAV)
+## A network folder
 
-The Local tab also shows folders shared on your network over **WebDAV**: from a NAS (Synology,
-QNAP), Nextcloud, or a computer or Raspberry Pi running rclone (`rclone serve webdav`).
+The Local tab also shows folders shared on your network: over **WebDAV** (a NAS, Nextcloud,
+`rclone serve webdav`), a **Windows or NAS share** (SMB 2), or a **DLNA media server**.
 
 ### Adding one
 
-Settings › Content › **Network folders** › *Add a network folder*: its address, like
-`http://192.168.0.50:8080/media` (`https://` too), then the user name and password it asks for,
-if any. They're kept on the TV and sent only to that folder.
+Settings › Content › **Network folders** › *Add a network folder*, then which kind:
+
+- **WebDAV:** its address, like `http://192.168.0.50:8080/media` (`https://` too), then the
+  user name and password it asks for, if any.
+- **A share:** the server (`192.168.0.50`, `nas.local`), a user name (none: as a guest) and
+  password, then one of its shares.
+- **A media server:** StremioK looks for them on your network; pick one.
+
+Sign-ins are kept on the TV and sent only to that folder.
 
 A folder whose `https://` certificate it made itself (no known authority signed it) is asked
 about first: *Trust this certificate* shows its fingerprint, and StremioK then accepts that
@@ -829,7 +837,8 @@ certificate only, for that folder. A new one is asked about again.
 - **As a USB drive:** [browsing](#browsing), [matching to titles](#matched-to-titles), its
   [index](#indexing-a-drive) (*Index this folder*), the hold-OK menu, plain files, and
   [subtitle files](#subtitle-files) next to a video. Its sources are **On your network folder**.
-- **Played straight from the folder** (not converted), so it must be a format the TV plays.
+- **Played as it is** (not converted), so it must be a format the TV plays; a share's files
+  through StremioK's service.
 - **Not:** downloads to it, or the file hash subtitle addons use to find ones made for it.
 
 OK on a folder in Settings › Content › Network folders: *Turn off* (its sources set aside, its

@@ -35,7 +35,7 @@ video through Samsung's AVPlay API.
   films and series), with CH+ / CH−.
 - **YouTube:** live channels, trailers, and your own YouTube channels, playlists and searches,
   with SponsorBlock, DeArrow, chapters and captions.
-- **Local:** the videos on a USB drive or a network folder (WebDAV), matched to their titles.
+- **Local:** the videos on a USB drive or a network folder (WebDAV, SMB, DLNA), matched to their titles.
 - **Jellyfin, Emby and Plex:** your server's libraries on Home, its files as sources.
 - **16 languages** ([translating](docs/TRANSLATING.md)).
 - **Nuvio plugins** (2017+ TVs): plugins made for the Nuvio apps as sources
@@ -67,7 +67,7 @@ Three ways, all covered step by step in the **[installation guide](docs/INSTALL.
 3. **Trakt** or **Stremio**, optional: connect to share watched marks and Continue Watching.
 4. **IPTV**, optional: your M3U playlist links, an Xtream account (its server, username and
    password) or a Stalker portal (its address and MAC address).
-5. **A USB drive or network folder**, optional: plug a drive in, or add a WebDAV folder; the
+5. **A USB drive or network folder**, optional: plug a drive in, or add a network folder; the
    Local tab appears.
 
 The user guide's [Getting started](docs/USER-GUIDE.md#getting-started) covers each.
@@ -119,6 +119,9 @@ It includes [Shaka Player](https://github.com/shaka-project/shaka-player) 5.3.3 
 Apache License 2.0: [js/vendor/SHAKA-LICENSE](js/vendor/SHAKA-LICENSE)), loaded only to play
 ClearKey channels. Nuvio plugins' runtime (`js/vendor/quickjs/`: quickjs-emscripten, cheerio,
 crypto-js; MIT, with BSD and ISC parts, licenses there) loads only when a plugin runs.
+
+The service's SMB, DLNA and WebDAV Digest clients are adapted from
+[Tessel](https://github.com/PatrickSt1991/tessel-tizen-tv) (© 2026 Patrick, MIT License).
 
 Skip timestamps come partly from [SkipDB](https://skipdb.tv), whose data is published under
 the [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/) (see its

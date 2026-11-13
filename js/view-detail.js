@@ -2119,19 +2119,26 @@
         // how.converted: played converted by the streaming server, so its formats aren't learned
         // (they didn't play on the TV); Played before and the kept source still are.
         function learnFor(st, how) {
-            var info = Stremio.streamInfo(st), fkeys = (how && how.converted) ? [] : Stremio.formatKeys(info);
+            var info = Stremio.streamInfo(st);
+            // (the formats learned: the file's own, its header read by then — the player's
+            // formatInfo, corrected by it — else as its name says)
+            function fkeysOf(playing) {
+                if (how && how.converted) { return []; }
+                var p = playing || ctx, fi = p && p.stream === st && p.formatInfo && p.formatInfo.fromFile ? p.formatInfo : info;
+                return Stremio.formatKeys(fi);
+            }
             return {
                 // (private viewing: nothing about this playback remembered or forgotten — its own
                 // flag, set when it started, see player-store; what plays on this TV is still learned)
                 // (playing: the playback it's about, as it is now — another source's is a copy)
                 onStarted: function (err, playing) {
-                    Stremio.recordFormats(fkeys, true);
+                    Stremio.recordFormats(fkeysOf(playing), true);
                     if ((playing || ctx || {}).private) { return; }
                     if (remembers) { rememberPlayed(titleId, st, info); Stremio.keepSource(vtype, videoId, st); }   // (kept: listed when its addon is late, see Stremio.keptSources)
                     if (series && st._addon) { rememberSeriesSource(titleId, st); }
                 },
                 onFailed: function (err, playing) {
-                    Stremio.recordFormats(fkeys, false, err, fileIdentity(st));
+                    Stremio.recordFormats(fkeysOf(playing), false, err, fileIdentity(st));
                     if (remembers && !(playing || ctx || {}).private) { forgetPlayed(titleId, st, info); Stremio.forgetSource(vtype, videoId, st); }
                     if (page) { page.directFailed = true; }   // (played straight away and failed: its source list next)
                 }

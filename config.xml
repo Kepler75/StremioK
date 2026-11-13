@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
-        id="http://stremiok.tizen/StremioKTizen" version="2.3.6" viewmodes="maximized">
+        id="http://stremiok.tizen/StremioKTizen" version="2.3.7" viewmodes="maximized">
     <tizen:application id="StremioK01.StremioK" package="StremioK01" required_version="3.0"/>
     <content src="index.html"/>
     <feature name="http://tizen.org/feature/screen.size.all"/>
@@ -14,6 +14,7 @@
     <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
     <!-- DRM channels (Widevine, PlayReady) through the TV's player: see js/player-core.js, drmSetup -->
     <tizen:privilege name="http://developer.samsung.com/privilege/drmplay"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/productinfo"/>
     <!-- Local media probe: reading USB drives -->
     <tizen:privilege name="http://tizen.org/privilege/filesystem.read"/>
     <!-- Cross-origin XHR to any addon host, and to the local YouTube service -->

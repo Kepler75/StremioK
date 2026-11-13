@@ -177,6 +177,22 @@
         return ('' + (lang || '')).toLowerCase().trim();
     }
 
+    // The file's own track (its header's, S.mi: see player-core's startFileInfo) for each of the
+    // TV player's tracks of a kind ('audio' | 'subs'): by position, when the header lists as many
+    // and every language it states agrees with the player's; else null (an odd file: the player's
+    // list as it is).
+    function fileTracks(kind, tracks) {
+        var list = P.S.mi && P.S.mi[kind];
+        if (!list || !tracks || list.length !== tracks.length || !list.length) { return null; }
+        for (var i = 0; i < list.length; i++) {
+            var tv = langKey(trackLang(tracks[i])), fl = langKey(list[i].lang || '');
+            if (tv && fl && !P.langUnstated(tv) && !P.langUnstated(fl) && tv !== fl && langKey(('' + list[i].lang).split('-')[0]) !== tv) { return null; }
+        }
+        return list;
+    }
+    function fileTrack(kind, tracks, pos) { var l = fileTracks(kind, tracks); return l ? l[pos] || null : null; }
+    P.fileTracks = fileTracks; P.fileTrack = fileTrack;
+
     // ----- for the other parts (and js/player.js) -----
     P.trackInfo = trackInfo; P.infoLang = infoLang; P.trackLang = trackLang; P.langMatches = langMatches;
     P.langName = langName; P.langRank = langRank; P.langKey = langKey;

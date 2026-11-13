@@ -83,6 +83,7 @@
 
 var http = require('http');
 var https = require('https');
+var net = require('net');
 var tls = require('tls');
 var zlib = require('zlib');
 var crypto = require('crypto');
@@ -103,6 +104,7 @@ function log(msg) { try { console.log('[StremioK service] ' + msg); } catch (e) 
 // (inherited), which does something else entirely, so only a real one is used.
 var HAS_BUFFER_FROM = typeof Buffer.from === 'function' && Buffer.from !== Uint8Array.from;
 function toBuffer(s) { return HAS_BUFFER_FROM ? Buffer.from(s, 'utf8') : new Buffer(s, 'utf8'); }
+function fromBase64(s) { return HAS_BUFFER_FROM ? Buffer.from(String(s), 'base64') : new Buffer(String(s), 'base64'); }
 function allocBuffer(n) { return typeof Buffer.alloc === 'function' ? Buffer.alloc(n) : new Buffer(n); }
 
 // A callback that runs at most once, and never throws out to Node.
@@ -1035,7 +1037,17 @@ function brandMany(ids, cb) {
 // lookups at a time for the whole service, FS_LISTS_MAX listings at once, one drive walk.
 var FS_LIST_MAX = 2000, FS_PARALLEL = 12, FS_LISTS_MAX = 4;
 var VIDEO_EXT = /\.(mkv|mp4|m4v|avi|ts|m2ts|mts|mov|webm|wmv|mpe?g|flv|3gp|ogv|vob)$/i;
-var SUB_EXT = /\.(srt|vtt|ass|ssa)$/i;
+var SUB_EXT = /\.(srt|vtt|ass|ssa|smi|sub|txt)$/i;
+// A drive's walk lists videos and subtitles; a .sub or .txt only when named like a video in its
+// folder (Film.txt for Film.mkv: not every readme), as the app takes them (local.js' sidecars).
+var WEAK_SUB_EXT = /\.(sub|txt)$/i;
+function walkWants(n, siblings) {
+    if (VIDEO_EXT.test(n)) { return true; }
+    if (!SUB_EXT.test(n)) { return false; }
+    if (!WEAK_SUB_EXT.test(n)) { return true; }
+    var low = n.toLowerCase();
+    return siblings.some(function (v) { return VIDEO_EXT.test(v) && low.indexOf(v.replace(/\.[^.]+$/, '').toLowerCase()) === 0; });
+}
 var HIDDEN_NAME = /^(\.|\$RECYCLE\.BIN$|System Volume Information$)/i;
 function fsDirOk(p) {
     if (typeof p !== 'string' || p.length > 1024 || p.indexOf('\0') !== -1) { return false; }
@@ -1227,7 +1239,7 @@ function fsWalk(root, cb) {
                         try {
                             if (!e2 && st && !st.isSymbolicLink()) {
                                 if (st.isDirectory()) { if (d.depth + 1 <= FS_WALK_DEPTH) { queue.push({ rel: rel, depth: d.depth + 1 }); } else { truncated = true; } }
-                                else if ((VIDEO_EXT.test(n) || SUB_EXT.test(n)) && files.length < FS_WALK_FILES) { files.push({ p: rel, size: st.size }); }
+                                else if (walkWants(n, names) && files.length < FS_WALK_FILES) { files.push({ p: rel, size: st.size }); }
                             }
                         } catch (x) {}
                         step();
@@ -1248,9 +1260,34 @@ function fsWalkLeave(cb) {
     if (!w.cbs.length && !w.cancelled) { w.cancelled = true; _walk = null; log('drive walk stopped: nobody waiting for it'); }
 }
 
-// Subtitle text: the file's encoding worked out (a byte-order mark, else UTF-8 when it reads
-// as UTF-8, else Windows-1252: most older .srt files), ASS / SSA turned into SRT.
+// Subtitle text: the file's encoding worked out: a byte-order mark, else UTF-8 when it reads as
+// UTF-8, else one of the old Windows ones, told apart by their letters (oldEncoding). Passed on as
+// text: the page reads its format (SRT, WebVTT, ASS, SAMI, MicroDVD…: player-subs' parseCues).
 var FS_SUB_MAX = 5 * 1024 * 1024;
+// Windows-1252 (Western), -1250 (Central European) and -1251 (Cyrillic): bytes 0x80-0xFF.
+var CP1252_HIGH = '€\u0081‚ƒ„…†‡ˆ‰Š‹Œ\u008DŽ\u008F\u0090‘’“”•–—˜™š›œ\u009DžŸ';   // (0xA0 on: as Latin-1)
+var CP1250_HIGH = '€\u0081‚\u0083„…†‡\u0088‰Š‹ŚŤŽŹ\u0090‘’“”•–—\u0098™š›śťžź ˇ˘Ł¤Ą¦§¨©Ş«¬­®Ż°±˛ł´µ¶·¸ąş»Ľ˝ľżŔÁÂĂÄĹĆÇČÉĘËĚÍÎĎĐŃŇÓÔŐÖ×ŘŮÚŰÜÝŢßŕáâăäĺćçčéęëěíîďđńňóôőö÷řůúűüýţ˙';
+var CP1251_HIGH = 'ЂЃ‚ѓ„…†‡€‰Љ‹ЊЌЋЏђ‘’“”•–—\u0098™љ›њќћџ ЎўЈ¤Ґ¦§Ё©Є«¬­®Ї°±Ііґµ¶·ё№є»јЅѕї\u0410\u0411\u0412\u0413\u0414\u0415\u0416\u0417\u0418\u0419\u041A\u041B\u041C\u041D\u041E\u041F\u0420\u0421\u0422\u0423\u0424\u0425\u0426\u0427\u0428\u0429\u042A\u042B\u042C\u042D\u042E\u042F\u0430\u0431\u0432\u0433\u0434\u0435\u0436\u0437\u0438\u0439\u043A\u043B\u043C\u043D\u043E\u043F\u0440\u0441\u0442\u0443\u0444\u0445\u0446\u0447\u0448\u0449\u044A\u044B\u044C\u044D\u044E\u044F';
+// Which old encoding: Cyrillic when most letters are high bytes (Russian, Ukrainian, Serbian…);
+// else Central European when its own letters show (ą ł ś ź ż ť ř ů ě, which in Western are ¹ ³ œ Ÿ
+// and the like) more than Western's (à, ¡, ¿ starting a word); Western otherwise.
+function isLetterByte(b) { return (b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A) || b >= 0xC0; }
+function oldEncoding(buf) {
+    var high = 0, ascii = 0, ce = 0, we = 0, n = Math.min(buf.length, 262144);
+    for (var i = 0; i < n; i++) {
+        var b = buf[i], prev = i ? buf[i - 1] : 0x20, next = i + 1 < n ? buf[i + 1] : 0x20;
+        if ((b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A)) { ascii++; continue; }
+        if (b < 0x80) { continue; }
+        if (b >= 0xC0) { high++; }
+        if (b === 0x8C || b === 0x8D || b === 0x8F || b === 0x9C || b === 0x9D || b === 0x9F || b === 0xA5 || b === 0xB9 || b === 0xB3) { ce += 3; }
+        else if (b === 0xBF) { if (isLetterByte(prev)) { ce += 3; } else if (isLetterByte(next)) { we += 2; } }   // (ż inside a word; ¿ before one)
+        else if (b === 0xA3) { if (isLetterByte(next)) { ce += 1; } }   // (Ł before letters; £ before a number)
+        else if (b === 0xF8 || b === 0xD8 || b === 0xEC || b === 0xF9) { ce += 1; }   // (ř Ř ě ů: ø Ø ì ù in Western, rarer)
+        else if (b === 0xE0 || b === 0xC0 || b === 0xA1) { we += 2; }   // (à À ¡: ŕ Ŕ ˇ in Central European, rare)
+    }
+    if (high > 20 && high > (high + ascii) * 0.45) { return CP1251_HIGH; }
+    return ce >= 2 && ce > we ? CP1250_HIGH : CP1252_HIGH;
+}
 function decodeText(buf) {
     if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) { return buf.slice(2).toString('utf16le'); }
     if (buf.length >= 2 && buf[0] === 0xFE && buf[1] === 0xFF) {   // (UTF-16 big-endian: bytes swapped first)
@@ -1260,40 +1297,14 @@ function decodeText(buf) {
     }
     if (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) { return buf.slice(3).toString('utf8'); }
     var t = buf.toString('utf8');
-    if (t.indexOf('\uFFFD') === -1) { return t; }
-    var cp = '\u20AC\u0081\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\u008D\u017D\u008F\u0090\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\u009D\u017E\u0178';
+    if (t.indexOf('�') === -1) { return t; }
+    var table = oldEncoding(buf), full = table.length === 128;
     var out = [];
-    for (var j = 0; j < buf.length; j++) { var b = buf[j]; out.push(b >= 0x80 && b < 0xA0 ? cp.charAt(b - 0x80) : String.fromCharCode(b)); }
-    return out.join('');
-}
-function assToSrt(text) {
-    var lines = text.replace(/\r/g, '').split('\n'), fmt = null, inEvents = false, cues = [];
-    function ts(s) {
-        var m = /^(\d+):(\d{2}):(\d{2})[.:](\d{1,3})$/.exec(s.trim());
-        if (!m) { return null; }
-        var cs = m[4].length === 2 ? +m[4] * 10 : m[4].length === 1 ? +m[4] * 100 : +m[4];
-        function two(n) { return (n < 10 ? '0' : '') + n; }
-        return two(+m[1]) + ':' + m[2] + ':' + m[3] + ',' + ('00' + cs).slice(-3);
+    for (var j = 0; j < buf.length; j++) {
+        var b = buf[j];
+        out.push(b < 0x80 ? String.fromCharCode(b) : full ? table.charAt(b - 0x80) : b < 0xA0 ? table.charAt(b - 0x80) : String.fromCharCode(b));
     }
-    lines.forEach(function (l) {
-        if (/^\[events\]/i.test(l)) { inEvents = true; return; }
-        if (/^\[/.test(l)) { inEvents = false; return; }
-        if (!inEvents) { return; }
-        var m = /^format\s*:\s*(.*)$/i.exec(l);
-        if (m) { fmt = m[1].split(',').map(function (x) { return x.trim().toLowerCase(); }); return; }
-        m = /^dialogue\s*:\s*(.*)$/i.exec(l);
-        if (!m || !fmt) { return; }
-        var parts = m[1].split(','), n = fmt.length;
-        if (parts.length < n) { return; }
-        var f = {};
-        for (var i = 0; i < n - 1; i++) { f[fmt[i]] = parts[i]; }
-        f[fmt[n - 1]] = parts.slice(n - 1).join(',');
-        var a = ts(f.start || ''), b = ts(f.end || '');
-        var txt = ('' + (f.text || '')).replace(/\{[^}]*\}/g, '').replace(/\\N/gi, '\n').replace(/\\h/g, ' ').trim();
-        if (a && b && txt) { cues.push({ a: a, b: b, t: txt }); }
-    });
-    cues.sort(function (x, y) { return x.a < y.a ? -1 : x.a > y.a ? 1 : 0; });
-    return cues.map(function (c, i) { return (i + 1) + '\n' + c.a + ' --> ' + c.b + '\n' + c.t; }).join('\n\n') + '\n';
+    return out.join('');
 }
 function fsSub(p, cb) {
     cb = once(cb);
@@ -1307,7 +1318,7 @@ function fsSub(p, cb) {
             fs.readFile(real, function (e2, buf) {
                 if (e2) { cb({ status: 500, message: e2.code || e2.message }); return; }
                 var text = decodeText(buf);
-                cb(null, /\.(ass|ssa)$/i.test(p) ? assToSrt(text) : text);
+                cb(null, text);
             });
         });
     });
@@ -1353,6 +1364,430 @@ function fsHash(p, cb) {
     });
 }
 
+// ---- What's in a video file: its header read (/live/mi, /fsmi, /dav/mi) ----
+// A file's container, length and tracks, from its header only: an MKV / WebM's EBML header,
+// Info and Tracks (through its SeekHead when they come after the start), an MP4's moov box. Read
+// in pieces (MI_CHUNK at a time), MI_BYTES and MI_READS at most whatever the file's size, by
+// MI_MS; a server that won't read from a given place (no Range) only for the start. Every length
+// the file gives is bounded by what was read (a broken or hostile file can't make it allocate,
+// loop or recurse). AVI, MPEG-TS and the rest: { container: null } (unknown).
+// The answer: { container, duration (s), size, video: { codec, width, height, bitDepth, hdr
+// ('hdr10' | 'hlg' | ''), dv: { profile, compat } }, audio: [{ codec, channels, lang, name,
+// default, forced, commentary }], subs: [{ codec, lang, name, default, forced, hi, text }],
+// cues (it can be jumped through), more (tracks left out past MI_TRACKS) }.
+var MI_BYTES = 16 * 1048576, MI_READS = 10, MI_MS = 20000, MI_CHUNK = 262144, MI_ELEMENT_MAX = 8 * 1048576, MI_TRACKS = 128, MI_ACTIVE_MAX = 2;
+var _miActive = 0;
+// readAt(offset, length, cb(err, buf, total)) -> { get(offset, length, cb(err, buf)), size() }:
+// what was read kept, so a piece already in is never asked for again.
+function miReader(readAt) {
+    var pieces = [], total = null, used = 0, reads = 0;
+    function have(off, len) {
+        for (var i = 0; i < pieces.length; i++) {
+            var p = pieces[i];
+            if (off >= p.off && off + len <= p.off + p.buf.length) { return p.buf.slice(off - p.off, off - p.off + len); }
+        }
+        return null;
+    }
+    function get(off, len, cb) {
+        if (!(off >= 0) || !(len >= 0)) { cb(upError('bad place in the file', 422)); return; }
+        if (total !== null) { if (off >= total) { cb(null, allocBuffer(0)); return; } len = Math.min(len, total - off); }
+        var h = have(off, len);
+        if (h) { cb(null, h); return; }
+        // (the end of a piece already read, when the file ended there: what there is)
+        for (var i = 0; i < pieces.length; i++) { if (pieces[i].short && off >= pieces[i].off && off <= pieces[i].off + pieces[i].buf.length) { cb(null, pieces[i].buf.slice(off - pieces[i].off)); return; } }
+        var want = Math.max(len, MI_CHUNK);
+        if (total !== null) { want = Math.min(want, total - off); }
+        if (reads >= MI_READS || used + want > MI_BYTES) { cb(upError('the header is too big to read', 422)); return; }
+        reads++; used += want;
+        readAt(off, want, function (err, buf, tot) {
+            if (err) { cb(err); return; }
+            if (tot > 0) { total = tot; }
+            pieces.push({ off: off, buf: buf, short: buf.length < want });
+            cb(null, buf.slice(0, Math.min(len, buf.length)));
+        });
+    }
+    return { get: get, size: function () { return total; } };
+}
+// EBML (MKV / WebM): an element's ID (its length marker kept, as the spec writes IDs) and size.
+function ebmlId(b, o) {
+    var x = b[o];
+    if (x === undefined) { return null; }
+    var n = x & 0x80 ? 1 : x & 0x40 ? 2 : x & 0x20 ? 3 : x & 0x10 ? 4 : 0;
+    if (!n || o + n > b.length) { return null; }
+    var v = 0;
+    for (var i = 0; i < n; i++) { v = v * 256 + b[o + i]; }
+    return { v: v, n: n };
+}
+function ebmlSize(b, o) {
+    var x = b[o];
+    if (x === undefined) { return null; }
+    var n = 1, mask = 0x80;
+    while (n <= 8 && !(x & mask)) { n++; mask = mask >> 1; }
+    if (n > 8 || o + n > b.length) { return null; }
+    var v = x & (mask - 1), all = v === mask - 1;
+    for (var i = 1; i < n; i++) { v = v * 256 + b[o + i]; if (b[o + i] !== 0xFF) { all = false; } }
+    return { v: all ? -1 : v, n: n };   // (-1: unknown, to the end of what holds it)
+}
+// Each child element of b[o..end): fn(id, dataStart, dataSize); false stops. Sizes past the end
+// are cut to it; 4096 children at most.
+function ebmlEach(b, o, end, fn) {
+    end = Math.min(end, b.length);
+    for (var n = 0; o < end && n < 4096; n++) {
+        var id = ebmlId(b, o), sz = id && ebmlSize(b, o + id.n);
+        if (!id || !sz) { return; }
+        var d = o + id.n + sz.n, s = sz.v < 0 ? end - d : sz.v;
+        if (d > end) { return; }
+        if (d + s > end) { s = end - d; }
+        if (fn(id.v, d, s) === false) { return; }
+        o = d + s;
+    }
+}
+function ebmlUint(b, d, s) { var v = 0; for (var i = 0; i < Math.min(s, 8); i++) { v = v * 256 + b[d + i]; } return v; }   // (8 bytes: exact to 2^53, past any file)
+function ebmlStr(b, d, s) { return b.slice(d, d + Math.min(s, 400)).toString('utf8').replace(/\0[\s\S]*$/, '').trim(); }
+function ebmlFloat(b, d, s) { try { return s === 4 ? b.readFloatBE(d) : s === 8 ? b.readDoubleBE(d) : 0; } catch (e) { return 0; } }
+var MKV_IDS = { SEGMENT: 0x18538067, SEEKHEAD: 0x114D9B74, SEEK: 0x4DBB, SEEKID: 0x53AB, SEEKPOS: 0x53AC, INFO: 0x1549A966, SCALE: 0x2AD7B1, DURATION: 0x4489,
+    TRACKS: 0x1654AE6B, CLUSTER: 0x1F43B675, CUES: 0x1C53BB6B, DOCTYPE: 0x4282 };
+// A codec, short and the same whatever the container: h264, hevc, av1, vp9, aac, ac3, eac3,
+// dts, truehd, flac, opus, srt, ass, pgs… ('' unknown).
+var MI_CODECS = [
+    [/^V_MPEG4\/ISO\/AVC|^(avc1|avc3)$/, 'h264'], [/^V_MPEGH\/ISO\/HEVC|^(hvc1|hev1|dvh1|dvhe)$/, 'hevc'], [/^V_AV1|^(av01|dav1)$/, 'av1'], [/^V_VP9|^vp09$/, 'vp9'],
+    [/^V_VP8|^vp08$/, 'vp8'], [/^V_MPEG2|^(mp2v|m2v1)$/, 'mpeg2'], [/^V_MPEG4\/ISO\/(SP|ASP|AP)|^V_MS\/VFW|^mp4v$/, 'mpeg4'], [/^V_REAL/, 'real'], [/^(dvav|dva1)$/, 'h264'],
+    [/^A_AAC|^mp4a$/, 'aac'], [/^A_AC3|^ac-3$/, 'ac3'], [/^A_EAC3|^ec-3$/, 'eac3'], [/^A_DTS|^dts[chle]$|^dtsx$/, 'dts'], [/^A_TRUEHD|^mlpa$/, 'truehd'], [/^A_FLAC|^fLaC$/, 'flac'],
+    [/^A_OPUS|^Opus$/, 'opus'], [/^A_VORBIS/, 'vorbis'], [/^A_MPEG\/L3|^\.mp3$/, 'mp3'], [/^A_MPEG\/L2/, 'mp2'], [/^A_PCM|^(lpcm|ipcm|sowt|twos)$/, 'pcm'], [/^A_ALAC|^alac$/, 'alac'],
+    [/^S_TEXT\/UTF8|^S_TEXT\/ASCII/, 'srt'], [/^S_TEXT\/ASS|^S_ASS/, 'ass'], [/^S_TEXT\/SSA|^S_SSA/, 'ssa'], [/^S_TEXT\/WEBVTT|^D_WEBVTT|^wvtt$/, 'vtt'], [/^S_HDMV\/PGS/, 'pgs'],
+    [/^S_VOBSUB/, 'vobsub'], [/^S_DVBSUB/, 'dvb'], [/^S_HDMV\/TEXTST/, 'textst'], [/^tx3g$/, 'mov_text'], [/^stpp$/, 'ttml'], [/^c608$/, 'cc608'], [/^S_TEXT\/USF/, 'usf']];
+var MI_TEXT_SUBS = /^(srt|ass|ssa|vtt|mov_text|ttml|usf|textst)$/;
+function miCodec(id) {
+    id = String(id || '');
+    for (var i = 0; i < MI_CODECS.length; i++) { if (MI_CODECS[i][0].test(id)) { return MI_CODECS[i][1]; } }
+    return '';
+}
+// A Dolby Vision configuration record (dvcC / dvvC): { profile, compat } (compat 1: an HDR10
+// layer underneath, 4: HLG, 2: SDR, 0: none).
+function miDv(b, d, s) {
+    if (s < 5) { return null; }
+    return { profile: (b[d + 2] >> 1) & 0x7F, compat: b[d + 4] >> 4 };
+}
+function miMkvTrack(b, d, s) {
+    var t = { type: 0, codec: '', lang: 'eng', name: '', default: true, forced: false, hi: false, commentary: false };
+    ebmlEach(b, d, d + s, function (id, cd, cs) {
+        if (id === 0x83) { t.type = ebmlUint(b, cd, cs); }
+        else if (id === 0x86) { t.codecId = ebmlStr(b, cd, cs); t.codec = miCodec(t.codecId); }
+        else if (id === 0x63A2 && cs >= 4) { t.priv = [cd, cs]; }   // (CodecPrivate: HEVC's or AV1's record, its bit depth)
+        else if (id === 0x22B59C) { t.lang = ebmlStr(b, cd, cs).slice(0, 12); }
+        else if (id === 0x22B59D) { t.bcp = ebmlStr(b, cd, cs).slice(0, 35); }
+        else if (id === 0x536E) { t.name = ebmlStr(b, cd, cs).slice(0, 120); }
+        else if (id === 0x88) { t.default = ebmlUint(b, cd, cs) !== 0; }
+        else if (id === 0x55AA) { t.forced = ebmlUint(b, cd, cs) !== 0; }
+        else if (id === 0x55AB) { t.hi = ebmlUint(b, cd, cs) !== 0; }
+        else if (id === 0x55AF) { t.commentary = ebmlUint(b, cd, cs) !== 0; }
+        else if (id === 0xE0) {   // Video
+            ebmlEach(b, cd, cd + cs, function (vid, vd, vs) {
+                if (vid === 0xB0) { t.width = ebmlUint(b, vd, vs); }
+                else if (vid === 0xBA) { t.height = ebmlUint(b, vd, vs); }
+                else if (vid === 0x55B0) {   // Colour
+                    ebmlEach(b, vd, vd + vs, function (cid, xd, xs) {
+                        if (cid === 0x55B2) { t.bitDepth = ebmlUint(b, xd, xs); }
+                        else if (cid === 0x55BA) { var tc = ebmlUint(b, xd, xs); t.hdr = tc === 16 ? 'hdr10' : tc === 18 ? 'hlg' : ''; }
+                    });
+                }
+            });
+        }
+        else if (id === 0xE1) {   // Audio
+            ebmlEach(b, cd, cd + cs, function (aid, ad, as) { if (aid === 0x9F) { t.channels = ebmlUint(b, ad, as); } });
+        }
+        else if (id === 0x41E4) {   // BlockAdditionMapping: Dolby Vision's record
+            var kind = 0, extra = null;
+            ebmlEach(b, cd, cd + cs, function (mid, md, ms) { if (mid === 0x41E7) { kind = ebmlUint(b, md, ms); } else if (mid === 0x41ED) { extra = [md, ms]; } });
+            if ((kind === 0x64766343 || kind === 0x64767643) && extra) { t.dv = miDv(b, extra[0], extra[1]); }
+        }
+    });
+    if (t.bcp) { t.lang = t.bcp; }
+    if (t.priv && !t.bitDepth) {
+        if (t.codec === 'hevc' && t.priv[1] >= 19 && b[t.priv[0]] === 1) { t.bitDepth = (b[t.priv[0] + 17] & 7) + 8; }
+        else if (t.codec === 'av1') { t.bitDepth = (b[t.priv[0] + 2] & 0x40) ? ((b[t.priv[0] + 2] & 0x20) ? 12 : 10) : 8; }
+    }
+    return t;
+}
+// The tracks as answered: the first video, every audio and subtitle (MI_TRACKS at most).
+function miTracks(out, list) {
+    var n = 0;
+    list.forEach(function (t) {
+        if (n >= MI_TRACKS) { out.more = true; return; }
+        if (t.type === 1 && !out.video) {
+            out.video = { codec: t.codec, width: t.width || 0, height: t.height || 0, bitDepth: t.bitDepth || 0, hdr: t.hdr || '' };
+            if (t.dv) { out.video.dv = t.dv; }
+            n++;
+        } else if (t.type === 2) {
+            out.audio.push({ codec: t.codec, channels: t.channels || 0, lang: t.lang || '', name: t.name || '', default: !!t.default, forced: !!t.forced, commentary: !!t.commentary || /commentary/i.test(t.name || '') });
+            n++;
+        } else if (t.type === 17) {
+            out.subs.push({ codec: t.codec, lang: t.lang || '', name: t.name || '', default: !!t.default, forced: !!t.forced || /forced/i.test(t.name || ''), hi: !!t.hi || /\bSDH\b|hearing/i.test(t.name || ''), text: MI_TEXT_SUBS.test(t.codec) });
+            n++;
+        }
+    });
+}
+function miMkv(r, out, cb) {
+    var I = MKV_IDS, segData = 0, segEnd = Infinity, seek = {}, got = {}, steps = 0, jumps = 0;
+    r.get(0, 64, function (e, b) {
+        var id = !e && ebmlId(b, 0), sz = id && ebmlSize(b, id.n);
+        if (!sz || sz.v < 0) { cb(e || upError('not a Matroska file', 422)); return; }
+        ebmlEach(b, id.n + sz.n, id.n + sz.n + sz.v, function (cid, d, s) { if (cid === I.DOCTYPE && ebmlStr(b, d, s) === 'webm') { out.container = 'webm'; } });
+        var at = id.n + sz.n + sz.v;
+        r.get(at, 16, function (e2, b2) {
+            var sid = !e2 && ebmlId(b2, 0), ssz = sid && ebmlSize(b2, sid.n);
+            if (!ssz || sid.v !== I.SEGMENT) { cb(e2 || upError('no Matroska segment', 422)); return; }
+            segData = at + sid.n + ssz.n;
+            if (ssz.v >= 0) { segEnd = segData + ssz.v; }
+            walk(segData);
+        });
+    });
+    function parse(id, b) {
+        if (id === I.INFO) {
+            var scale = 1000000, dur = 0;
+            ebmlEach(b, 0, b.length, function (cid, d, s) { if (cid === I.SCALE) { scale = ebmlUint(b, d, s) || 1000000; } else if (cid === I.DURATION) { dur = ebmlFloat(b, d, s); } });
+            if (dur > 0 && isFinite(dur)) { out.duration = Math.round(dur * scale / 1e6) / 1000; }
+            got.info = true;
+        } else if (id === I.TRACKS) {
+            var list = [];
+            ebmlEach(b, 0, b.length, function (cid, d, s) { if (cid === 0xAE) { list.push(miMkvTrack(b, d, s)); } });
+            miTracks(out, list);
+            got.tracks = true;
+        } else if (id === I.SEEKHEAD && !got.seek) {   // (the first one only: one pointing at itself can't send it round)
+            got.seek = true;
+            ebmlEach(b, 0, b.length, function (cid, d, s) {
+                if (cid !== I.SEEK) { return; }
+                var sid = 0, pos = -1;
+                ebmlEach(b, d, d + s, function (x, xd, xs) { if (x === I.SEEKID) { sid = ebmlUint(b, xd, xs); } else if (x === I.SEEKPOS) { pos = ebmlUint(b, xd, xs); } });
+                if (pos >= 0) { if (sid === I.INFO) { seek.info = pos; } else if (sid === I.TRACKS) { seek.tracks = pos; } else if (sid === I.CUES) { out.cues = true; } }
+            });
+        }
+    }
+    function element(at, then) {   // one element at at: read and parsed when it's one wanted; then(next place, its id)
+        r.get(at, 16, function (e, b) {
+            var id = !e && ebmlId(b, 0), sz = id && ebmlSize(b, id.n);
+            if (!sz) { then(-1, 0); return; }
+            var d = at + id.n + sz.n;
+            if (sz.v < 0 || id.v === I.CLUSTER) { then(-1, id.v); return; }
+            if (id.v === I.CUES) { out.cues = true; }
+            if ((id.v === I.INFO || id.v === I.TRACKS || id.v === I.SEEKHEAD) && sz.v <= MI_ELEMENT_MAX) {
+                r.get(d, sz.v, function (e2, body) { if (!e2) { parse(id.v, body); } then(d + sz.v, id.v); });
+                return;
+            }
+            then(d + sz.v, id.v);
+        });
+    }
+    function walk(at) {
+        if (got.info && got.tracks) { cb(null); return; }
+        if (at < 0 || at >= segEnd || steps++ > 64 || (r.size() !== null && at >= r.size())) { fromSeek(); return; }
+        element(at, walk);
+    }
+    function fromSeek() {   // (Info or Tracks after the clusters: where its SeekHead says)
+        var want = !got.tracks && seek.tracks >= 0 ? seek.tracks : !got.info && seek.info >= 0 ? seek.info : -1;
+        if (jumps++ >= 2) { want = -1; }
+        if (want < 0) { cb(got.tracks ? null : upError('no track list found', 422)); return; }
+        if (want === seek.tracks) { seek.tracks = -1; } else { seek.info = -1; }
+        element(segData + want, function () { fromSeek(); });
+    }
+}
+// MP4 / MOV: the top-level boxes walked to moov, read when it's MI_ELEMENT_MAX or less.
+function mp4Each(b, o, end, fn) {
+    end = Math.min(end, b.length);
+    for (var n = 0; o + 8 <= end && n < 4096; n++) {
+        var size = b.readUInt32BE(o), type = b.toString('binary', o + 4, o + 8), hdr = 8;
+        if (size === 1) { if (o + 16 > end) { return; } size = b.readUInt32BE(o + 8) * TWO32 + b.readUInt32BE(o + 12); hdr = 16; }
+        else if (size === 0) { size = end - o; }
+        if (size < hdr) { return; }
+        if (fn(type, o + hdr, Math.min(size, end - o) - hdr) === false) { return; }
+        o += size;
+    }
+}
+var MP4_GENERIC_NAMES = /handler|^core media|^mainconcept|^gpac|^l-smash|^apple |^isomedia|^bento4|^video$|^audio$|^sound$|^subtitle$|^text$/i;
+function miMp4Track(b, d, s) {
+    var t = { type: 0, codec: '', lang: '', name: '', default: false };
+    (function walk(o, end, depth) {
+        if (depth > 6) { return; }
+        mp4Each(b, o, end, function (type, bd, bs) {
+            if (type === 'mdia' || type === 'minf' || type === 'stbl' || type === 'udta') { walk(bd, bd + bs, depth + 1); }
+            else if (type === 'tkhd' && bs >= 4) { t.enabled = (b[bd + 3] & 1) === 1; }
+            else if (type === 'mdhd' && bs >= 24) {
+                var lo = b[bd] === 1 ? bd + 32 : bd + 20;
+                if (lo + 2 <= bd + bs) { var l = b.readUInt16BE(lo); if (l && l !== 0x7FFF) { t.lang = String.fromCharCode(((l >> 10) & 31) + 0x60, ((l >> 5) & 31) + 0x60, (l & 31) + 0x60); } }
+            }
+            else if (type === 'hdlr' && bs >= 12) {
+                var h = b.toString('binary', bd + 8, bd + 12);
+                t.type = h === 'vide' ? 1 : h === 'soun' ? 2 : (h === 'subt' || h === 'text' || h === 'sbtl' || h === 'clcp') ? 17 : 0;
+                var nm = bs > 24 ? b.slice(bd + 24, bd + Math.min(bs, 24 + 200)).toString('utf8').replace(/\0[\s\S]*$/, '').trim() : '';
+                if (nm && !MP4_GENERIC_NAMES.test(nm) && !t.name) { t.name = nm.slice(0, 120); }
+            }
+            else if (type === 'name' && bs > 0 && bs < 400) { var un = b.slice(bd, bd + bs).toString('utf8').replace(/\0/g, '').trim(); if (un && !MP4_GENERIC_NAMES.test(un)) { t.name = un.slice(0, 120); } }
+            else if (type === 'stsd' && bs >= 16) { mp4Each(b, bd + 8, bd + bs, function (et, ed, es) { entry(et, ed, es); return false; }); }
+        });
+    })(d, d + s, 0);
+    function entry(type, ed, es) {   // the first sample description: its codec, and what's in it
+        t.codecId = type;
+        t.codec = miCodec(type);
+        if (/^(dvh1|dvhe|dvav|dva1)$/.test(type)) { t.dv = t.dv || { profile: 0, compat: 0 }; }
+        if (t.type === 1 && es >= 78) {
+            t.width = b.readUInt16BE(ed + 24); t.height = b.readUInt16BE(ed + 26);
+            mp4Each(b, ed + 78, ed + es, function (ct, cd, cs) {
+                if ((ct === 'dvcC' || ct === 'dvvC') && cs >= 5) { t.dv = miDv(b, cd, cs); }
+                else if (ct === 'colr' && cs >= 10 && b.toString('binary', cd, cd + 4) === 'nclx') { var tc = b.readUInt16BE(cd + 6); t.hdr = tc === 16 ? 'hdr10' : tc === 18 ? 'hlg' : ''; }
+                else if (ct === 'hvcC' && cs >= 19) { t.bitDepth = (b[cd + 17] & 7) + 8; }
+                else if (ct === 'av1C' && cs >= 3) { t.bitDepth = (b[cd + 2] & 0x40) ? ((b[cd + 2] & 0x20) ? 12 : 10) : 8; }
+            });
+        } else if (t.type === 2 && es >= 28) {
+            t.channels = b.readUInt16BE(ed + 16);
+            mp4Each(b, ed + 28, ed + es, function (ct, cd, cs) {
+                var acmod = -1, lfe = 0;
+                if (ct === 'dac3' && cs >= 3) { var v = (b[cd] << 16) | (b[cd + 1] << 8) | b[cd + 2]; acmod = (v >> 11) & 7; lfe = (v >> 10) & 1; }
+                else if (ct === 'dec3' && cs >= 6) { var u = b.readUInt32BE(cd + 2); acmod = (u >>> 17) & 7; lfe = (u >>> 16) & 1; }
+                if (acmod >= 0) { t.channels = [2, 1, 2, 3, 3, 4, 4, 5][acmod] + lfe; }
+            });
+        }
+    }
+    return t;
+}
+function miMp4(r, out, cb) {
+    var steps = 0;
+    out.container = 'mp4';
+    (function box(at) {
+        if (steps++ > 32 || (r.size() !== null && at >= r.size())) { cb(upError('no moov box found', 422)); return; }
+        r.get(at, 16, function (e, b) {
+            if (e || b.length < 8) { cb(e || upError('no moov box found', 422)); return; }
+            var size = b.readUInt32BE(0), type = b.toString('binary', 4, 8), hdr = 8;
+            if (size === 1) { if (b.length < 16) { cb(upError('a broken box', 422)); return; } size = b.readUInt32BE(8) * TWO32 + b.readUInt32BE(12); hdr = 16; }
+            else if (size === 0) { size = r.size() !== null ? r.size() - at : -1; }
+            if (!/^[\x20-\x7e]{4}$/.test(type) || size < hdr) { cb(upError('not an MP4 file', 422)); return; }
+            if (type === 'qt  ' || type === 'ftyp') { if (type === 'ftyp' && b.length >= 12 && b.toString('binary', 8, 12) === 'qt  ') { out.container = 'mov'; } }
+            if (type !== 'moov') { box(at + size); return; }
+            if (size - hdr > MI_ELEMENT_MAX) { cb(upError('the header is too big to read', 422)); return; }
+            r.get(at + hdr, size - hdr, function (e2, m) {
+                if (e2) { cb(e2); return; }
+                var list = [], ts = 0, dur = 0;
+                mp4Each(m, 0, m.length, function (t, d, s) {
+                    if (t === 'mvhd' && s >= 20) {
+                        if (m[d] === 1 && s >= 32) { ts = m.readUInt32BE(d + 20); dur = m.readUInt32BE(d + 24) * TWO32 + m.readUInt32BE(d + 28); }
+                        else { ts = m.readUInt32BE(d + 12); dur = m.readUInt32BE(d + 16); }
+                    }
+                    else if (t === 'trak') { list.push(miMp4Track(m, d, s)); }
+                    else if (t === 'mvex') { out.fragmented = true; }
+                });
+                if (ts > 0 && dur > 0 && dur < 0xFFFFFFFF) { out.duration = Math.round(dur / ts * 1000) / 1000; }
+                var firstOf = {};
+                list.forEach(function (t) { if (!firstOf[t.type] && t.enabled !== false) { firstOf[t.type] = true; t.default = true; } });   // (MP4 has no default flag: the first enabled one plays)
+                miTracks(out, list);
+                out.cues = true;   // (an MP4's sample tables: always seekable)
+                cb(null);
+            });
+        });
+    })(0);
+}
+// The file's header read through readAt (see miReader): cb(err, answer).
+function mediaInfo(readAt, cb) {
+    cb = once(cb);
+    if (_miActive >= MI_ACTIVE_MAX) { cb(upError('busy', 503)); return; }
+    _miActive++;
+    var done = false, timer = setTimeout(function () { finish(upError('timed out', 504)); }, MI_MS);
+    function finish(err, val) { if (done) { return; } done = true; clearTimeout(timer); _miActive--; cb(err, val); }
+    var r = miReader(readAt), out = { container: null, duration: 0, size: 0, video: null, audio: [], subs: [], cues: false };
+    r.get(0, 64, function (e, b) {
+        if (e) { finish(e); return; }
+        var then = function (err) { out.size = r.size() || 0; if (err && !out.video && !out.audio.length) { finish(err); return; } finish(null, out); };
+        if (b.length >= 4 && b.readUInt32BE(0) === 0x1A45DFA3) { out.container = 'mkv'; miMkv(r, out, then); }
+        else if (b.length >= 8 && /^(ftyp|moov|mdat|free|skip|wide|pnot)$/.test(b.toString('binary', 4, 8))) { miMp4(r, out, then); }
+        else { out.size = r.size() || 0; finish(null, out); }   // (AVI, MPEG-TS…: not read)
+    });
+    return function () { finish(upError('stopped', 499)); };
+}
+// readAt for a link (a source's): Range requests with its own headers, its redirects followed
+// once (the next pieces asked at the final address), not into the home network from outside it
+// unless lan, never to the TV itself; a server that ignores Range: only from the start.
+function miHttpReader(url, who, lan, stops) {
+    var at = url, firstHost = null, hops = 0;
+    return function readAt(off, len, cb) {
+        cb = once(cb);
+        var pu;
+        try { pu = urllib.parse(at); } catch (e) { cb(upError('bad link', 400)); return; }
+        if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !dlHostOk(pu.hostname)) { cb(upError('a link it can\'t follow', 400)); return; }
+        if (firstHost === null) { firstHost = pu.hostname; }
+        else if (!fileHopOk(firstHost, pu.hostname, lan)) { cb(upError('a link into your home network', 403)); return; }
+        var h = liveHeaders(who), r = null, chunks = [], got = 0, ended = false;
+        h.Range = 'bytes=' + off + '-' + (off + len - 1);
+        h['Accept-Encoding'] = 'identity';
+        var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, method: 'GET', headers: h };
+        if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
+        function end(err, total) {
+            if (ended) { return; }
+            ended = true; clearTimeout(timer);
+            try { if (r) { r.abort(); } } catch (e) {}
+            if (err) { cb(err); return; }
+            var buf = Buffer.concat(chunks, got);
+            cb(null, buf.length > len ? buf.slice(0, len) : buf, total);
+        }
+        var timer = setTimeout(function () { end(upError('timed out', 504)); }, 12000);
+        stops.push(function () { end(upError('stopped', 499)); });
+        try {
+            r = (pu.protocol === 'https:' ? https : http).request(opts, function (resp) {
+                if (ended) { resp.resume(); return; }
+                var sc = resp.statusCode, total = 0;
+                if (sc >= 300 && sc < 400 && resp.headers.location && hops < 5) {
+                    resp.resume(); hops++; ended = true; clearTimeout(timer);
+                    try { at = urllib.resolve(at, String(resp.headers.location)); } catch (e) { cb(upError('bad link', 400)); return; }
+                    readAt(off, len, cb);
+                    return;
+                }
+                if (sc === 200 && off > 0) { resp.resume(); end(upError('the server only sends the whole file', 502)); return; }
+                if (sc !== 200 && sc !== 206) { resp.resume(); end(upError('HTTP ' + sc, sc >= 400 && sc < 600 ? sc : 502)); return; }
+                var cr = /\/(\d+)\s*$/.exec(String(resp.headers['content-range'] || ''));
+                total = cr ? +cr[1] : sc === 200 ? +(resp.headers['content-length'] || 0) : 0;
+                resp.on('data', function (c) { if (ended) { return; } chunks.push(c); got += c.length; if (got >= len) { end(null, total); } });
+                resp.on('end', function () { end(null, total); });
+                resp.on('error', function () { end(upError('the host stopped sending', 502)); });
+            });
+            guardSelf(r, function () { end(upError('a link it can\'t follow', 400)); });
+            r.on('error', function (e) { end(upError((e && e.message) || 'network error', 502)); });
+            r.end();
+        } catch (e) { end(upError('bad link', 400)); }
+    };
+}
+// readAt for a file on a USB drive (a video, on a drive: fsRealOk); done() closes it.
+function miFileReader(p, cb) {
+    if (!VIDEO_EXT.test(p)) { cb({ status: 400, message: 'not a video file' }); return; }
+    fsRealOk(p, function (err, real) {
+        if (err) { cb(err); return; }
+        var fs = require('fs');
+        fs.open(real, 'r', function (e, fd) {
+            if (e) { cb({ status: 404, message: e.code || e.message }); return; }
+            fs.fstat(fd, function (e1, st) {
+                var size = !e1 && st ? st.size : 0;
+                cb(null, function readAt(off, len, rcb) {
+                    var n = Math.max(0, Math.min(len, size - off)), buf = allocBuffer(n);
+                    if (!n) { rcb(null, buf, size); return; }
+                    fs.read(fd, buf, 0, n, off, function (e2, got) { if (e2) { rcb({ status: 500, message: e2.code || e2.message }); return; } rcb(null, buf.slice(0, got), size); });
+                }, function done() { fs.close(fd, function () {}); });
+            });
+        });
+    });
+}
+// readAt for a file in a network folder (davReq: its sign-in, its certificate).
+function miDavReader(f, url, stops) {
+    return function readAt(off, len, cb) {
+        stops.push(davReq(f, 'GET', url, { Range: 'bytes=' + off + '-' + (off + len - 1) }, null, len + 65536, function (err, sc, buf) {
+            if (err) { cb(err); return; }
+            if (sc !== 206 && !(sc === 200 && off === 0)) { cb(upError('HTTP ' + sc, 502)); return; }
+            cb(null, buf.length > len ? buf.slice(0, len) : buf, 0);
+        }));
+    };
+}
+
+// /fsmi: a video's header on a USB drive.
+function fsMediaInfo(p, cb) {
+    miFileReader(p, function (err, readAt, done) {
+        if (err) { cb(err); return; }
+        mediaInfo(readAt, function (e, r) { done(); cb(e, r); });
+    });
+}
 // ---- Downloads to a USB drive ----
 // StremioK asks (/fsdl/add: a link, the folder on a drive, the file's name); one at a time, the
 // rest wait. Into "<name>.part", renamed when complete. A dropped connection is picked up where
@@ -1770,6 +2205,84 @@ function dlRun(e) {
     }
 }
 
+// ---- Backup and logs on a USB drive: /bak/write (POST), /bak/read ----
+// For when the phone's page can't be reached: Export configuration's file and Diagnostics' logs
+// written to a USB drive StremioK lists (a mounted one under /opt/media), and the backup read back.
+// Only into its StremioK folder, under two names: stremiok-backup.txt (replaced each time) and
+// stremiok-logs-<date and time>.txt; BAK_MAX at most. Written in full to a .part file, flushed to
+// the drive, then renamed (a stick pulled meanwhile leaves the last backup whole). Nothing else
+// is read or written: no path comes from the page but the drive's.
+var BAK_MAX = 1572864, BAK_DIR = 'StremioK', BAK_FILE = 'stremiok-backup.txt';
+function bakDrive(q) {
+    var d = String(q.drive || '');
+    if (!/^\/opt\/media\/[^\/]+$/.test(d) || !fsDirOk(d) || !isMounted(d)) { return null; }
+    return d;
+}
+function bakName(kind) {
+    if (kind === 'backup') { return BAK_FILE; }
+    var t = new Date(Date.now()), two = function (n) { return (n < 10 ? '0' : '') + n; };
+    return 'stremiok-logs-' + t.getFullYear() + '-' + two(t.getMonth() + 1) + '-' + two(t.getDate()) + '-' + two(t.getHours()) + two(t.getMinutes()) + two(t.getSeconds()) + '.txt';
+}
+function bakWrite(drive, kind, text, cb) {
+    cb = once(cb);
+    var fs = require('fs'), dir = drive + '/' + BAK_DIR, name = bakName(kind), data = toBuffer(text);
+    if (data.length > BAK_MAX) { cb({ status: 413, message: 'too much' }); return; }
+    fs.mkdir(dir, function (e0) {
+        if (e0 && e0.code !== 'EEXIST') { cb({ status: errStatus(e0), message: e0.code || e0.message }); return; }
+        fsRealOk(dir, function (err, realDir) {   // (StremioK's folder, not a link out of the drive)
+            if (err) { cb(err); return; }
+            fs.lstat(realDir, function (e1, st) {
+                if (e1 || !st || !st.isDirectory()) { cb({ status: 409, message: 'not a folder' }); return; }
+                var part = realDir + '/' + name + '.part', dest = realDir + '/' + name;
+                fs.open(part, 'w', function (e2, fd) {
+                    if (e2) { cb({ status: errStatus(e2), message: e2.code || e2.message }); return; }
+                    fs.write(fd, data, 0, data.length, 0, function (e3) {
+                        fs.fsync(fd, function () {
+                            fs.close(fd, function () {
+                                if (e3) { fs.unlink(part, function () {}); cb({ status: 507, message: e3.code || e3.message }); return; }
+                                fs.rename(part, dest, function (e4) {
+                                    if (e4) { fs.unlink(part, function () {}); cb({ status: errStatus(e4), message: e4.code || e4.message }); return; }
+                                    cb(null, { file: BAK_DIR + '/' + name, size: data.length });
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    });
+}
+function bakRead(drive, cb) {
+    cb = once(cb);
+    var fs = require('fs'), p = drive + '/' + BAK_DIR + '/' + BAK_FILE;
+    fsRealOk(p, function (err, real) {
+        if (err) { cb(err.status === 404 || /ENOENT/.test(err.message || '') ? { status: 404, message: 'no backup on that drive' } : err); return; }
+        fs.open(real, 'r', function (e0, fd) {
+            if (e0) { cb({ status: 404, message: 'no backup on that drive' }); return; }
+            fs.fstat(fd, function (e1, st) {
+                if (e1 || !st || !st.isFile()) { fs.close(fd, function () {}); cb({ status: 404, message: 'no backup on that drive' }); return; }
+                if (st.size > BAK_MAX) { fs.close(fd, function () {}); cb({ status: 413, message: 'too large to be a backup' }); return; }
+                var buf = allocBuffer(st.size);
+                fs.read(fd, buf, 0, st.size, 0, function (e2, n) {
+                    fs.close(fd, function () {});
+                    if (e2) { cb({ status: 500, message: e2.code || e2.message }); return; }
+                    cb(null, { text: buf.slice(0, n).toString('utf8'), at: st.mtime ? +st.mtime : 0 });
+                });
+            });
+        });
+    });
+}
+function bakControl(req, res, path, query, body) {
+    var q = davQ(query), drive = bakDrive(q);
+    if (!drive) { send(res, 400, 'text/plain', 'not a USB drive'); return; }
+    function answer(err, r) {
+        if (err) { send(res, err.status && err.status < 600 ? err.status : 500, 'text/plain', 'failed: ' + (err.message || 'unknown')); return; }
+        send(res, 200, 'application/json', JSON.stringify(r));
+    }
+    if (path === '/bak/write') { bakWrite(drive, q.kind === 'logs' ? 'logs' : 'backup', body, answer); return; }
+    bakRead(drive, answer);
+}
+
 // ---- HTTP ----
 function send(res, code, type, body) {
     try {
@@ -1801,20 +2314,21 @@ function handle(req, res) {
         // The app's own guide POSTs: a browser sends an Origin with every POST (the app's page is
         // file://: "null"); let through with the token, or the guide ticket (for an app that can't
         // read the token: see /epg/ticket), which no web page has (/epg/ only).
-        if (who === 'origin' && req.method === 'POST' && /^\/(epg\/(load|get|clear)|drm\/license|entry\/give|plug\/fetch)$/.test(path) && /^(null|file:\/\/)$/.test(String(req.headers.origin || '')) && (hasToken(parts[1]) || hasTicket(parts[1]))) { who = null; }   // (and a DRM license's: see drmControl)
+        if (who === 'origin' && req.method === 'POST' && /^\/(epg\/(load|get|clear)|drm\/license|entry\/give|plug\/fetch|bak\/write)$/.test(path) && /^(null|file:\/\/)$/.test(String(req.headers.origin || '')) && (hasToken(parts[1]) || hasTicket(parts[1]))) { who = null; }   // (and a DRM license's: see drmControl)
         if (who) { send(res, 403, 'text/plain', 'not allowed (' + who + ')'); return; }
         if (req.method === 'OPTIONS') { if (isFs) { send(res, 403, 'text/plain', 'not allowed'); return; } res.writeHead(200); res.end(); return; }
         var epgPost = req.method === 'POST' && /^\/epg\/(load|get|clear)$/.test(path);   // (a guide's channels: in the body, see epgControl)
         var drmPost = req.method === 'POST' && path === '/drm/license';   // (a Widevine license request: see drmControl)
         var givePost = req.method === 'POST' && path === '/entry/give';   // (a configuration file for the phone: see entryControl)
         var plugPost = req.method === 'POST' && path === '/plug/fetch';   // (a Nuvio plugin's request: see plugControl)
-        if (req.method !== 'GET' && !epgPost && !drmPost && !givePost && !plugPost) { send(res, 405, 'text/plain', 'GET only'); return; }   // (before any work)
-        if (req.url.length > (/^\/epg\//.test(path) ? 32768 : /^\/(fsdl\/add|live\/(open|master)|dav\/(list|walk|sub))$/.test(path) ? 8192 : 2048)) { send(res, 414, 'text/plain', 'request too long'); return; }   // (a download's link can be long; a guide's channels, a bitset)
+        var bakPost = req.method === 'POST' && path === '/bak/write';   // (a backup or the logs for a USB drive: see bakControl)
+        if (req.method !== 'GET' && !epgPost && !drmPost && !givePost && !plugPost && !bakPost) { send(res, 405, 'text/plain', 'GET only'); return; }   // (before any work)
+        if (req.url.length > (/^\/epg\//.test(path) ? 32768 : /^\/(fsdl\/add|live\/(open|master)|dav\/(list|walk|sub|mi|open)|smb\/[a-z]+|dlna\/[a-z]+)$/.test(path) ? 8192 : 2048)) { send(res, 414, 'text/plain', 'request too long'); return; }   // (a download's link can be long; a guide's channels, a bitset)
         // (StremioK gave up on it — a screen left, the player closed: what it still waits for is
         // dropped; 'close' before the response finished means that on every Node)
         var leaving = [];
         function leaveAll() { var l = leaving; leaving = []; l.forEach(function (f) { try { f(); } catch (e) {} }); }
-        if (!isFs && path !== '/dav/walk' && !/^\/live\/[0-9a-f]{32}\/[tf]$/.test(path)) {   // (a folder's walk, a raw channel's or a file's stream: their own limits)
+        if (!isFs && path !== '/dav/walk' && path !== '/smb/walk' && path !== '/dlna/walk' && !/^\/live\/[0-9a-f]{32}\/[tf]$/.test(path) && !/^\/net\/[0-9a-f]{32}\/f$/.test(path)) {   // (a folder's walk, a raw channel's or a file's stream: their own limits)
             var deadline = setTimeout(function () { if (!res.headersSent) { send(res, 504, 'text/plain', 'took too long'); } leaveAll(); }, REQ_MS);
             res.on('finish', function () { clearTimeout(deadline); });
             res.on('close', function () { clearTimeout(deadline); if (!res.finished) { leaveAll(); } });
@@ -1826,6 +2340,16 @@ function handle(req, res) {
             req.setEncoding('utf8');
             req.on('data', function (c) { if (gover) { return; } gbody += c; if (gbody.length > GIVE_MAX) { gover = true; send(res, 413, 'text/plain', 'too much'); } });
             req.on('end', function () { if (!gover) { entryControl(req, res, path, parts[1], gbody); } });
+            return;
+        }
+        if (bakPost || path === '/bak/read') {
+            if (!entryAllowed(req, parts[1]) && !(bakPost && hasTicket(parts[1]))) { send(res, 403, 'text/plain', 'not allowed (token)'); req.resume(); return; }
+            if (!bakPost) { bakControl(req, res, path, parts[1], ''); return; }
+            if (+(req.headers['content-length'] || 0) > BAK_MAX) { send(res, 413, 'text/plain', 'too much'); req.resume(); return; }
+            var bbody = '', bover = false;
+            req.setEncoding('utf8');
+            req.on('data', function (c) { if (bover) { return; } bbody += c; if (bbody.length > BAK_MAX) { bover = true; send(res, 413, 'text/plain', 'too much'); } });
+            req.on('end', function () { if (!bover) { bakControl(req, res, path, parts[1], bbody); } });
             return;
         }
         if (/^\/entry\//.test(path)) { entryControl(req, res, path, parts[1]); return; }
@@ -1857,7 +2381,10 @@ function handle(req, res) {
             return;
         }
         if (/^\/epg\//.test(path)) { epgControl(req, res, path, parts[1]); return; }   // (a playlist's TV guide: see epgControl)
-        if (/^\/dav\//.test(path)) { davControl(req, res, path, parts[1], leaving); return; }   // (a network folder: see davControl)
+        if (/^\/dav\//.test(path)) { davControl(req, res, path, parts[1], leaving); return; }
+        if (/^\/net\//.test(path)) { netControl(req, res, path, parts[1]); return; }
+        if (/^\/smb\//.test(path)) { smbControl(req, res, path, parts[1], leaving); return; }   // (a Windows / NAS share: see smbControl)
+        if (/^\/dlna\//.test(path)) { dlnaControl(req, res, path, parts[1], leaving); return; }   // (a DLNA media server: see dlnaControl)   // (a network folder's file, for the player: its ticket)   // (a network folder: see davControl)
         if (path === '/aiom/addons') { aiomControl(req, res, parts[1], leaving); return; }
         if (path === '/xtvod/list' || path === '/xtvod/find') { xtvControl(req, res, path, parts[1]); return; }   // (an Xtream account's films and series: see xtvControl)
         if (path === '/stalker/list' || path === '/stalker/link' || path === '/stalker/genres' || path === '/stalker/vod' || path === '/stalker/play') { stalkerControl(req, res, path, parts[1], leaving); return; }   // (a Stalker portal: see stalkerControl)   // (AIOManager's addons: see aiomControl)   // (a live channel's sound repacked: see liveControl)   // (the phone's one-time page: see below)
@@ -1877,13 +2404,13 @@ function handle(req, res) {
             return;
         }
         if (isFs) {
-            if (['/fslist', '/fswalk', '/fssub', '/fshash'].indexOf(path) === -1) { send(res, 404, 'text/plain', 'not found'); return; }
+            if (['/fslist', '/fswalk', '/fssub', '/fshash', '/fsmi'].indexOf(path) === -1) { send(res, 404, 'text/plain', 'not found'); return; }
             var why = fsAllowed(req, parts[1]);
             if (why) { send(res, 403, 'text/plain', 'not allowed (' + why + ')'); return; }
             var fm = (parts[1] || '').match(/(?:^|&)path=([^&]*)/), fp = '';
             try { fp = fm ? decodeURIComponent(fm[1]) : ''; } catch (e) { fp = ''; }
             if (!fsDirOk(fp)) { send(res, 400, 'text/plain', 'not on a USB drive'); return; }
-            var job = path === '/fslist' ? fsList : path === '/fswalk' ? fsWalk : path === '/fssub' ? fsSub : fsHash;
+            var job = path === '/fslist' ? fsList : path === '/fswalk' ? fsWalk : path === '/fssub' ? fsSub : path === '/fsmi' ? fsMediaInfo : fsHash;
             var waiting = job(fp, function (err, r) {
                 if (err) { send(res, err.status || 500, 'text/plain', 'failed: ' + (err.message || 'unknown')); return; }
                 if (path === '/fssub') { send(res, 200, 'text/plain; charset=utf-8', r); return; }
@@ -2918,6 +3445,18 @@ function liveControl(req, res, path, query, leaving) {
         }, leaving);
         return;
     }
+    if (path === '/live/mi') {   // what's in a source's file, from its header (see mediaInfo)
+        if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
+        var iu = q.u || '', stops = [];
+        if (!/^https?:\/\/[^\s]+$/i.test(iu) || iu.length > 2000) { send(res, 400, 'text/plain', 'bad link'); return; }
+        var stopMi = mediaInfo(miHttpReader(iu, liveWho(q), q.lan === '1', stops), function (err, r) {
+            stops.forEach(function (f) { try { f(); } catch (e) {} });
+            if (err) { send(res, err.status && err.status < 600 ? err.status : 502, 'text/plain', 'failed: ' + (err.message || 'unknown')); return; }
+            send(res, 200, 'application/json', JSON.stringify(r));
+        });
+        if (stopMi) { leaving.push(stopMi); }
+        return;
+    }
     if (path === '/live/file') {   // a file through the relay (see liveFile)
         if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
         var fu = q.u || '';
@@ -3079,8 +3618,54 @@ function davFolder(req, q) {
     if (a && !/^[A-Za-z0-9+\/=]{4,1400}$/.test(a)) { return null; }
     if (c && !/^[A-Za-z0-9+\/=]{200,5000}$/.test(c)) { return null; }
     var pem = c ? '-----BEGIN CERTIFICATE-----\n' + c.replace(/(.{64})/g, '$1\n').replace(/\n$/, '') + '\n-----END CERTIFICATE-----\n' : '';
-    return { base: base, pu: urllib.parse(base), auth: a ? 'Basic ' + a : '', cert: pem };
+    var up = a ? fromBase64(a).toString('utf8') : '', colon = up.indexOf(':');
+    return { base: base, pu: urllib.parse(base), auth: a ? 'Basic ' + a : '', cert: pem, user: colon === -1 ? up : up.slice(0, colon), pass: colon === -1 ? '' : up.slice(colon + 1) };
 }
+// Digest sign-in (RFC 7616, MD5 and MD5-sess, qop=auth): a folder whose server asks for it in its
+// 401 (some NAS and router firmwares offer nothing else). Its challenge kept here, in memory, per
+// folder and sign-in (DAV_DIGEST_MAX), so the next requests send it at once (no 401 round trip
+// each); a stale or new challenge replaces it. Adapted from Tessel's (MIT License, Copyright (c)
+// 2026 Patrick: github.com/PatrickSt1991/tessel-tizen-tv).
+var DAV_DIGEST_MAX = 16, _davDigest = {};
+function davDigestKey(f) { return f.base + '\n' + crypto.createHash('sha256').update(f.auth || '').digest('hex'); }
+function md5hex(s) { return crypto.createHash('md5').update(toBuffer(String(s), 'utf8')).digest('hex'); }
+function davChallenge(h) {
+    var m = /(^|[\s,])digest\s+([\s\S]*)/i.exec(String(h || ''));
+    if (!m) { return null; }
+    var d = {}, re = /([a-z0-9_-]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^\s,]+))/gi, p, n = 0;
+    while ((p = re.exec(m[2])) && n++ < 20) { d[p[1].toLowerCase()] = (p[2] !== undefined ? p[2].replace(/\\(.)/g, '$1') : p[3]).slice(0, 500); }
+    if (d.realm === undefined || !d.nonce) { return null; }
+    var alg = String(d.algorithm || 'MD5').toUpperCase();
+    if (alg !== 'MD5' && alg !== 'MD5-SESS') { return null; }   // (SHA-256 Digest: not offered by the servers seen)
+    return d;
+}
+function davDigestAuth(f, method, uri) {
+    var k = davDigestKey(f), st = _davDigest[k];
+    if (!st || !f.auth) { return ''; }
+    var ch = st.ch, alg = String(ch.algorithm || 'MD5').toUpperCase(), cnonce = crypto.randomBytes(8).toString('hex');
+    st.nc++;
+    var ha1 = md5hex(f.user + ':' + ch.realm + ':' + f.pass);
+    if (alg === 'MD5-SESS') { ha1 = md5hex(ha1 + ':' + ch.nonce + ':' + cnonce); }
+    var ha2 = md5hex(method + ':' + uri), qop = /(^|,)\s*auth\s*(,|$)/i.test(ch.qop || '') ? 'auth' : '';
+    var nc = ('00000000' + st.nc.toString(16)).slice(-8);
+    var resp = qop ? md5hex(ha1 + ':' + ch.nonce + ':' + nc + ':' + cnonce + ':' + qop + ':' + ha2) : md5hex(ha1 + ':' + ch.nonce + ':' + ha2);
+    var q = function (v) { return '"' + String(v).replace(/["\\]/g, '\\$&') + '"'; };
+    var out = 'Digest username=' + q(f.user) + ', realm=' + q(ch.realm) + ', nonce=' + q(ch.nonce) + ', uri=' + q(uri) + ', response="' + resp + '", algorithm=' + (alg === 'MD5-SESS' ? 'MD5-sess' : 'MD5');
+    if (qop) { out += ', qop=auth, nc=' + nc + ', cnonce="' + cnonce + '"'; }
+    if (ch.opaque) { out += ', opaque=' + q(ch.opaque); }
+    return out;
+}
+function davDigestLearn(f, header) {
+    var ch = f.auth ? davChallenge(header) : null;
+    if (!ch) { return false; }
+    var k = davDigestKey(f), keys = Object.keys(_davDigest);
+    if (!_davDigest[k] && keys.length >= DAV_DIGEST_MAX) { delete _davDigest[keys[0]]; }
+    _davDigest[k] = { ch: ch, nc: 0 };
+    return true;
+}
+function davUsesDigest(f) { return !!_davDigest[davDigestKey(f)]; }
+// The sign-in a request to the folder carries: Digest once its server asked for it, else Basic.
+function davAuthFor(f, method, path) { return davDigestAuth(f, method, path) || f.auth; }
 // A path under the folder (each part %-escaped; '', '.' and '..' refused), or null.
 function davUrl(f, rel, dir) {
     rel = String(rel || '').replace(/^\/+|\/+$/g, '');
@@ -3105,7 +3690,7 @@ function davReq(f, method, url, headers, body, max, cb) {
         if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !dlHostOk(pu.hostname)) { finish(upError('an address it can\'t reach', 400)); return; }
         var h = { 'User-Agent': 'StremioK', 'Accept': '*/*' }, data = body ? toBuffer(body) : null;
         Object.keys(headers || {}).forEach(function (k) { h[k] = headers[k]; });
-        if (f.auth) { h.Authorization = f.auth; }
+        if (f.auth) { h.Authorization = davAuthFor(f, method, pu.path); }
         if (data) { h['Content-Length'] = data.length; }
         var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, method: method, headers: h };
         if (pu.protocol === 'https:') {
@@ -3125,6 +3710,8 @@ function davReq(f, method, url, headers, body, max, cb) {
                     go(urllib.format(np), hops + 1);
                     return;
                 }
+                // (a Digest challenge, new or stale: answered once with it)
+                if (sc === 401 && !ctl.digested && davDigestLearn(f, resp.headers['www-authenticate'])) { resp.resume(); ctl.digested = true; go(u, hops); return; }
                 if (sc < 200 || sc >= 300) { resp.resume(); finish(null, sc, null, u); return; }
                 resp.on('data', function (c) { if (ctl.done) { return; } chunks.push(c); size += c.length; if (size > max) { finish(davWhy('toolarge', 'its answer is over ' + Math.round(max / 1048576) + ' MB')); } });
                 resp.on('end', function () { finish(null, sc, Buffer.concat(chunks, size), u); });
@@ -3217,7 +3804,7 @@ function davList(f, rel, cb) {
         if (sc !== 207 || !/multistatus/i.test(text)) { cb(davWhy('notdav', 'not a WebDAV folder (HTTP ' + sc + ')')); return; }
         var dirPath = '/';
         try { dirPath = String(urllib.parse(at).pathname || '/'); dirPath = decodeURIComponent(dirPath); } catch (e) {}
-        cb(null, { entries: davEntries(text, dirPath) });
+        cb(null, { entries: davEntries(text, dirPath), digest: davUsesDigest(f) || undefined });   // (digest: plays through the service, see /net/)
     });
 }
 // Every video and subtitle file under the folder (the index): cb(err, { files: [{ p, size }],
@@ -3239,11 +3826,12 @@ function davWalk(f, st, cb) {
                         if (!d.rel) { st.cancelled = true; cb(err); return; }   // (the folder itself)
                         truncated = true;
                     } else {
+                        var names = r.entries.map(function (e) { return e.name; });
                         r.entries.forEach(function (e) {
                             if (HIDDEN_NAME.test(e.name)) { return; }
                             var p = d.rel ? d.rel + '/' + e.name : e.name;
                             if (e.dir) { if (d.depth < DAV_WALK_DEPTH) { queue.push({ rel: p, depth: d.depth + 1 }); } else { truncated = true; } }
-                            else if ((VIDEO_EXT.test(e.name) || SUB_EXT.test(e.name)) && files.length < DAV_WALK_FILES) { files.push({ p: p, size: e.size || 0 }); }
+                            else if (walkWants(e.name, names) && files.length < DAV_WALK_FILES) { files.push({ p: p, size: e.size || 0 }); }
                         });
                     }
                     pump();
@@ -3263,8 +3851,1005 @@ function davSub(f, rel, cb) {
         if (err) { cb(err); return; }
         if (sc !== 200 || !buf) { cb(upError('HTTP ' + sc, 502)); return; }
         var text = decodeText(buf);
-        cb(null, /\.(ass|ssa)$/i.test(String(rel)) ? assToSrt(text) : text);
+        cb(null, text);
     });
+}
+// ---- Windows / NAS shares (SMB): /smb/shares, /smb/list, /smb/walk, /smb/sub, /smb/mi, /smb/open ----
+// A share as a network folder: listed, indexed, its subtitle files read and its files played (through
+// /net/<ticket>/f: the player's byte ranges as SMB reads). The client: SMB 2.0.2 / 2.1 (no SMB 1, no
+// SMB 3 encryption), NTLMv2 sign-in or guest, HMAC-SHA256 signing where the server wants it (or the
+// session isn't a guest's), CREATE / QUERY_DIRECTORY / READ / CLOSE, and the share list through
+// the srvsvc pipe (NetrShareEnum). Adapted from Tessel's (MIT License, Copyright (c) 2026 Patrick:
+// github.com/PatrickSt1991/tessel-tizen-tv, tizen-app/service/service.js), every length and offset a
+// server sends checked against what came (a broken or hostile one can't make it throw, allocate or
+// wait for ever): SMB_MSG_MAX a message, SMB_REQ_MS a request, SMB_CONN_MAX connections, closed
+// SMB_IDLE_MS unused. Only to the home network (a private address, or a name in it: isLanName).
+// The sign-in comes with each request (X-Dav-Auth: user:password, "DOMAIN\user" for a domain; none:
+// a guest) and is kept only with an open connection or a player's ticket.
+var SMB_PORT = 445, SMB_CONNECT_MS = 8000, SMB_REQ_MS = 15000, SMB_IDLE_MS = 120000, SMB_CONN_MAX = 4, SMB_MSG_MAX = 8 * 1048576;
+var SMB_READ = 262144, SMB_LIST_MAX = 3000, SMB_WALK_DIRS = 2000, SMB_WALK_FILES = 20000, SMB_WALK_DEPTH = 12, SMB_WALK_MS = 90000, SMB_SUB_MAX = 5 * 1048576;
+var SMB2 = { NEGOTIATE: 0, SESSION_SETUP: 1, TREE_CONNECT: 3, CREATE: 5, CLOSE: 6, READ: 8, IOCTL: 0x0B, QUERY_DIRECTORY: 0x0E };
+var SMB_ST = { SUCCESS: 0, MORE_PROCESSING: 0xC0000016, NO_MORE_FILES: 0x80000006, END_OF_FILE: 0xC0000011, BUFFER_OVERFLOW: 0x80000005, PENDING: 0x00000103 };
+// The statuses a person can do something about: [why (the app's wording), what it means].
+var SMB_STATUS = {
+    0xc0000022: ['auth', 'this account isn\'t allowed in here'], 0xc0000064: ['auth', 'no such user on the server'], 0xc000006a: ['auth', 'wrong password'],
+    0xc000006d: ['auth', 'wrong user name or password'], 0xc000006f: ['auth', 'this account may not sign in at this hour'], 0xc0000070: ['auth', 'the server refuses sign-ins from this device'],
+    0xc0000071: ['auth', 'that password has expired'], 0xc0000072: ['auth', 'that account is disabled'], 0xc000015b: ['auth', 'this account may not sign in over the network'],
+    0xc0000234: ['auth', 'that account is locked out'], 0xc00000bb: ['smb3', 'the server refused (it may want SMB 3, or NTLM is off)'],
+    0xc00000cc: ['missing', 'no share with that name on the server'], 0xc0000034: ['missing', 'no such file or folder'], 0xc000003a: ['missing', 'no such folder'],
+    0xc0000043: ['other', 'the file is in use by another program'], 0xc0000203: ['other', 'the server ended the session']
+};
+function smbErr(status, what) {
+    var e = SMB_STATUS[status >>> 0], hex = '0x' + ((status >>> 0).toString(16));
+    var err = new Error((what ? what + ': ' : '') + (e ? e[1] : status === -1 ? 'the connection dropped' : 'status ' + hex));
+    err.why = e ? e[0] : status === -1 ? 'unreachable' : 'other';
+    err.status = e && e[0] === 'missing' ? 404 : 502;
+    return err;
+}
+// Strings and numbers as SMB has them (by hand: the 2017 TV's Buffer lacks some encodings).
+function smbU16(str) { str = String(str == null ? '' : str); var b = allocBuffer(str.length * 2); for (var i = 0; i < str.length; i++) { b.writeUInt16LE(str.charCodeAt(i) & 0xFFFF, i * 2); } return b; }
+function smbFromU16(buf, start, end) { var s = ''; end = Math.min(end, buf.length); for (var i = start; i + 1 < end; i += 2) { s += String.fromCharCode(buf.readUInt16LE(i)); } return s; }
+function smbAscii(str) { var b = allocBuffer(str.length); for (var i = 0; i < str.length; i++) { b[i] = str.charCodeAt(i) & 0xFF; } return b; }
+function smbBytes(arr) { var b = allocBuffer(arr.length); for (var i = 0; i < arr.length; i++) { b[i] = arr[i] & 0xFF; } return b; }
+function smbW64(b, off, n) { b.writeUInt32LE(n % 4294967296 >>> 0, off); b.writeUInt32LE(Math.floor(n / 4294967296) >>> 0, off + 4); }
+function smbR64(b, off) { return b.readUInt32LE(off) + b.readUInt32LE(off + 4) * 4294967296; }
+function smbFill(n, v) { var b = allocBuffer(n); b.fill(v || 0); return b; }
+// MD4 (RFC 1320), for the NT hash: the TV's OpenSSL may not have it.
+function md4(buf) {
+    function rol(x, n) { return (x << n) | (x >>> (32 - n)); }
+    function F(x, y, z) { return (x & y) | (~x & z); }
+    function G(x, y, z) { return (x & y) | (x & z) | (y & z); }
+    function Hh(x, y, z) { return x ^ y ^ z; }
+    var len = buf.length, withPad = len + 1;
+    while (withPad % 64 !== 56) { withPad++; }
+    var m = smbFill(withPad + 8);
+    buf.copy(m, 0); m[len] = 0x80;
+    m.writeUInt32LE((len * 8) >>> 0, withPad); m.writeUInt32LE(Math.floor(len * 8 / 4294967296) >>> 0, withPad + 4);
+    var a = 0x67452301, b = 0xefcdab89, c = 0x98badcfe, d = 0x10325476, X = [], i, k, t;
+    var R2 = [0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15], R3 = [0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15];
+    var S1 = [3, 7, 11, 19], S2 = [3, 5, 9, 13], S3 = [3, 9, 11, 15];
+    for (var off = 0; off < m.length; off += 64) {
+        for (i = 0; i < 16; i++) { X[i] = m.readUInt32LE(off + i * 4); }
+        var aa = a, bb = b, cc = c, dd = d;
+        for (i = 0; i < 48; i++) {
+            var r = i >> 4, j = i & 15, f, s;
+            if (r === 0) { k = j; s = S1[j & 3]; } else if (r === 1) { k = R2[j]; s = S2[j & 3]; } else { k = R3[j]; s = S3[j & 3]; }
+            var add = r === 0 ? 0 : r === 1 ? 0x5a827999 : 0x6ed9eba1;
+            var w = j & 3;
+            var x0 = w === 0 ? a : w === 1 ? d : w === 2 ? c : b, x1 = w === 0 ? b : w === 1 ? a : w === 2 ? d : c, x2 = w === 0 ? c : w === 1 ? b : w === 2 ? a : d, x3 = w === 0 ? d : w === 1 ? c : w === 2 ? b : a;
+            f = r === 0 ? F(x1, x2, x3) : r === 1 ? G(x1, x2, x3) : Hh(x1, x2, x3);
+            t = rol((x0 + f + X[k] + add) | 0, s);
+            if (w === 0) { a = t; } else if (w === 1) { d = t; } else if (w === 2) { c = t; } else { b = t; }
+        }
+        a = (a + aa) | 0; b = (b + bb) | 0; c = (c + cc) | 0; d = (d + dd) | 0;
+    }
+    var out = allocBuffer(16);
+    out.writeUInt32LE(a >>> 0, 0); out.writeUInt32LE(b >>> 0, 4); out.writeUInt32LE(c >>> 0, 8); out.writeUInt32LE(d >>> 0, 12);
+    return out;
+}
+function hmacMd5(key, data) { return crypto.createHmac('md5', key).update(data).digest(); }
+var NTLM_FLAGS = (0x00000001 | 0x00000004 | 0x00000010 | 0x00000200 | 0x00008000 | 0x00080000 | 0x20000000 | 0x80000000) >>> 0, NTLM_ANON = 0x00000800;
+function ntlmNegotiate() { var b = smbFill(32); smbAscii('NTLMSSP\0').copy(b, 0); b.writeUInt32LE(1, 8); b.writeUInt32LE(NTLM_FLAGS, 12); return b; }
+function ntlmAvPair(ti, id) {   // an AV pair's value in target info, or null
+    for (var p = 0; p + 4 <= ti.length;) {
+        var aid = ti.readUInt16LE(p), alen = ti.readUInt16LE(p + 2);
+        if (aid === 0 || p + 4 + alen > ti.length) { return null; }
+        if (aid === id) { return ti.slice(p + 4, p + 4 + alen); }
+        p += 4 + alen;
+    }
+    return null;
+}
+function ntlmWithMicFlag(ti) {   // MsvAvFlags with "MIC present" (0x2), added before MsvAvEOL if missing
+    var p = 0, eol = ti.length;
+    while (p + 4 <= ti.length) {
+        var id = ti.readUInt16LE(p), len = ti.readUInt16LE(p + 2);
+        if (id === 0 || p + 4 + len > ti.length) { eol = p; break; }
+        if (id === 6 && len === 4) { var out = smbFill(ti.length); ti.copy(out); out.writeUInt32LE((out.readUInt32LE(p + 4) | 2) >>> 0, p + 4); return out; }
+        p += 4 + len;
+    }
+    var pair = smbFill(8); pair.writeUInt16LE(6, 0); pair.writeUInt16LE(4, 2); pair.writeUInt32LE(2, 4);
+    return Buffer.concat([ti.slice(0, eol), pair, smbFill(4)]);
+}
+function ntlmField(len, off) { var f = smbFill(8); f.writeUInt16LE(len, 0); f.writeUInt16LE(len, 2); f.writeUInt32LE(off, 4); return f; }
+function ntlmAuthenticate(challenge, user, pass, domain) {
+    if (challenge.length < 48 || smbAscii('NTLMSSP\0').toString('hex') !== challenge.slice(0, 8).toString('hex') || challenge.readUInt32LE(8) !== 2) { throw new Error('not an NTLM challenge'); }
+    var serverChallenge = challenge.slice(24, 32), tiLen = challenge.readUInt16LE(40), tiOff = challenge.readUInt32LE(44);
+    if (tiOff + tiLen > challenge.length) { throw new Error('a broken NTLM challenge'); }
+    var ti = challenge.slice(tiOff, tiOff + tiLen), ts = ntlmAvPair(ti, 7), haveTs = !!(ts && ts.length === 8);
+    var key = hmacMd5(md4(smbU16(pass)), smbU16(String(user).toUpperCase() + domain)), cc = crypto.randomBytes(8);
+    var blob = Buffer.concat([smbBytes([1, 1, 0, 0, 0, 0, 0, 0]), haveTs ? ts : smbFill(8), cc, smbFill(4), haveTs ? ntlmWithMicFlag(ti) : ti, smbFill(4)]);
+    var proof = hmacMd5(key, Buffer.concat([serverChallenge, blob])), nt = Buffer.concat([proof, blob]);
+    var lm = haveTs ? smbFill(24) : Buffer.concat([hmacMd5(key, Buffer.concat([serverChallenge, cc])), cc]);
+    var sessionKey = hmacMd5(key, proof), dom = smbU16(domain), usr = smbU16(user), ws = smbU16('STREMIOK');
+    var fixed = 88, cur = fixed, lmOff = cur; cur += lm.length;
+    var ntOff = cur; cur += nt.length; var domOff = cur; cur += dom.length; var userOff = cur; cur += usr.length; var wsOff = cur; cur += ws.length;
+    var hdr = smbFill(fixed);
+    smbAscii('NTLMSSP\0').copy(hdr, 0); hdr.writeUInt32LE(3, 8);
+    ntlmField(lm.length, lmOff).copy(hdr, 12); ntlmField(nt.length, ntOff).copy(hdr, 20); ntlmField(dom.length, domOff).copy(hdr, 28);
+    ntlmField(usr.length, userOff).copy(hdr, 36); ntlmField(ws.length, wsOff).copy(hdr, 44); ntlmField(0, cur).copy(hdr, 52);
+    hdr.writeUInt32LE(NTLM_FLAGS, 60);
+    var token = Buffer.concat([hdr, lm, nt, dom, usr, ws]);
+    if (haveTs) { hmacMd5(sessionKey, Buffer.concat([ntlmNegotiate(), challenge, token])).copy(token, 72); }   // (the MIC: over all three messages)
+    return { token: token, sessionKey: sessionKey };
+}
+function ntlmAnonymous() {
+    var ws = smbU16('STREMIOK'), fixed = 72, hdr = smbFill(fixed);
+    smbAscii('NTLMSSP\0').copy(hdr, 0); hdr.writeUInt32LE(3, 8);
+    ntlmField(1, fixed).copy(hdr, 12); ntlmField(0, fixed + 1).copy(hdr, 20); ntlmField(0, fixed + 1).copy(hdr, 28); ntlmField(0, fixed + 1).copy(hdr, 36);
+    ntlmField(ws.length, fixed + 1).copy(hdr, 44); ntlmField(0, fixed + 1 + ws.length).copy(hdr, 52);
+    hdr.writeUInt32LE((NTLM_FLAGS | NTLM_ANON) >>> 0, 60);
+    return Buffer.concat([hdr, smbBytes([0]), ws]);
+}
+// One connection to one share (or IPC$, for the share list): requests matched to answers by their
+// message id, several at once (the player reads ahead).
+function SmbConn(o) {
+    this.host = o.host; this.port = o.port || SMB_PORT; this.share = o.share; this.user = o.user || ''; this.pass = o.pass || ''; this.domain = o.domain || '';
+    this.guest = !this.user;
+    this.sock = null; this.rx = []; this.rxLen = 0; this.msgId = 0; this.sessionId = smbFill(8); this.treeId = 0;
+    this.signKey = null; this.signing = false; this.pending = {}; this.dead = false; this.maxRead = 65536; this.last = Date.now(); this.users = 0;
+}
+SmbConn.prototype._take = function (chunk) {
+    this.rx.push(chunk); this.rxLen += chunk.length;
+    while (this.rxLen >= 4) {
+        var head = this.rx.length === 1 ? this.rx[0] : Buffer.concat(this.rx, this.rxLen);
+        this.rx = [head];
+        var len = (head[1] << 16) | (head[2] << 8) | head[3];
+        if (head[0] !== 0 || len > SMB_MSG_MAX) { this._die('a message that isn\'t SMB, or too large'); return; }
+        if (head.length < 4 + len) { return; }
+        var msg = head.slice(4, 4 + len), rest = head.slice(4 + len);
+        this.rx = rest.length ? [rest] : []; this.rxLen = rest.length;
+        this._dispatch(msg);
+        if (this.dead) { return; }
+    }
+};
+SmbConn.prototype._dispatch = function (msg) {
+    if (msg.length < 64 || msg.readUInt32BE(0) !== 0xFE534D42) { return; }   // (SMB 2 only)
+    var status = msg.readUInt32LE(8) >>> 0, mid = smbR64(msg, 24);
+    if (status === SMB_ST.PENDING) { return; }   // (the answer follows)
+    var p = this.pending[mid];
+    if (!p) { return; }
+    delete this.pending[mid];
+    clearTimeout(p.timer);
+    try { p.cb(status, msg.slice(0, 64), msg.slice(64)); } catch (e) { try { p.cb(-2, null, null); } catch (e2) {} }   // (an answer too short for what it says: as an error)
+};
+SmbConn.prototype._die = function (why) {
+    if (this.dead) { return; }
+    this.dead = true;
+    var p = this.pending; this.pending = {};
+    Object.keys(p).forEach(function (k) { clearTimeout(p[k].timer); try { p[k].cb(-1, null, null); } catch (e) {} });
+    try { if (this.sock) { this.sock.destroy(); } } catch (e) {}
+    this.why = why;
+};
+SmbConn.prototype._send = function (command, body, charge, cb) {
+    var self = this;
+    if (this.dead) { cb(-1, null, null); return; }
+    charge = charge || 1;
+    var h = smbFill(64), id = this.msgId;
+    this.msgId += charge;   // (a request of several credits uses as many message ids)
+    h.writeUInt32BE(0xFE534D42, 0); h.writeUInt16LE(64, 4); h.writeUInt16LE(charge, 6); h.writeUInt16LE(command, 12); h.writeUInt16LE(64, 14);
+    smbW64(h, 24, id); h.writeUInt32LE(this.treeId >>> 0, 36); this.sessionId.copy(h, 40);
+    if (this.signing && this.signKey && command !== SMB2.SESSION_SETUP) {
+        h.writeUInt32LE(0x00000008, 16);
+        crypto.createHmac('sha256', this.signKey).update(Buffer.concat([h, body])).digest().slice(0, 16).copy(h, 48);
+    }
+    var packet = Buffer.concat([h, body]), pfx = smbBytes([0, (packet.length >> 16) & 0xFF, (packet.length >> 8) & 0xFF, packet.length & 0xFF]);
+    this.pending[id] = { cb: cb, timer: setTimeout(function () { if (self.pending[id]) { delete self.pending[id]; cb(-1, null, null); self._die('no answer in ' + (SMB_REQ_MS / 1000) + ' s'); } }, SMB_REQ_MS) };
+    this.last = Date.now();
+    try { this.sock.write(Buffer.concat([pfx, packet])); } catch (e) { this._die('write: ' + e.message); }
+};
+SmbConn.prototype.connect = function (done) {
+    var self = this, finished = false;
+    function finish(err) { if (finished) { return; } finished = true; clearTimeout(timer); if (err) { self._die(err.message); } done(err || null); }
+    var timer = setTimeout(function () { var e = new Error('couldn\'t reach ' + self.host + ' (port ' + self.port + ')'); e.why = 'unreachable'; finish(e); }, SMB_CONNECT_MS);
+    try { this.sock = net.connect(this.port, this.host); } catch (e) { var e0 = new Error('couldn\'t reach it: ' + e.message); e0.why = 'unreachable'; finish(e0); return; }
+    this.sock.on('connect', function () {
+        if (isSelfAddr(self.sock.remoteAddress)) { var es = new Error('not this TV'); es.why = 'unreachable'; finish(es); return; }
+        self._negotiate(function (e1) {
+            if (e1) { finish(e1); return; }
+            self._session(function (e2) { if (e2) { finish(e2); return; } self._tree(finish); });
+        });
+    });
+    this.sock.on('data', function (c) { self._take(c); });
+    this.sock.on('error', function (e) { var er = new Error('couldn\'t reach it: ' + (e.code || e.message)); er.why = 'unreachable'; self._die(er.message); finish(er); });
+    this.sock.on('close', function () { self._die('closed'); var ec = new Error('the server closed the connection'); ec.why = 'unreachable'; finish(ec); });
+    try { this.sock.setNoDelay(true); } catch (e) {}
+};
+SmbConn.prototype._negotiate = function (cb) {
+    var self = this, body = smbFill(40);
+    body.writeUInt16LE(36, 0); body.writeUInt16LE(2, 2); body.writeUInt16LE(1, 4); body.writeUInt32LE(4, 8);   // (2 dialects, signing on, large reads)
+    crypto.randomBytes(16).copy(body, 12);
+    body.writeUInt16LE(0x0202, 36); body.writeUInt16LE(0x0210, 38);
+    this._send(SMB2.NEGOTIATE, body, 1, function (st, hdr, r) {
+        if (st !== 0) { var e = st === -1 ? smbErr(-1) : new Error('it doesn\'t speak SMB 2 (only SMB 3, or SMB 1?)'); if (st !== -1) { e.why = 'smb3'; } cb(e); return; }
+        if (r.length < 40) { cb(smbErr(-2, 'negotiate')); return; }
+        self.dialect = r.readUInt16LE(4);
+        if (self.dialect !== 0x0202 && self.dialect !== 0x0210) { var e2 = new Error('it doesn\'t speak SMB 2.0 or 2.1'); e2.why = 'smb3'; cb(e2); return; }
+        self.signing = !!(r.readUInt16LE(2) & 2);
+        self.maxRead = Math.max(65536, Math.min(r.readUInt32LE(32) || 65536, 8388608));
+        cb(null);
+    });
+};
+SmbConn.prototype._setup = function (token, cb) {
+    var body = smbFill(24 + token.length);
+    body.writeUInt16LE(25, 0); body.writeUInt8(this.signing ? 2 : 1, 3); body.writeUInt16LE(88, 12); body.writeUInt16LE(token.length, 14);
+    token.copy(body, 24);
+    this._send(SMB2.SESSION_SETUP, body, 1, cb);
+};
+SmbConn.prototype._session = function (done) {
+    var self = this;
+    this._setup(ntlmNegotiate(), function (st, hdr, r) {
+        if (st !== SMB_ST.MORE_PROCESSING) { done(smbErr(st, 'sign-in')); return; }
+        hdr.copy(self.sessionId, 0, 40, 48);
+        var off = r.readUInt16LE(4) - 64, len = r.readUInt16LE(6);
+        if (off < 0 || off + len > r.length) { done(smbErr(-2, 'sign-in')); return; }
+        var t3;
+        try {
+            if (self.guest) { self.signing = false; t3 = { token: ntlmAnonymous() }; }
+            else { t3 = ntlmAuthenticate(r.slice(off, off + len), self.user, self.pass, self.domain); self.signKey = t3.sessionKey; }
+        } catch (e) { var er = new Error('sign-in: ' + e.message); er.why = 'other'; done(er); return; }
+        self._setup(t3.token, function (st2, hdr2, r2) {
+            if (st2 !== 0) { done(smbErr(st2, 'sign-in')); return; }
+            var flags = r2.length >= 4 ? r2.readUInt16LE(2) : 0;
+            if (!self.guest && !(flags & 3) && self.signKey) { self.signing = true; }   // (SMB 2.1 on a real session: signed, as Samba expects)
+            if (flags & 3) { self.signing = false; }   // (a guest or null session: no key to sign with)
+            done(null);
+        });
+    });
+};
+SmbConn.prototype._tree = function (done) {
+    var self = this, unc = smbU16('\\\\' + this.host + '\\' + this.share), body = smbFill(8 + unc.length);
+    body.writeUInt16LE(9, 0); body.writeUInt16LE(72, 4); body.writeUInt16LE(unc.length, 6); unc.copy(body, 8);
+    this._send(SMB2.TREE_CONNECT, body, 1, function (st, hdr) {
+        if (st !== 0) { done(smbErr(st, 'the share “' + self.share + '”')); return; }
+        self.treeId = hdr.readUInt32LE(36);
+        done(null);
+    });
+};
+function smbPath(p) { return String(p || '').replace(/^[\\/]+|[\\/]+$/g, '').replace(/\//g, '\\'); }
+SmbConn.prototype.open = function (path, dir, cb, access) {
+    var name = smbU16(smbPath(path)), body = smbFill(56 + Math.max(name.length, 1));
+    body.writeUInt16LE(57, 0); body.writeUInt32LE(2, 4); body.writeUInt32LE(access || 0x00100081, 24); body.writeUInt32LE(7, 32); body.writeUInt32LE(1, 36);
+    body.writeUInt32LE(dir ? 1 : 0x40, 40); body.writeUInt16LE(120, 44); body.writeUInt16LE(name.length, 46);
+    name.copy(body, 56);
+    this._send(SMB2.CREATE, body, 1, function (st, hdr, r) {
+        if (st !== 0) { cb(smbErr(st)); return; }
+        if (r.length < 80) { cb(smbErr(-2)); return; }
+        cb(null, { id: r.slice(64, 80), size: smbR64(r, 48), dir: !!(r.readUInt32LE(56) & 0x10) });
+    });
+};
+SmbConn.prototype.close = function (id) {
+    var body = smbFill(24); body.writeUInt16LE(24, 0); id.copy(body, 8);
+    this._send(SMB2.CLOSE, body, 1, function () {});
+};
+// A folder's entries: [{ name, dir, size }] (SMB_LIST_MAX at most, hidden "." and ".." left out).
+SmbConn.prototype.list = function (path, done) {
+    var self = this;
+    done = once(done);
+    this.open(path, true, function (err, d) {
+        if (err) { done(err); return; }
+        var out = [], pat = smbU16('*'), rounds = 0;
+        (function round(first) {
+            var body = smbFill(32 + pat.length);
+            body.writeUInt16LE(33, 0); body.writeUInt8(1, 2); body.writeUInt8(first ? 1 : 0, 3); d.id.copy(body, 8);
+            body.writeUInt16LE(96, 24); body.writeUInt16LE(pat.length, 26); body.writeUInt32LE(65536, 28); pat.copy(body, 32);
+            self._send(SMB2.QUERY_DIRECTORY, body, 1, function (st, hdr, r) {
+                if (st === SMB_ST.NO_MORE_FILES || out.length >= SMB_LIST_MAX || rounds++ > 200) { self.close(d.id); done(null, out); return; }
+                if (st !== 0) { self.close(d.id); done(smbErr(st)); return; }
+                var off = r.readUInt16LE(2) - 64, len = r.readUInt32LE(4);
+                if (off < 0 || off + len > r.length) { self.close(d.id); done(smbErr(-2)); return; }
+                var b = r.slice(off, off + len), p = 0;
+                for (var n = 0; p + 64 <= b.length && n < 4096; n++) {
+                    var next = b.readUInt32LE(p), nlen = b.readUInt32LE(p + 60), attrs = b.readUInt32LE(p + 56);
+                    if (p + 64 + nlen > b.length) { break; }
+                    var name = smbFromU16(b, p + 64, p + 64 + nlen), isDir = !!(attrs & 0x10);
+                    if (name !== '.' && name !== '..' && name && name.length <= 255 && !/[\0\/\\]/.test(name) && out.length < SMB_LIST_MAX) { out.push({ name: name, dir: isDir, size: isDir ? 0 : smbR64(b, p + 40) }); }
+                    if (!next) { break; }
+                    p += next;
+                }
+                round(false);
+            });
+        })(true);
+    });
+};
+SmbConn.prototype.read = function (id, offset, length, cb) {
+    var body = smbFill(49);
+    body.writeUInt16LE(49, 0); body.writeUInt32LE(length, 4); smbW64(body, 8, offset); id.copy(body, 16);
+    this._send(SMB2.READ, body, Math.max(1, Math.ceil(length / 65536)), function (st, hdr, r) {
+        if (st === SMB_ST.END_OF_FILE) { cb(null, allocBuffer(0)); return; }
+        if (st !== 0 && st !== SMB_ST.BUFFER_OVERFLOW) { cb(smbErr(st)); return; }
+        var off = r.readUInt8(2) - 64, len = r.readUInt32LE(4);
+        if (off < 0 || off + len > r.length || len > length) { cb(smbErr(-2)); return; }
+        cb(null, r.slice(off, off + len), st === SMB_ST.BUFFER_OVERFLOW);
+    });
+};
+// The share list (connected to IPC$): NetrShareEnum (MS-SRVS) over the \srvsvc pipe, DCE/RPC by
+// hand. Disk shares only; hidden and administrative ones (C$, ADMIN$, print$) left out.
+function rpcSyntax(uuid, major) {
+    var h = uuid.replace(/-/g, ''), b = smbFill(20);
+    b.writeUInt32LE(parseInt(h.slice(0, 8), 16), 0); b.writeUInt16LE(parseInt(h.slice(8, 12), 16), 4); b.writeUInt16LE(parseInt(h.slice(12, 16), 16), 6);
+    for (var i = 0; i < 8; i++) { b[8 + i] = parseInt(h.slice(16 + i * 2, 18 + i * 2), 16); }
+    b.writeUInt16LE(major, 16);
+    return b;
+}
+function rpcPdu(type, callId, body) { var h = smbFill(16); h[0] = 5; h[2] = type; h[3] = 3; h[4] = 0x10; h.writeUInt16LE(16 + body.length, 8); h.writeUInt32LE(callId, 12); return Buffer.concat([h, body]); }
+function rpcU32s(list) { var b = smbFill(list.length * 4); list.forEach(function (v, i) { b.writeUInt32LE(v >>> 0, i * 4); }); return b; }
+function ndrStr(str) { var ch = smbU16(str + '\0'), n = ch.length / 2, pad = (4 - ch.length % 4) % 4, b = smbFill(12 + ch.length + pad); b.writeUInt32LE(n, 0); b.writeUInt32LE(n, 8); ch.copy(b, 12); return b; }
+SmbConn.prototype.pipe = function (id, input, cb) {   // FSCTL_PIPE_TRANSCEIVE, then reads until the reply's last fragment
+    var self = this, body = smbFill(56 + input.length), got = [], total = 0;
+    body.writeUInt16LE(57, 0); body.writeUInt32LE(0x0011C017, 4); id.copy(body, 8); body.writeUInt32LE(120, 24); body.writeUInt32LE(input.length, 28);
+    body.writeUInt32LE(8560, 44); body.writeUInt32LE(1, 48); input.copy(body, 56);
+    function more(buf, overflow) {
+        got.push(buf); total += buf.length;
+        var all = Buffer.concat(got, total), p = 0, last = false;
+        while (all.length - p >= 16) { var len = all.readUInt16LE(p + 8); if (len < 16 || all.length - p < len) { break; } if (all[p + 3] & 2) { last = true; } p += len; }
+        if ((last && !overflow) || total > 1048576) { cb(null, all); return; }
+        self.read(id, 0, 8560, function (e, chunk, ov) { if (e) { cb(e); return; } if (!chunk.length) { cb(null, all); return; } more(chunk, ov || chunk.length >= 8560); });
+    }
+    this._send(SMB2.IOCTL, body, 1, function (st, hdr, r) {
+        if (st !== 0 && st !== SMB_ST.BUFFER_OVERFLOW) { cb(smbErr(st, 'the share list')); return; }
+        var off = r.readUInt32LE(32) - 64, len = r.readUInt32LE(36);
+        if (off < 0 || off + len > r.length) { cb(smbErr(-2, 'the share list')); return; }
+        more(r.slice(off, off + len), st === SMB_ST.BUFFER_OVERFLOW);
+    });
+};
+function rpcStub(all) {   // the reply PDUs' stub data, joined; throws on a fault or a broken one
+    var out = [], p = 0;
+    while (all.length - p >= 24) {
+        var len = all.readUInt16LE(p + 8), auth = all.readUInt16LE(p + 10);
+        if (len < 24 || all.length - p < len) { break; }
+        if (all[p + 2] === 3) { throw new Error('the server refused the call'); }
+        if (all[p + 2] !== 2 || 24 > len - auth) { throw new Error('an answer it didn\'t expect'); }
+        out.push(all.slice(p + 24, p + len - auth));
+        p += len;
+    }
+    return Buffer.concat(out);
+}
+function parseShares(stub) {
+    var p = 0;
+    function u32() { if (p + 4 > stub.length) { throw new Error('cut short'); } var v = stub.readUInt32LE(p); p += 4; return v; }
+    function str() { var max = u32(); u32(); var n = u32(); if (n > max || n > 1024 || p + n * 2 > stub.length) { throw new Error('a broken name'); } var s = smbFromU16(stub, p, p + n * 2).replace(/\0+$/, ''); p += n * 2; p += (4 - p % 4) % 4; return s; }
+    u32(); u32();
+    if (!u32()) { return []; }
+    var count = u32();
+    if (!u32() || !count) { return []; }
+    if (u32() !== count || count > 1000) { throw new Error('a broken share list'); }
+    var rows = [], i;
+    for (i = 0; i < count; i++) { rows.push({ np: u32(), type: u32(), rp: u32() }); }
+    for (i = 0; i < count; i++) { rows[i].name = rows[i].np ? str() : ''; rows[i].remark = rows[i].rp ? str() : ''; }
+    return rows.filter(function (r) { return (r.type & 0x0FFFFFFF) === 0 && !(r.type & 0x80000000) && r.name && !/\$$/.test(r.name); })
+        .map(function (r) { return { name: r.name.slice(0, 80), remark: r.remark.slice(0, 120) }; })
+        .sort(function (a, b) { return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1; });
+}
+SmbConn.prototype.shares = function (done) {
+    var self = this;
+    done = once(done);
+    this.open('srvsvc', false, function (err, pipeId) {
+        if (err) { done(err); return; }
+        var id = pipeId.id;
+        function fin(e, v) { self.close(id); done(e, v); }
+        var bind = smbFill(56);
+        bind.writeUInt16LE(4280, 0); bind.writeUInt16LE(4280, 2); bind[8] = 1; bind[14] = 1;
+        rpcSyntax('4b324fc8-1670-01d3-1278-5a47bf6ee188', 3).copy(bind, 16); rpcSyntax('8a885d04-1ceb-11c9-9fe8-08002b104860', 2).copy(bind, 36);
+        self.pipe(id, rpcPdu(11, 1, bind), function (e1, ack) {
+            if (e1) { fin(e1); return; }
+            if (ack.length < 16 || ack[2] !== 12) { var eb = new Error('the share list: the server refused'); eb.why = 'other'; fin(eb); return; }
+            var stub = Buffer.concat([rpcU32s([0x00020000]), ndrStr('\\\\' + self.host), rpcU32s([1, 1, 0x00020004, 0, 0, 0xFFFFFFFF, 0x00020008, 0])]);
+            var hdr = smbFill(8); hdr.writeUInt32LE(stub.length, 0); hdr.writeUInt16LE(15, 6);
+            self.pipe(id, rpcPdu(0, 2, Buffer.concat([hdr, stub])), function (e2, reply) {
+                if (e2) { fin(e2); return; }
+                try {
+                    var s = rpcStub(reply), werr = s.length >= 4 ? s.readUInt32LE(s.length - 4) : 0;
+                    if (werr) { throw new Error('error 0x' + werr.toString(16)); }
+                    fin(null, parseShares(s));
+                } catch (e3) { var er = new Error('the share list: ' + e3.message); er.why = 'other'; fin(er); }
+            });
+        });
+    }, 0x0012019F);
+};
+// A share's folder from the app: smb://host[:port]/share/[path/] (a host in the home network), the
+// sign-in from X-Dav-Auth ("DOMAIN\user:password"; none: a guest), or null.
+function smbFolder(req, q, noShare) {
+    var u = String(q.u || '').trim(), m = /^smb:\/\/([A-Za-z0-9._-]{1,253}|\[[0-9a-fA-F:.]{2,45}\])(?::(\d{1,5}))?\/([^\/\\?#]{0,80})(\/[^?#]*)?$/.exec(u);
+    if (!m || u.length > 1000) { return null; }
+    var host = m[1].replace(/^\[|\]$/g, ''), port = m[2] ? +m[2] : SMB_PORT, share = m[3];
+    if (!isLanName(host) || isSelfAddr(host) || !(port > 0 && port < 65536) || (!share && !noShare)) { return null; }
+    if (share && (share === '.' || share === '..' || /[\0"*:<>|]/.test(share))) { return null; }
+    var base = String(m[4] || '/').replace(/^\/+|\/+$/g, '');
+    if (base && base.split('/').some(function (s) { return !s || s === '.' || s === '..'; })) { return null; }
+    var a = String((req.headers && req.headers['x-dav-auth']) || '');
+    if (a && !/^[A-Za-z0-9+\/=]{4,1400}$/.test(a)) { return null; }
+    var up = a ? fromBase64(a).toString('utf8') : '', colon = up.indexOf(':'), user = colon === -1 ? up : up.slice(0, colon), pass = colon === -1 ? '' : up.slice(colon + 1), domain = '';
+    var dm = /^([^\\\/]{1,64})[\\\/](.+)$/.exec(user);
+    if (dm) { domain = dm[1]; user = dm[2]; }
+    return { host: host, port: port, share: share, base: base, user: user, pass: pass, domain: domain, auth: a };
+}
+// A path under the folder (its base, then rel), checked as davUrl does; null: not one.
+function smbRel(f, rel) {
+    rel = String(rel == null ? '' : rel).replace(/^\/+|\/+$/g, '');
+    if (rel.length > 1024 || rel.indexOf('\0') !== -1 || /\\/.test(rel)) { return null; }
+    if (rel && rel.split('/').some(function (s) { return !s || s === '.' || s === '..'; })) { return null; }
+    return [f.base, rel].filter(Boolean).join('/');
+}
+// Connections kept for reuse (by server, share and sign-in), SMB_CONN_MAX at most, closed unused.
+var _smbConns = {};
+function smbKey(f, share) { return f.host + '|' + f.port + '|' + share + '|' + crypto.createHash('sha256').update(f.domain + '\\' + f.user + ':' + f.pass).digest('hex'); }
+function smbConn(f, share, cb) {
+    cb = once(cb);
+    var k = smbKey(f, share), c = _smbConns[k];
+    if (c && !c.dead) { c.last = Date.now(); cb(null, c); return; }
+    if (c && c.waiting) { c.waiting.push(cb); return; }
+    var keys = Object.keys(_smbConns);
+    if (keys.length >= SMB_CONN_MAX) { keys.sort(function (a, b) { return _smbConns[a].last - _smbConns[b].last; }); _smbConns[keys[0]]._die('too many open'); delete _smbConns[keys[0]]; }
+    c = new SmbConn({ host: f.host, port: f.port, share: share, user: f.user, pass: f.pass, domain: f.domain });
+    c.waiting = [cb];
+    _smbConns[k] = c;
+    c.connect(function (err) {
+        var w = c.waiting; c.waiting = null;
+        if (err) { if (_smbConns[k] === c) { delete _smbConns[k]; } }
+        w.forEach(function (fn) { fn(err, err ? null : c); });
+    });
+}
+setInterval(function () {
+    var now = Date.now();
+    Object.keys(_smbConns).forEach(function (k) { var c = _smbConns[k]; if (c.dead || (!c.waiting && now - c.last > SMB_IDLE_MS && !Object.keys(c.pending).length && !c.users)) { c._die('unused'); delete _smbConns[k]; } });
+}, 30000);
+function smbList(f, rel, cb) {
+    cb = once(cb);
+    var p = smbRel(f, rel);
+    if (p === null) { cb(upError('not a path in the share', 400)); return; }
+    smbConn(f, f.share, function (err, c) {
+        if (err) { cb(err); return; }
+        c.list(p, function (e, entries) { if (e) { cb(e); return; } cb(null, { entries: entries }); });
+    });
+}
+function smbWalk(f, st, cb) {
+    cb = once(cb);
+    var files = [], queue = [{ rel: '', depth: 0 }], active = 0, dirs = 0, truncated = false, started = Date.now();
+    function end() { if (!active && !queue.length) { cb(null, { files: files, dirs: dirs, truncated: truncated }); } }
+    function pump() {
+        while (!st.cancelled && active < 2 && queue.length) {
+            if (dirs >= SMB_WALK_DIRS || files.length >= SMB_WALK_FILES || Date.now() - started > SMB_WALK_MS) { truncated = true; queue = []; break; }
+            var d = queue.shift();
+            dirs++; active++;
+            (function (d) {
+                smbList(f, d.rel, function (err, r) {
+                    active--;
+                    if (st.cancelled) { return; }
+                    if (err) { if (!d.rel) { st.cancelled = true; cb(err); return; } truncated = true; }
+                    else {
+                        var names = r.entries.map(function (e) { return e.name; });
+                        r.entries.forEach(function (e) {
+                            if (HIDDEN_NAME.test(e.name)) { return; }
+                            var p = d.rel ? d.rel + '/' + e.name : e.name;
+                            if (e.dir) { if (d.depth < SMB_WALK_DEPTH) { queue.push({ rel: p, depth: d.depth + 1 }); } else { truncated = true; } }
+                            else if (walkWants(e.name, names) && files.length < SMB_WALK_FILES) { files.push({ p: p, size: e.size }); }
+                        });
+                    }
+                    pump();
+                });
+            })(d);
+        }
+        end();
+    }
+    pump();
+}
+// readAt over a file of the share (mediaInfo, subtitles): its size from the open; done() closes it.
+function smbOpenFile(f, rel, cb) {
+    var p = smbRel(f, rel);
+    if (p === null || !rel) { cb(upError('not a path in the share', 400)); return; }
+    smbConn(f, f.share, function (err, c) {
+        if (err) { cb(err); return; }
+        c.open(p, false, function (e, h) {
+            if (e) { cb(e); return; }
+            c.users++;
+            var closed = false;
+            cb(null, function readAt(off, len, rcb) {
+                var want = Math.max(0, Math.min(len, h.size - off)), parts = [], got = 0;
+                (function next() {
+                    if (got >= want) { rcb(null, Buffer.concat(parts, got), h.size); return; }
+                    c.read(h.id, off + got, Math.min(SMB_READ, c.maxRead, want - got), function (re, data) {
+                        if (re) { rcb(re); return; }
+                        if (!data.length) { rcb(null, Buffer.concat(parts, got), h.size); return; }
+                        parts.push(data); got += data.length; next();
+                    });
+                })();
+            }, function done() { if (!closed) { closed = true; c.users--; c.close(h.id); } }, h.size);
+        });
+    });
+}
+function smbSub(f, rel, cb) {
+    cb = once(cb);
+    if (!SUB_EXT.test(String(rel))) { cb(upError('not a subtitle file in the share', 400)); return; }
+    smbOpenFile(f, rel, function (err, readAt, done, size) {
+        if (err) { cb(err); return; }
+        if (size > SMB_SUB_MAX) { done(); cb(upError('too large for a subtitle file', 413)); return; }
+        readAt(0, size, function (e, buf) { done(); if (e) { cb(e); return; } cb(null, decodeText(buf)); });
+    });
+}
+// A file of the share for the player: its byte range (Range) read and sent on, the server's
+// largest read at a time, as fast as the player takes it.
+function smbFileRelay(f, rel, req, res) {
+    var gone = false;
+    res.on('close', function () { gone = true; });
+    smbOpenFile(f, rel, function (err, readAt, done, size) {
+        if (err) { if (!gone) { send(res, err.status === 400 || err.status === 404 ? err.status : 502, 'text/plain', 'failed: ' + (err.message || 'unknown')); } return; }
+        if (gone) { done(); return; }
+        var start = 0, end = size - 1, partial = false, m = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
+        if (m && (m[1] !== '' || m[2] !== '')) {
+            partial = true;
+            if (m[1] === '') { start = Math.max(0, size - (+m[2])); } else { start = +m[1]; if (m[2] !== '') { end = Math.min(+m[2], size - 1); } }
+        }
+        if (start > end || start >= size) { done(); res.writeHead(416, { 'Content-Range': 'bytes */' + size, 'Cache-Control': 'no-store' }); res.end(); return; }
+        var h = { 'Content-Type': 'application/octet-stream', 'Content-Length': String(end - start + 1), 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
+        if (partial) { h['Content-Range'] = 'bytes ' + start + '-' + end + '/' + size; }
+        res.writeHead(partial ? 206 : 200, h);
+        var pos = start;
+        (function pump() {
+            if (gone || pos > end) { done(); if (!gone) { try { res.end(); } catch (e) {} } return; }
+            readAt(pos, Math.min(SMB_READ, end - pos + 1), function (re, data) {
+                if (gone) { done(); return; }
+                if (re || !data.length) { done(); try { res.destroy(); } catch (e) {} return; }   // (cut short: the connection dropped, so the player knows; ended, it would wait for the rest)
+                pos += data.length;
+                if (res.write(data)) { pump(); } else { res.once('drain', pump); }
+            });
+        })();
+    });
+}
+function smbProblem(err) { return { why: err.why || 'other', message: String(err.message || 'unknown').slice(0, 300) }; }
+function smbControl(req, res, path, query, leaving) {
+    if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
+    var q = davQ(query), f = smbFolder(req, q, path === '/smb/shares');
+    if (!f) { send(res, 400, 'text/plain', 'not a share in the home network'); return; }
+    function answer(err, r) {
+        if (!err) { send(res, 200, 'application/json', JSON.stringify(r)); return; }
+        if (err.status === 400) { send(res, 400, 'text/plain', err.message); return; }
+        send(res, 200, 'application/json', JSON.stringify(smbProblem(err)));
+    }
+    if (path === '/smb/shares') {
+        var c = new SmbConn({ host: f.host, port: f.port, share: 'IPC$', user: f.user, pass: f.pass, domain: f.domain });
+        leaving.push(function () { c._die('left'); });
+        c.connect(function (err) {
+            if (err) { answer(err); return; }
+            c.shares(function (e, shares) { c._die('done'); if (e) { answer(e); return; } answer(null, { shares: shares }); });
+        });
+        return;
+    }
+    if (path === '/smb/list') { smbList(f, q.p, answer); return; }
+    if (path === '/smb/walk') {
+        var st = { cancelled: false };
+        leaving.push(function () { st.cancelled = true; });
+        smbWalk(f, st, answer);
+        return;
+    }
+    if (path === '/smb/sub') {
+        smbSub(f, q.p, function (err, text) {
+            if (err) { send(res, err.status === 400 ? 400 : err.status === 413 ? 413 : 502, 'text/plain', 'failed: ' + (err.message || 'unknown')); return; }
+            send(res, 200, 'text/plain; charset=utf-8', text);
+        });
+        return;
+    }
+    if (path === '/smb/mi') {
+        if (!VIDEO_EXT.test(String(q.p || ''))) { send(res, 400, 'text/plain', 'not a video in the share'); return; }
+        smbOpenFile(f, q.p, function (err, readAt, done) {
+            if (err) { send(res, 502, 'text/plain', 'failed: ' + (err.message || 'unknown')); return; }
+            var stop = mediaInfo(readAt, function (e, r) {
+                done();
+                if (e) { send(res, e.status && e.status < 600 ? e.status : 502, 'text/plain', 'failed: ' + (e.message || 'unknown')); return; }
+                send(res, 200, 'application/json', JSON.stringify(r));
+            });
+            if (stop) { leaving.push(stop); }
+        });
+        return;
+    }
+    if (path === '/smb/open') { send(res, 200, 'application/json', JSON.stringify({ ticket: netTicket('smb', f) })); return; }
+    send(res, 404, 'text/plain', 'not found');
+}
+
+// ---- DLNA media servers: /dlna/discover, /dlna/list, /dlna/walk, /dlna/sub, /dlna/mi, /dlna/open ----
+// A NAS's or a computer's media server (miniDLNA, Serviio, Windows' media sharing, a router's) as
+// a network folder: found on the home network when asked (SSDP: multicast and broadcast, for
+// DLNA_SEARCH_MS), listed to add (none added on its own), its folders browsed (ContentDirectory
+// Browse over SOAP), its videos played from its own links. A server knows its folders by id, not by
+// path: their names are kept here per server (DLNA_SERVERS of them, DLNA_ITEMS names each, in
+// memory), so a path in it ("Films/Dune.mkv") finds its id again; a video's title without an
+// extension gets one from its type (the name matching needs one). Only servers in the home network;
+// no sign-in (DLNA has none). Adapted from Tessel's (MIT License, Copyright (c) 2026 Patrick:
+// github.com/PatrickSt1991/tessel-tizen-tv, tizen-app/service/service.js).
+var DLNA_SEARCH_MS = 3000, DLNA_HTTP_MS = 8000, DLNA_MAX_BYTES = 8 * 1048576, DLNA_PAGE = 200, DLNA_ENTRIES = 3000, DLNA_SERVERS = 8, DLNA_ITEMS = 40000, DLNA_FOUND_MAX = 32;
+var DLNA_WALK_DIRS = 2000, DLNA_WALK_FILES = 20000, DLNA_WALK_DEPTH = 12, DLNA_WALK_MS = 90000;
+var DLNA_MIME_EXT = { 'video/x-matroska': 'mkv', 'video/mp4': 'mp4', 'video/x-m4v': 'm4v', 'video/x-msvideo': 'avi', 'video/avi': 'avi', 'video/mpeg': 'mpg', 'video/mp2t': 'ts', 'video/vnd.dlna.mpeg-tts': 'ts',
+    'video/quicktime': 'mov', 'video/webm': 'webm', 'video/x-ms-wmv': 'wmv', 'video/x-flv': 'flv', 'video/3gpp': '3gp', 'video/ogg': 'ogv' };
+function dlnaTag(xml, name) {   // the first <name> (any prefix): its text, unescaped
+    var m = new RegExp('<(?:[\\w.-]+:)?' + name + '(?:\\s[^>]*)?>([\\s\\S]*?)</(?:[\\w.-]+:)?' + name + '\\s*>', 'i').exec(xml || '');
+    return m ? xmlText(m[1]).trim() : '';
+}
+function dlnaEach(xml, name, max) {   // every <name …>…</name> or <name …/>: [{ attrs, body }]
+    var out = [], m, re = new RegExp('<(?:[\\w.-]+:)?' + name + '\\b([^>]*?)(?:/>|>([\\s\\S]*?)</(?:[\\w.-]+:)?' + name + '\\s*>)', 'gi');
+    while ((m = re.exec(xml || '')) && out.length < (max || 10000)) { out.push({ attrs: m[1] || '', body: m[2] || '' }); }
+    return out;
+}
+function dlnaAttr(attrs, name) {
+    var m = new RegExp('(?:^|\\s)' + name.replace(/[.*+?^${}()|[\]\\:\/-]/g, '\\$&') + '\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\')', 'i').exec(attrs || '');
+    return m ? xmlText(m[1] !== undefined ? m[1] : m[2]) : '';
+}
+// A link the server may give: http(s), in the home network, not the TV itself.
+function dlnaLanUrl(u) {
+    var pu;
+    try { pu = urllib.parse(String(u || '')); } catch (e) { return null; }
+    if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !pu.hostname || !isLanName(pu.hostname) || isSelfAddr(pu.hostname)) { return null; }
+    return pu;
+}
+// One request to a server (description, Browse): cb(err, status, text), DLNA_MAX_BYTES, DLNA_HTTP_MS.
+function dlnaHttp(target, method, headers, body, cb) {
+    cb = once(cb);
+    var pu = dlnaLanUrl(target), r = null;
+    if (!pu) { cb(upError('not a server in the home network', 400)); return noop; }
+    var timer = setTimeout(function () { try { if (r) { r.abort(); } } catch (e) {} cb(upError('no answer in ' + (DLNA_HTTP_MS / 1000) + ' s', 504)); }, DLNA_HTTP_MS);
+    try {
+        var data = body ? toBuffer(body) : null, h = { 'User-Agent': 'StremioK' };
+        Object.keys(headers || {}).forEach(function (k) { h[k] = headers[k]; });
+        if (data) { h['Content-Length'] = data.length; }
+        r = (pu.protocol === 'https:' ? https : http).request({ hostname: pu.hostname, port: pu.port, path: pu.path, method: method, headers: h, agent: false }, function (resp) {
+            var chunks = [], size = 0;
+            resp.on('data', function (c) { size += c.length; if (size > DLNA_MAX_BYTES) { clearTimeout(timer); try { r.abort(); } catch (e) {} cb(upError('its answer is too large', 502)); return; } chunks.push(c); });
+            resp.on('end', function () { clearTimeout(timer); cb(null, resp.statusCode, Buffer.concat(chunks, size).toString('utf8')); });
+            resp.on('error', function (e) { clearTimeout(timer); cb(e); });
+        });
+        guardSelf(r, function () { clearTimeout(timer); cb(upError('not a server in the home network', 400)); });
+        r.on('error', function (e) { clearTimeout(timer); cb(e); });
+        if (data) { r.write(data); }
+        r.end();
+    } catch (e) { clearTimeout(timer); cb(e); }
+    return function () { clearTimeout(timer); try { if (r) { r.abort(); } } catch (e) {} };
+}
+// A device description: { id, name, control } of its ContentDirectory, or null (not a media server).
+function dlnaDescription(xml, location) {
+    var services = dlnaEach(xml, 'service', 50), control = '';
+    for (var i = 0; i < services.length && !control; i++) { if (/:ContentDirectory:/i.test(dlnaTag(services[i].body, 'serviceType'))) { control = dlnaTag(services[i].body, 'controlURL'); } }
+    if (!control) { return null; }
+    var abs;
+    try { abs = urllib.resolve(dlnaTag(xml, 'URLBase') || location, control); } catch (e) { return null; }
+    var pu = dlnaLanUrl(abs);
+    if (!pu) { return null; }
+    return { id: (dlnaTag(xml, 'UDN') || location).slice(0, 120), name: (dlnaTag(xml, 'friendlyName') || pu.hostname).slice(0, 80), control: abs };
+}
+function dlnaBrowseBody(id, start) {
+    return '<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">' +
+        '<s:Body><u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1"><ObjectID>' + String(id).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') +
+        '</ObjectID><BrowseFlag>BrowseDirectChildren</BrowseFlag><Filter>*</Filter><StartingIndex>' + start + '</StartingIndex><RequestedCount>' + DLNA_PAGE +
+        '</RequestedCount><SortCriteria></SortCriteria></u:Browse></s:Body></s:Envelope>';
+}
+// A Browse page's DIDL-Lite: folders, and videos with their link, size and subtitle files.
+function dlnaDidl(didl) {
+    var out = [];
+    dlnaEach(didl, 'container', DLNA_ENTRIES).forEach(function (c) { out.push({ id: dlnaAttr(c.attrs, 'id'), title: dlnaTag(c.body, 'title'), dir: true }); });
+    dlnaEach(didl, 'item', DLNA_ENTRIES).forEach(function (it) {
+        if (!/videoItem/i.test(dlnaTag(it.body, 'class'))) { return; }   // (videos only: Local plays nothing else)
+        var res = dlnaEach(it.body, 'res', 20), pick = null, subs = [];
+        res.forEach(function (r) {
+            var url = xmlText(r.body).trim(), mime = (String(dlnaAttr(r.attrs, 'protocolInfo')).split(':')[2] || '').toLowerCase();
+            if (!/^https?:\/\//i.test(url)) { return; }
+            if (/^text\/|subrip|x-ssa|x-ass|smi/.test(mime)) { subs.push(url); return; }
+            if (!pick && /^http-get:/i.test(dlnaAttr(r.attrs, 'protocolInfo') || 'http-get:')) { pick = { url: url, mime: mime, size: +dlnaAttr(r.attrs, 'size') || 0 }; }
+        });
+        ['CaptionInfoEx', 'CaptionInfo'].forEach(function (t) { dlnaEach(it.body, t, 10).forEach(function (cp) { var u = xmlText(cp.body).trim(); if (/^https?:\/\//i.test(u)) { subs.push(u); } }); });
+        if (pick) { out.push({ id: dlnaAttr(it.attrs, 'id'), title: dlnaTag(it.body, 'title'), dir: false, url: pick.url, mime: pick.mime, size: pick.size, subs: subs.slice(0, 8) }); }
+    });
+    return out;
+}
+// The servers' names kept here: per control URL, a path's id (folders) or its link (files).
+var _dlna = {};
+function dlnaServer(control) {
+    var key = 'c:' + control, s = _dlna[key];   // (prefixed: no address can name an object's own properties)
+    if (!s) {
+        var keys = Object.keys(_dlna);
+        if (keys.length >= DLNA_SERVERS) { keys.sort(function (a, b) { return _dlna[a].at - _dlna[b].at; }); delete _dlna[keys[0]]; }
+        s = _dlna[key] = { dirs: { '': '0' }, files: {}, n: 0, at: Date.now() };
+    }
+    s.at = Date.now();
+    return s;
+}
+function dlnaName(title) { return String(title || '?').replace(/[\/\\\0]/g, '-').replace(/^\.+/, '').trim().slice(0, 200) || '?'; }
+function dlnaExt(e) {
+    var path = '';
+    try { path = String(urllib.parse(e.url).pathname || ''); } catch (x) {}
+    var m = /\.([a-z0-9]{2,4})$/i.exec(path), ext = m && VIDEO_EXT.test('.' + m[1]) ? m[1].toLowerCase() : '';
+    return ext || DLNA_MIME_EXT[e.mime] || 'mkv';
+}
+function dlnaSubExt(u) { var m = /\.(srt|vtt|ass|ssa|smi)(?:[?#]|$)/i.exec(String(u || '')); return m ? m[1].toLowerCase() : 'srt'; }
+// A folder's entries (its id), page by page, named and kept: cb(err, [{ name, dir, size }]).
+function dlnaFolder(control, rel, id, cb) {
+    cb = once(cb);
+    var s = dlnaServer(control), raw = [];
+    (function page(start) {
+        dlnaHttp(control, 'POST', { 'Content-Type': 'text/xml; charset="utf-8"', 'SOAPACTION': '"urn:schemas-upnp-org:service:ContentDirectory:1#Browse"' }, dlnaBrowseBody(id, start), function (err, status, xml) {
+            if (err) { cb(err); return; }
+            if (status !== 200) { var e = upError('the server refused (' + (dlnaTag(xml, 'errorDescription') || 'HTTP ' + status) + ')', 502); e.why = 'missing'; cb(e); return; }
+            var got = dlnaDidl(dlnaTag(xml, 'Result')), returned = +dlnaTag(xml, 'NumberReturned') || 0, total = +dlnaTag(xml, 'TotalMatches') || 0;
+            raw = raw.concat(got);
+            if (returned > 0 && start + returned < total && raw.length < DLNA_ENTRIES) { page(start + returned); return; }
+            var out = [], seen = {};
+            function unique(n) { var base = n, i = 2, dot = n.lastIndexOf('.'); while (seen[n.toLowerCase()]) { n = dot > 0 ? base.slice(0, dot) + ' (' + (i++) + ')' + base.slice(dot) : base + ' (' + (i++) + ')'; } seen[n.toLowerCase()] = 1; return n; }
+            raw.slice(0, DLNA_ENTRIES).forEach(function (e) {
+                var name = dlnaName(e.title), p;
+                if (e.dir) { name = unique(name); p = rel ? rel + '/' + name : name; if (s.n < DLNA_ITEMS) { s.dirs[p] = e.id; s.n++; } out.push({ name: name, dir: true, size: 0 }); return; }
+                if (!VIDEO_EXT.test(name)) { name += '.' + dlnaExt(e); }
+                name = unique(name);
+                p = rel ? rel + '/' + name : name;
+                if (s.n < DLNA_ITEMS) { s.files[p] = e.url; s.n++; }
+                out.push({ name: name, dir: false, size: e.size });
+                e.subs.forEach(function (su, k) {   // (its subtitle files, as files beside it: Film.srt, Film.2.srt…)
+                    var sn = unique(name.replace(/\.[^.]+$/, '') + (k ? '.' + (k + 1) : '') + '.' + dlnaSubExt(su)), sp = rel ? rel + '/' + sn : sn;
+                    if (s.n < DLNA_ITEMS) { s.files[sp] = su; s.n++; }
+                    out.push({ name: sn, dir: false, size: 0 });
+                });
+            });
+            cb(null, out);
+        });
+    })(0);
+}
+// A path's folder id, its parents browsed for their names when not known yet: cb(err, id).
+function dlnaDirId(control, rel, cb) {
+    var s = dlnaServer(control);
+    if (Object.prototype.hasOwnProperty.call(s.dirs, rel)) { cb(null, s.dirs[rel]); return; }
+    var segs = rel.split('/'), parent = segs.slice(0, -1).join('/');
+    dlnaDirId(control, parent, function (err, pid) {
+        if (err) { cb(err); return; }
+        dlnaFolder(control, parent, pid, function (e2) {
+            if (e2) { cb(e2); return; }
+            if (Object.prototype.hasOwnProperty.call(s.dirs, rel)) { cb(null, s.dirs[rel]); return; }
+            var e = upError('no such folder there', 404); e.why = 'missing'; cb(e);
+        });
+    });
+}
+// A file's link (video or subtitle file), its folder browsed when not known yet.
+function dlnaFileUrl(control, rel, cb) {
+    var s = dlnaServer(control);
+    if (Object.prototype.hasOwnProperty.call(s.files, rel)) { cb(null, s.files[rel]); return; }
+    var parent = rel.split('/').slice(0, -1).join('/');
+    dlnaDirId(control, parent, function (err, pid) {
+        if (err) { cb(err); return; }
+        dlnaFolder(control, parent, pid, function (e2) {
+            if (e2) { cb(e2); return; }
+            if (Object.prototype.hasOwnProperty.call(s.files, rel)) { cb(null, s.files[rel]); return; }
+            var e = upError('no such file there', 404); e.why = 'missing'; cb(e);
+        });
+    });
+}
+// A server from the app: its control URL (?u=dlna:<control>), in the home network, or null.
+function dlnaOf(q) {
+    var u = String(q.u || '');
+    if (u.indexOf('dlna:') !== 0 || u.length > 1100) { return null; }
+    var control = u.slice(5).replace(/\/+$/, '').replace(/#$/, '');
+    return dlnaLanUrl(control) ? { control: control } : null;
+}
+function dlnaRel(rel) {
+    rel = String(rel == null ? '' : rel).replace(/^\/+|\/+$/g, '');
+    if (rel.length > 1024 || rel.indexOf('\0') !== -1 || (rel && rel.split('/').some(function (s) { return !s || s === '.' || s === '..'; }))) { return null; }
+    return rel;
+}
+// The media servers on the home network, asked for now: cb([{ id, name, control }]).
+function dlnaDiscover(cb) {
+    cb = once(cb);
+    var dgram = null, locations = [], sockets = [], done = false;
+    try { dgram = require('dgram'); } catch (e) { cb([]); return; }
+    var msgs = ['urn:schemas-upnp-org:device:MediaServer:1', 'urn:schemas-upnp-org:service:ContentDirectory:1'].map(function (st) {
+        return toBuffer('M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: "ssdp:discover"\r\nMX: 2\r\nST: ' + st + '\r\n\r\n');
+    });
+    var ifaces = [];
+    try {
+        var nets = require('os').networkInterfaces();
+        Object.keys(nets).forEach(function (n) { (nets[n] || []).forEach(function (a) { if (a && (a.family === 'IPv4' || a.family === 4) && !a.internal && a.address) { ifaces.push(a); } }); });
+    } catch (e) {}
+    function bcast(a) {   // an interface's broadcast address
+        var ip = a.address.split('.').map(Number), m = String(a.netmask || '255.255.255.0').split('.').map(Number);
+        return ip.length === 4 && m.length === 4 ? ip.map(function (x, i) { return (x | (~m[i] & 255)) & 255; }).join('.') : '';
+    }
+    function onMsg(msg, rinfo) {
+        var t = String(msg).split(/\r?\n/), h = {};
+        if (!/^HTTP\/1\.[01] 200|^NOTIFY /i.test(t[0] || '')) { return; }
+        t.slice(1).forEach(function (l) { var i = l.indexOf(':'); if (i > 0) { h[l.slice(0, i).trim().toLowerCase()] = l.slice(i + 1).trim(); } });
+        if (h.location && dlnaLanUrl(h.location) && locations.indexOf(h.location) === -1 && locations.length < DLNA_FOUND_MAX && rinfo && isLanName(rinfo.address)) { locations.push(h.location); }
+    }
+    function open(a) {
+        var sock;
+        try { sock = dgram.createSocket('udp4'); } catch (e) { return; }
+        sockets.push(sock);
+        sock.on('message', onMsg);
+        sock.on('error', function () { try { sock.close(); } catch (e) {} });
+        function ask() {
+            msgs.forEach(function (m) {
+                var to = ['239.255.255.250'].concat(a ? [bcast(a), '255.255.255.255'].filter(Boolean) : []);
+                to.forEach(function (addr) { try { sock.send(m, 0, m.length, 1900, addr, function () {}); } catch (e) {} });
+            });
+        }
+        function ready() { if (a) { try { sock.setBroadcast(true); } catch (e) {} } ask(); setTimeout(function () { if (!done) { ask(); } }, 800); }   // (UDP gets lost: asked twice)
+        try { if (a) { sock.bind(0, a.address, ready); } else { sock.bind(ready); } } catch (e) {}
+    }
+    open(null);
+    ifaces.forEach(open);
+    setTimeout(function () {
+        done = true;
+        sockets.forEach(function (s) { try { s.close(); } catch (e) {} });
+        var found = [], left = locations.length;
+        if (!left) { cb([]); return; }
+        locations.forEach(function (loc) {
+            dlnaHttp(loc, 'GET', null, null, function (err, status, xml) {
+                var d = !err && status === 200 ? dlnaDescription(xml, loc) : null;
+                if (d && !found.some(function (x) { return x.id === d.id; })) { found.push(d); }
+                if (--left === 0) { cb(found.sort(function (x, y) { return x.name.toLowerCase() < y.name.toLowerCase() ? -1 : 1; })); }
+            });
+        });
+    }, DLNA_SEARCH_MS);
+}
+function dlnaWalk(control, st, cb) {
+    cb = once(cb);
+    var files = [], queue = [{ rel: '', depth: 0 }], active = 0, dirs = 0, truncated = false, started = Date.now();
+    function end() { if (!active && !queue.length) { cb(null, { files: files, dirs: dirs, truncated: truncated }); } }
+    function pump() {
+        while (!st.cancelled && active < 2 && queue.length) {
+            if (dirs >= DLNA_WALK_DIRS || files.length >= DLNA_WALK_FILES || Date.now() - started > DLNA_WALK_MS) { truncated = true; queue = []; break; }
+            var d = queue.shift();
+            dirs++; active++;
+            (function (d) {
+                dlnaDirId(control, d.rel, function (err, id) {
+                    if (err) { active--; if (!d.rel) { st.cancelled = true; cb(err); return; } truncated = true; pump(); return; }
+                    dlnaFolder(control, d.rel, id, function (e2, entries) {
+                        active--;
+                        if (st.cancelled) { return; }
+                        if (e2) { if (!d.rel) { st.cancelled = true; cb(e2); return; } truncated = true; }
+                        else {
+                            entries.forEach(function (e) {
+                                var p = d.rel ? d.rel + '/' + e.name : e.name;
+                                if (e.dir) { if (d.depth < DLNA_WALK_DEPTH) { queue.push({ rel: p, depth: d.depth + 1 }); } else { truncated = true; } }
+                                else if ((VIDEO_EXT.test(e.name) || SUB_EXT.test(e.name)) && files.length < DLNA_WALK_FILES) { files.push({ p: p, size: e.size || 0 }); }
+                            });
+                        }
+                        pump();
+                    });
+                });
+            })(d);
+        }
+        end();
+    }
+    pump();
+}
+// A server's file for the player: sent on to its own link (the same server's, in the home network).
+function dlnaFileRedirect(f, rel, res) {
+    dlnaFileUrl(f.control, rel, function (err, url) {
+        if (err) { send(res, err.status || 502, 'text/plain', 'failed: ' + (err.message || 'unknown')); return; }
+        var to = dlnaLanUrl(url), from = dlnaLanUrl(f.control);
+        if (!to || !from || to.hostname !== from.hostname) { send(res, 403, 'text/plain', 'a link off the server'); return; }
+        res.writeHead(302, { Location: url, 'Cache-Control': 'no-store' });
+        res.end();
+    });
+}
+function dlnaControl(req, res, path, query, leaving) {
+    if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
+    function answer(err, r) {
+        if (!err) { send(res, 200, 'application/json', JSON.stringify(r)); return; }
+        if (err.status === 400) { send(res, 400, 'text/plain', err.message); return; }
+        send(res, 200, 'application/json', JSON.stringify({ why: err.why || (/no answer|ECONN|EHOST|ENET/.test(String(err.message || err.code)) ? 'unreachable' : 'other'), message: String(err.message || err.code || 'unknown').slice(0, 300) }));
+    }
+    if (path === '/dlna/discover') { dlnaDiscover(function (servers) { answer(null, { servers: servers }); }); return; }
+    var q = davQ(query), f = dlnaOf(q), rel = dlnaRel(q.p);
+    if (!f || rel === null) { send(res, 400, 'text/plain', 'not a media server in the home network'); return; }
+    if (path === '/dlna/list') { dlnaDirId(f.control, rel, function (err, id) { if (err) { answer(err); return; } dlnaFolder(f.control, rel, id, function (e2, entries) { answer(e2, e2 ? null : { entries: entries }); }); }); return; }
+    if (path === '/dlna/walk') { var st = { cancelled: false }; leaving.push(function () { st.cancelled = true; }); dlnaWalk(f.control, st, answer); return; }
+    if (path === '/dlna/open') { send(res, 200, 'application/json', JSON.stringify({ ticket: netTicket('dlna', f) })); return; }
+    if (path === '/dlna/sub' || path === '/dlna/mi') {
+        var sub = path === '/dlna/sub';
+        if (!(sub ? SUB_EXT : VIDEO_EXT).test(rel)) { send(res, 400, 'text/plain', 'not a ' + (sub ? 'subtitle file' : 'video') + ' on the server'); return; }
+        dlnaFileUrl(f.control, rel, function (err, url) {
+            if (err || !dlnaLanUrl(url)) { send(res, err && err.status === 404 ? 404 : 502, 'text/plain', 'failed: ' + ((err && err.message) || 'a link off the server')); return; }
+            if (sub) {
+                leaving.push(liveGet(url, { ua: 'StremioK' }, FS_SUB_MAX, function (e2, buf) {
+                    if (e2) { send(res, 502, 'text/plain', 'failed: ' + (e2.message || 'unknown')); return; }
+                    send(res, 200, 'text/plain; charset=utf-8', decodeText(buf));
+                }));
+                return;
+            }
+            var stops = [], stop = mediaInfo(miHttpReader(url, { ua: 'StremioK' }, true, stops), function (e3, r) {
+                stops.forEach(function (x) { try { x(); } catch (e) {} });
+                if (e3) { send(res, e3.status && e3.status < 600 ? e3.status : 502, 'text/plain', 'failed: ' + (e3.message || 'unknown')); return; }
+                send(res, 200, 'application/json', JSON.stringify(r));
+            });
+            if (stop) { leaving.push(stop); }
+        });
+        return;
+    }
+    send(res, 404, 'text/plain', 'not found');
+}
+
+// ---- Network files for the player: /net/<ticket>/f?p=<path> ----
+// The TV's player can't send a sign-in a header carries (or a Digest one at all), nor speak SMB:
+// such a folder's file plays through the service. StremioK asks for a ticket (/dav/open, with the
+// folder and its sign-in in headers as usual) and gives the player /net/<ticket>/f?p=…; the
+// ticket, random and kept only in memory, stands for that folder and its sign-in, NET_TICKET_IDLE_MS
+// unused at most, NET_TICKETS_MAX of them (the oldest dropped). Nothing else is reachable with
+// it: a video file's path under that folder.
+var NET_TICKETS_MAX = 16, NET_TICKET_IDLE_MS = 6 * 3600000, _netTickets = {};
+function netTicket(kind, f) {
+    var now = Date.now(), ids = Object.keys(_netTickets);
+    ids.forEach(function (id) { if (now - _netTickets[id].last > NET_TICKET_IDLE_MS) { delete _netTickets[id]; } });
+    ids = Object.keys(_netTickets);
+    for (var i = 0; i < ids.length; i++) { var t = _netTickets[ids[i]]; if (t.kind === kind && t.key === netKey(kind, f)) { t.f = f; t.last = now; return ids[i].slice(2); } }   // (the same folder and sign-in: its ticket)
+    if (ids.length >= NET_TICKETS_MAX) { ids.sort(function (a, b) { return _netTickets[a].last - _netTickets[b].last; }); delete _netTickets[ids[0]]; }
+    var id = crypto.randomBytes(16).toString('hex');
+    _netTickets['t:' + id] = { kind: kind, f: f, key: netKey(kind, f), last: now };   // (prefixed, as _dlna's)
+    return id;
+}
+function netKey(kind, f) { return kind + '\n' + crypto.createHash('sha256').update(JSON.stringify([f.base || f.host || f.control || '', f.share || '', f.auth || f.user || '', f.pass || '', f.cert || ''])).digest('hex'); }
+function netControl(req, res, path, query) {
+    var m = /^\/net\/([0-9a-f]{32})\/f$/.exec(path), t = m && Object.prototype.hasOwnProperty.call(_netTickets, 't:' + m[1]) ? _netTickets['t:' + m[1]] : null;
+    if (!t || Date.now() - t.last > NET_TICKET_IDLE_MS) { send(res, 404, 'text/plain', 'not found'); return; }
+    t.last = Date.now();
+    var q = davQ(query), rel = String(q.p || '');
+    if (!VIDEO_EXT.test(rel)) { send(res, 400, 'text/plain', 'not a video in the folder'); return; }
+    if (t.kind === 'dav') {
+        var url = davUrl(t.f, rel);
+        if (!url) { send(res, 400, 'text/plain', 'not a path in the folder'); return; }
+        davFileRelay(t.f, url, req, res);
+        return;
+    }
+    if (t.kind === 'smb') { smbFileRelay(t.f, rel, req, res); return; }
+    if (t.kind === 'dlna') { var dr = dlnaRel(rel); if (dr === null) { send(res, 400, 'text/plain', 'not a path on the server'); return; } dlnaFileRedirect(t.f, dr, res); return; }
+    send(res, 404, 'text/plain', 'not found');
+}
+// A file in a WebDAV folder, relayed to the player: its byte range asked for with the folder's
+// sign-in (Basic or Digest), redirects on the same server only, its certificate as trusted.
+var DAV_FILE_MS = 20000;
+function davFileRelay(f, url, req, res) {
+    var range = /^bytes=\d*-\d*$/.test(String(req.headers.range || '')) ? String(req.headers.range) : '';
+    var r = null, gone = false, digested = false;
+    function stop() { gone = true; clearTimeout(timer); try { if (r) { r.abort(); } } catch (e) {} }
+    res.on('close', stop);
+    function fail(code, why) { if (gone) { return; } if (!res.headersSent) { send(res, code, 'text/plain', 'failed: ' + why); } else { try { res.end(); } catch (e) {} } stop(); }
+    var timer = setTimeout(function () { if (!res.headersSent) { fail(504, 'no answer in ' + (DAV_FILE_MS / 1000) + ' s'); } }, DAV_FILE_MS);
+    function go(u, hops) {
+        var pu;
+        try { pu = urllib.parse(u); } catch (e) { fail(400, 'bad address'); return; }
+        if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !dlHostOk(pu.hostname)) { fail(400, 'an address it can\'t reach'); return; }
+        var h = { 'User-Agent': 'StremioK', 'Accept': '*/*' };
+        if (range) { h.Range = range; }
+        if (f.auth) { h.Authorization = davAuthFor(f, 'GET', pu.path); }
+        var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, method: 'GET', headers: h };
+        if (pu.protocol === 'https:') {
+            if (f.cert) { opts.ca = [f.cert]; opts.checkServerIdentity = function () { return undefined; }; opts.agent = false; }
+            else if (caList().length) { opts.ca = caList(); }
+        }
+        try {
+            r = (pu.protocol === 'https:' ? https : http).request(opts, function (resp) {
+                if (gone) { resp.resume(); return; }
+                var sc = resp.statusCode;
+                if (sc >= 300 && sc < 400 && resp.headers.location && hops < 4) {
+                    resp.resume();
+                    var np = null;
+                    try { np = urllib.parse(urllib.resolve(u, String(resp.headers.location))); } catch (e) { np = null; }
+                    if (!np || !davUnder(f, np)) { fail(502, 'it sent StremioK to another address: not followed'); return; }
+                    go(urllib.format(np), hops + 1);
+                    return;
+                }
+                if (sc === 401 && !digested && davDigestLearn(f, resp.headers['www-authenticate'])) { resp.resume(); digested = true; go(u, hops); return; }
+                if (sc !== 200 && sc !== 206) { resp.resume(); fail(sc >= 400 && sc < 600 ? sc : 502, 'HTTP ' + sc); return; }
+                clearTimeout(timer);
+                var out = { 'Content-Type': String(resp.headers['content-type'] || 'application/octet-stream'), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Accept-Ranges': 'bytes' };
+                if (resp.headers['content-length']) { out['Content-Length'] = resp.headers['content-length']; }
+                if (resp.headers['content-range']) { out['Content-Range'] = resp.headers['content-range']; }
+                res.writeHead(sc, out);
+                resp.on('data', function (c) {
+                    if (gone) { return; }
+                    if (!res.write(c)) { resp.pause(); res.once('drain', function () { if (!gone) { resp.resume(); } }); }
+                });
+                resp.on('end', function () { if (!gone) { try { res.end(); } catch (e) {} } });
+                resp.on('error', function () { fail(502, 'the folder stopped sending'); });
+            });
+            guardSelf(r, function () { fail(400, 'an address it can\'t reach'); });
+            r.on('error', function (e) { fail(502, (e && e.message) || 'network error'); });
+            r.end();
+        } catch (e) { fail(400, 'bad address'); }
+    }
+    go(url, 0);
 }
 function davControl(req, res, path, query, leaving) {
     if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
@@ -3276,6 +4861,21 @@ function davControl(req, res, path, query, leaving) {
         davProblem(f, err, function (p) { send(res, 200, 'application/json', JSON.stringify(p)); });
     }
     if (path === '/dav/list') { leaving.push(davList(f, q.p, answer)); return; }
+    if (path === '/dav/open') {   // a ticket the player's link carries (see /net/)
+        send(res, 200, 'application/json', JSON.stringify({ ticket: netTicket('dav', f) }));
+        return;
+    }
+    if (path === '/dav/mi') {   // what's in a file there, from its header (see mediaInfo)
+        var mu = davUrl(f, q.p), mstops = [];
+        if (!mu || !VIDEO_EXT.test(String(q.p || ''))) { send(res, 400, 'text/plain', 'not a video in the folder'); return; }
+        var stopDm = mediaInfo(miDavReader(f, mu, mstops), function (err, r) {
+            mstops.forEach(function (x) { try { x(); } catch (e) {} });
+            if (err) { send(res, err.status === 400 ? 400 : 502, 'text/plain', 'failed: ' + (err.message || 'unknown')); return; }
+            send(res, 200, 'application/json', JSON.stringify(r));
+        });
+        if (stopDm) { leaving.push(stopDm); }
+        return;
+    }
     if (path === '/dav/sub') {
         leaving.push(davSub(f, q.p, function (err, text) {
             if (err) { send(res, err.status === 400 ? 400 : 502, 'text/plain', 'failed: ' + (err.message || 'unknown')); return; }
@@ -4465,9 +6065,9 @@ function epgControl(req, res, path, query) {
 var ENTRY_PORT = PORT + 10, ENTRY_MS = 5 * 60 * 1000, ENTRY_IDLE_MS = 30000, ENTRY_MAX = 8192;
 // A configuration file: pasted on the import's page (CONFIG_MAX, sent %-encoded: 3 times that), or
 // given by the TV to the export's page (GIVE_MAX, POSTed to /entry/give), shown to copy or download.
-var CONFIG_MAX = 262144, GIVE_MAX = 262144;
+var CONFIG_MAX = 1572864, GIVE_MAX = 1572864;   // (1.5 MB: a file with your history too; the page reads it as JSON, 2 MB at most)
 var ENTRY_OPEN_MAX = 2, ENTRY_OPENS = 12, ENTRY_CONNECTIONS = 8, ENTRY_VISIT_MS = 20000, ENTRY_QUIET_MS = 10000;
-var ENTRY_TITLES = { link: 'Play a link on StremioK', addon: 'Add an addon to StremioK', playlist: 'Add an IPTV playlist to StremioK', config: 'Import a configuration file into StremioK', give: 'Your StremioK configuration',
+var ENTRY_TITLES = { link: 'Play a link on StremioK', addon: 'Add an addon to StremioK', playlist: 'Add an IPTV playlist to StremioK', config: 'Import a configuration file into StremioK', give: 'Your StremioK configuration', givelog: 'Your StremioK logs',
     search: 'Search on StremioK', youtube: 'Add a YouTube catalog to StremioK', aiom: 'Your AIOManager address for StremioK', aiomkey: 'Your AIOManager API key for StremioK',
     server: 'Your streaming server’s address for StremioK', mac: 'Your Stalker portal’s MAC address for StremioK', webdav: 'Your network folder’s address for StremioK',
     jellyfin: 'Your media server’s address for StremioK', plugins: 'Add a Nuvio plugin repository to StremioK' };
@@ -4516,14 +6116,14 @@ function entryControl(req, res, path, query, body) {
         var now = Date.now();
         _entryOpened = _entryOpened.filter(function (x) { return now - x < 60000; });
         if (_entryOpened.length >= ENTRY_OPENS) { send(res, 429, 'text/plain', 'too many, try again in a minute'); return; }
-        var wm = /(?:^|&)what=([a-z]{1,12})(?:&|$)/.exec(query || ''), what = path === '/entry/give' ? 'give' : wm && ENTRY_TITLES[wm[1]] && wm[1] !== 'give' ? wm[1] : 'link';
+        var wm = /(?:^|&)what=([a-z]{1,12})(?:&|$)/.exec(query || ''), what = path === '/entry/give' ? (/(?:^|&)kind=logs(?:&|$)/.test(query || '') ? 'givelog' : 'give') : wm && ENTRY_TITLES[wm[1]] && !/^give/.test(wm[1]) ? wm[1] : 'link';   // (an export: a configuration, or the logs)
         var ip = lanAddress();
         if (!ip) { send(res, 503, 'text/plain', 'no home network address'); return; }
         _entryOpened.push(now);
         var open = Object.keys(_entries).sort(function (a, b) { return _entries[a].at - _entries[b].at; });
         while (open.length >= ENTRY_OPEN_MAX) { entryDrop(open.shift(), true); }   // (the oldest goes)
         var t = crypto.randomBytes(16).toString('hex');
-        _entries[t] = { what: what, text: null, sent: false, at: now, timer: setTimeout(function () { entryDrop(t); }, ENTRY_MS), idle: null, give: what === 'give' ? String(body) : null, seen: false };
+        _entries[t] = { what: what, text: null, sent: false, at: now, timer: setTimeout(function () { entryDrop(t); }, ENTRY_MS), idle: null, give: /^give/.test(what) ? String(body) : null, seen: false };
         entryIdle(t);
         var opened = function () { send(res, 200, 'application/json', JSON.stringify({ url: 'http://' + ip + ':' + ENTRY_PORT + '/e/' + t, token: t, expires: ENTRY_MS })); };
         if (_entryServer) { opened(); return; }
@@ -4565,17 +6165,20 @@ function entryHtml(title, body) {
 function entryPage(req, res) {
     try {
         res.setHeader('Cache-Control', 'no-store');
-        var m = /^\/e\/([0-9a-f]{32})(\/stremiok\.txt)?$/.exec(String(req.url || '')), e = m && _entries[m[1]];
+        var m = /^\/e\/([0-9a-f]{32})(\/stremiok(?:-logs)?\.txt)?$/.exec(String(req.url || '')), e = m && _entries[m[1]];
         if (!e || e.sent) { send(res, 404, 'text/plain', 'Not here (it was used, or the TV closed it)'); return; }
         var title = ENTRY_TITLES[e.what];
         if (e.give !== null) {   // (an export: the file to copy, or download)
             if (req.method !== 'GET') { send(res, 405, 'text/plain', 'GET only'); return; }
             e.seen = true;
-            if (m[2]) { res.setHeader('Content-Disposition', 'attachment; filename="stremiok.txt"'); send(res, 200, 'text/plain; charset=utf-8', e.give); return; }
+            var logs = e.what === 'givelog', fname = logs ? 'stremiok-logs.txt' : 'stremiok.txt';
+            if (m[2]) { if (m[2] !== '/' + fname) { send(res, 404, 'text/plain', 'Not here'); return; } res.setHeader('Content-Disposition', 'attachment; filename="' + fname + '"'); send(res, 200, 'text/plain; charset=utf-8', e.give); return; }
             var esc = e.give.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            send(res, 200, 'text/html; charset=utf-8', entryHtml(title, '<p>It holds your addon links, playlist logins, API keys and MAC addresses: keep it somewhere private. To restore it: Settings › Content › Import configuration file, ▣ From your phone, then choose this file there (or paste it).</p>' +
+            send(res, 200, 'text/html; charset=utf-8', entryHtml(title, (logs ? '<p>StremioK\'s recent problems and how long it took to start, with its version and the TV\'s. Keys and passwords are masked; still, look it over before sharing it publicly.</p>' +
+                '<p>To report a problem: open an issue at <a href="https://github.com/Kepler75/StremioK/issues">github.com/Kepler75/StremioK/issues</a>, say what you did, what you expected and what happened instead, and attach this file (Download).</p>'
+                : '<p>It holds your addon links, playlist logins, API keys and MAC addresses: keep it somewhere private. To restore it: Settings › Content › Import configuration file, ▣ From your phone, then choose this file there (or paste it).</p>') +
                 '<textarea id="f" readonly rows="12">' + esc + '</textarea><button type="button" onclick="var f=document.getElementById(\'f\');f.focus();f.select();try{document.execCommand(\'copy\');this.textContent=\'Copied\';}catch(x){}">Copy</button>' +
-                '<a href="/e/' + m[1] + '/stremiok.txt" download="stremiok.txt"><button type="button">Download</button></a><p>It came over your home network <b>unencrypted</b>. This page closes when the TV stops showing its code.</p>'));
+                '<a href="/e/' + m[1] + '/' + fname + '" download="' + fname + '"><button type="button">Download</button></a><p>It came over your home network <b>unencrypted</b>. This page closes when the TV stops showing its code.</p>'));
             return;
         }
         if (m[2]) { send(res, 404, 'text/plain', 'Not here'); return; }

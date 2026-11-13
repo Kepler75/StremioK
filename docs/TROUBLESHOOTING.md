@@ -35,6 +35,20 @@ What to do when something doesn't work. For how things are meant to work, see th
 - **Diagnostics** also says how StremioK was installed and whether its YouTube service is
   running.
 
+## Reporting a problem
+
+1. **Update** to the latest version first: it may be fixed already.
+2. **Make it happen again**, then Settings › Diagnostics › Logs › *Send to your phone*, and
+   download `stremiok-logs.txt` on the phone (or *Save to a USB drive*). It has StremioK's version, how it's installed, the
+   TV's model and Tizen version, *Startup* and the recent problems, with keys and passwords
+   masked: look it over before posting it.
+3. **Open an issue** on [GitHub](https://github.com/Kepler75/StremioK/issues): what you did, what
+   you expected, what happened instead (an error's exact words, a photo of the screen), and the
+   file attached.
+
+A problem with one addon's, plugin's, playlist's or server's content goes to whoever runs it; a
+security problem, privately, as the [security policy](SECURITY.md) says.
+
 ## Installing
 
 | What you see | Why, and what to do |
@@ -204,6 +218,22 @@ sources. Try again later.
 | *No address of … answered* (Plex) | The server is off, or neither on your network nor reachable from the internet (its *Remote Access*). |
 | No pictures above the marker | Turn on the library's *trickplay* (Jellyfin), thumbnail extraction (Emby) or *Generate video preview thumbnails* (Plex). |
 | Played on the server, not ticked | Marks are read every 30 minutes; one unwatched here since stays so. |
+
+## Nuvio plugins
+
+See [Nuvio plugins](PLUGINS.md); only a plugin's author can fix it.
+
+| What you see | Why, and what to do |
+|--------------|---------------------|
+| No *Nuvio plugins* in Settings › Content | Plugins need a 2017 or newer TV and the sideloaded app (not TizenBrew). |
+| *Couldn’t add it: not valid JSON*, *HTTP 404*, or *not a plugin repository* | Not a repository's `manifest.json` (directory sites hide it behind *Copy*), or one that's gone. |
+| A title shows no plugin sources | *Nuvio plugins: On*, the plugin ticked (✓, not ○), and a TMDB key (Settings › Content › Integrations): most plugins find nothing without it (Logs: *No TMDB number*). |
+| Still none | *No sources found* names each plugin that failed and why (Logs too). Its site may have changed or block your region. |
+| A plugin is *too slow* | Plugins get the time addons do (*Wait for addons*); slower ones are left out. Keep only a few on, above all on 2017–2020 TVs. |
+| A plugin's source doesn't play | Often HEVC, which 2017–2020 TVs can't play. Or hold OK › *Play through StremioK's service*. |
+| A request refused: *a link into your home network* | Settings › Content › Addons › *Local-network links from internet addons* is Blocked. |
+
+Plugins with settings run on their defaults. *Off in its repository*: often broken.
 
 ## Other apps
 

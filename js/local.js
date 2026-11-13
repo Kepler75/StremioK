@@ -16,7 +16,12 @@ var LocalMedia = (function () {
     'use strict';
 
     var VIDEO_RE = /\.(mkv|mp4|m4v|avi|ts|m2ts|mts|mov|webm|wmv|mpe?g|flv|3gp|ogv|vob)$/i;
-    var SUB_RE = /\.(srt|vtt|ass|ssa)$/i;
+    var SUB_RE = /\.(srt|vtt|ass|ssa|smi|sub|txt)$/i;
+    // .sub and .txt: subtitles only when named like a video beside them (a readme.txt isn't one; a
+    // .sub may be a picture one, VobSub): never matched on their own.
+    var WEAK_SUB_RE = /\.(sub|txt)$/i;
+    // A folder of a video's subtitles beside it: Subs/, Subtitles/ (Subs/<video's name>/ too).
+    var SUBS_DIR_RE = /^(subs|subtitles)$/i;
     // Hidden: names starting with "." (a Mac leaves ._… copies, .DS_Store, .Spotlight-V100,
     // .fseventsd, .Trashes on a drive) and Windows' recycle bin and system folder.
     var HIDDEN_RE = /^(\.|\$RECYCLE\.BIN$|System Volume Information$)/i;
@@ -46,6 +51,16 @@ var LocalMedia = (function () {
     function nameOf(p) { return ('' + p).split('/').pop(); }
     function dirOf(p) { var i = ('' + p).lastIndexOf('/'); return i === -1 ? '' : p.slice(0, i); }
     function stem(n) { return ('' + n).replace(/\.[^.]+$/, ''); }
+    // A name's episode, as one key ("s1e2" for S01E02 or 1x02), or '' (none).
+    var EPISODE_RE = /s(\d{1,2})\s?e(\d{1,3})|\b(\d{1,2})x(\d{2,3})\b/i;
+    function episodeKey(n) { var m = EPISODE_RE.exec(n || ''); return m ? 's' + (+(m[1] || m[3])) + 'e' + (+(m[2] || m[4])) : ''; }
+    // A subtitle file's video folder: its own, or the one its Subs folder is in.
+    function subOwnerDir(rel) {
+        var d = dirOf(rel), up = dirOf(d);
+        if (SUBS_DIR_RE.test(nameOf(d))) { return up; }
+        if (SUBS_DIR_RE.test(nameOf(up))) { return dirOf(up); }
+        return d;
+    }
     function humanSize(n) {
         if (!n) { return ''; }
         return n >= 1073741824 ? (n / 1073741824).toFixed(1) + ' GB' : n >= 1048576 ? Math.round(n / 1048576) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
@@ -78,6 +93,7 @@ var LocalMedia = (function () {
         }, function () { _tokenP = null; return ''; });
         return _tokenP;
     }
+    function serviceUrl(path) { return service() + path; }   // (a link with its own ticket: no token)
     function svcUrl(path, token) { return service() + path + (path.indexOf('?') === -1 ? '?' : '&') + 'token=' + (token || ''); }
     // Where the token can't be read (Tizen 6: the service keeps it in a folder of its own), the
     // service takes StremioK's X-StremioK header instead (a web page can't send one).
@@ -544,17 +560,17 @@ var LocalMedia = (function () {
     function standaloneSubs(x) {
         var vids = {};
         (x.files || []).forEach(function (f) { var dd = dirOf(f.p); (vids[dd] = vids[dd] || []).push(stem(nameOf(f.p)).toLowerCase()); });
-        return (x.subs || []).filter(function (s) { return !isHidden(nameOf(s)) && !s.split('/').some(isHidden) && !isVideosSub(vids[dirOf(s)], s); });
+        return (x.subs || []).filter(function (s) { return !WEAK_SUB_RE.test(s) && !isHidden(nameOf(s)) && !s.split('/').some(isHidden) && !isVideosSub(vids[subOwnerDir(s)], s); });
     }
     function isVideosSub(stems, rel) {
         if (!stems || !stems.length) { return false; }
-        if (stems.length === 1) { return true; }   // (the folder's only video: its subtitles, whatever their names)
-        var st = stem(nameOf(rel)).toLowerCase();
-        return stems.some(function (v) { return st.indexOf(v) === 0; });
+        if (stems.length === 1 || subOwnerDir(rel) !== dirOf(rel)) { return true; }   // (the folder's only video, or in its Subs folder: its subtitles, whatever their names)
+        var st = stem(nameOf(rel)).toLowerCase(), ep = episodeKey(st);
+        return stems.some(function (v) { return st.indexOf(v) === 0 || (ep && episodeKey(v) === ep); });
     }
     // In a folder's listing (the Local tab): a subtitle file of its own, to match by hand.
     function isStandaloneSub(entries, x) {
-        if (!x || x.dir || !isSub(x.name)) { return false; }
+        if (!x || x.dir || !isSub(x.name) || WEAK_SUB_RE.test(x.name)) { return false; }
         var stems = (entries || []).filter(function (y) { return !y.dir && isVideo(y.name); }).map(function (y) { return stem(y.name).toLowerCase(); });
         return !isVideosSub(stems, x.rel || x.name);
     }
@@ -574,10 +590,11 @@ var LocalMedia = (function () {
                 var d = queue.shift();
                 seen++;
                 return list(drive, d.rel).then(function (r) {
+                    var vids = r.entries.filter(function (x) { return !x.dir && isVideo(x.name); }).map(function (x) { return stem(x.name).toLowerCase(); });
                     r.entries.forEach(function (x) {
                         if (isHidden(x.name)) { return; }
                         if (x.dir) { if (d.depth < CLIENT_WALK_DEPTH) { queue.push({ rel: x.rel, depth: d.depth + 1 }); } }
-                        else if (isVideo(x.name) || isSub(x.name)) { out.push({ p: x.rel, size: x.size }); }
+                        else if (isVideo(x.name) || (isSub(x.name) && (!WEAK_SUB_RE.test(x.name) || vids.some(function (v) { return x.name.toLowerCase().indexOf(v) === 0; })))) { out.push({ p: x.rel, size: x.size }); }   // (a .sub / .txt: named like a video beside it)
                     });
                 }, function () {}).then(next);
             }
@@ -739,17 +756,30 @@ var LocalMedia = (function () {
         });
         return { lang: lang, forced: forced };
     }
-    // A video's subtitle files: in its folder, named like it (Film.srt, Film.en.srt,
-    // Film.forced.eng.srt), or any there when it's the folder's only video.
+    // A video's subtitle files: in its folder or a Subs / Subtitles folder beside it (or its
+    // Subs/<video's name>/), named like it (Film.srt, Film.en.srt, Film.forced.eng.srt), with its
+    // episode number (Show 1x02.srt for Show.S01E02.mkv), or any there when it's the folder's only
+    // video (or in its own Subs/<name>/ folder). .sub and .txt only when named like it.
     function sidecars(drive, rel, subRels, alone) {
-        var dir = dirOf(rel), base = stem(nameOf(rel)).toLowerCase();
+        var dir = dirOf(rel), base = stem(nameOf(rel)).toLowerCase(), ep = episodeKey(base);
+        function where(s) {
+            var d = dirOf(s);
+            if (d === dir) { return 'here'; }
+            if (dirOf(d) === dir && SUBS_DIR_RE.test(nameOf(d))) { return 'subs'; }
+            if (dirOf(dirOf(d)) === dir && SUBS_DIR_RE.test(nameOf(dirOf(d))) && nameOf(d).toLowerCase() === base) { return 'own'; }
+            return '';
+        }
         return subRels.filter(function (s) {
-            if (dirOf(s) !== dir || isHidden(nameOf(s))) { return false; }
-            return alone || stem(nameOf(s)).toLowerCase().indexOf(base) === 0;
+            var w = where(s), st = stem(nameOf(s)).toLowerCase();
+            if (!w || isHidden(nameOf(s))) { return false; }
+            if (st.indexOf(base) === 0) { return true; }
+            if (WEAK_SUB_RE.test(s)) { return false; }
+            return alone || w === 'own' || (!!ep && episodeKey(st) === ep);
         }).map(function (s) {
-            var st = stem(nameOf(s)), rest = st.toLowerCase().indexOf(base) === 0 ? st.slice(base.length) : st;
-            var l = langFrom(rest);
-            return subTrack(drive, s, l.lang, l.forced ? U.t('Next to the file (forced)') : U.t('Next to the file'));
+            var st = stem(nameOf(s)), low = st.toLowerCase(), m = EPISODE_RE.exec(st);
+            var rest = low.indexOf(base) === 0 ? st.slice(base.length) : (ep && m && episodeKey(st) === ep) ? st.slice(m.index + m[0].length) : st;
+            var l = langFrom(rest), inSubs = where(s) !== 'here';
+            return subTrack(drive, s, l.lang, inSubs ? U.t('In its Subs folder') : l.forced ? U.t('Next to the file (forced)') : U.t('Next to the file'));
         });
     }
     function subTrack(drive, s, lang, label) {
@@ -801,13 +831,16 @@ var LocalMedia = (function () {
     var BIG = 2147483647;
     // A network folder's file: its link with the folder's sign-in (NetFolders.playUrl).
     function openUrl(url, size) {
-        if (typeof NetFolders !== 'undefined' && /^https?:/i.test(url || '')) { var nu = NetFolders.playUrl(url); if (nu) { return nu; } }
+        if (typeof NetFolders !== 'undefined' && /^(https?|smb|dlna):/i.test(url || '')) { var nu = NetFolders.playUrl(url); if (nu) { return nu; } }
         if (!/^file:\/\/\/opt\/media\//i.test(url || '')) { return url; }
         var abs = realPath(url);
         if (!size) { var hit = _recent.get(url); size = hit && hit._localFile ? hit._localFile.size : 0; }
         if (!(size > BIG) || !_token || !service()) { return url; }
         return svcUrl('/fsfile?path=' + encodeURIComponent(abs), _token);
     }
+    // What must be asked for before a file plays (a network folder's ticket: NetFolders.prepare),
+    // or null (nothing: it plays at once).
+    function prepare(url) { return typeof NetFolders !== 'undefined' && NetFolders.prepare && /^(https?|smb|dlna):/i.test(url || '') ? NetFolders.prepare(url) : null; }
     function isFolderUrl(url) { return typeof NetFolders !== 'undefined' && !!NetFolders.folderOfUrl(url); }
     function isLocalStream(s) { return !!(s && s._local === MARK && typeof s.url === 'string' && (/^file:\/\/\/opt\/media\//i.test(s.url) || isFolderUrl(s.url))); }
     // The files on your drives for a movie (tt…) or an episode (tt…:1:2), as sources.
@@ -874,6 +907,17 @@ var LocalMedia = (function () {
         });
     }
 
+    // What's in a file on a drive or in a network folder, from its header (the service's /fsmi,
+    // /dav/mi: see its mediaInfo).
+    function fileInfo(localFile, cancel) {
+        if (!localFile || !localFile.abs) { return Promise.reject(new Error('not a file')); }
+        if (localFile.dav) {
+            var nf = typeof NetFolders !== 'undefined' ? NetFolders.get(localFile.dav) : null;
+            return nf ? NetFolders.mediaInfo(nf, localFile.rel, cancel) : Promise.reject(new Error('no such folder'));
+        }
+        return askService('/fsmi?path=' + encodeURIComponent(localFile.abs), 25000, 262144, cancel);
+    }
+
     // ---------- playing ----------
     // From the Local tab: a matched file through its title's page (next episode, sources,
     // addon subtitles…), straight into playback; any other as a plain file.
@@ -881,7 +925,8 @@ var LocalMedia = (function () {
         var file = { p: entry.rel, size: entry.size || 0 };
         var dir = dirOf(entry.rel), subNames = (siblings || []).filter(function (e) { return !e.dir && isSub(e.name); }).map(function (e) { return e.rel; });
         var alone = (siblings || []).filter(function (e) { return !e.dir && isVideo(e.name); }).length <= 1;
-        var subs = sidecars(drive, entry.rel, subNames.length ? subNames : ((_index[drive.root] || {}).subs || []).filter(function (s) { return dirOf(s) === dir; }), alone);
+        var known = ((_index[drive.root] || {}).subs || []).filter(function (s) { return subOwnerDir(s) === dir && (!subNames.length || dirOf(s) !== dir); });   // (the folder's own from its listing; its Subs folder's from the drive's index)
+        var subs = sidecars(drive, entry.rel, subNames.concat(known), alone);
         var st = makeStream(drive, file, subs, entry.uri);
         var m = matchOf(entry.rel, entry.size);
         if (m) {
@@ -949,7 +994,7 @@ var LocalMedia = (function () {
         available: available, ready: ready, watch: watch, present: present, ensure: ensure, forgetDrive: forgetDrive, isNet: isNet, isFolderUrl: isFolderUrl, isRead: isRead, onChange: onChange, drives: drives, knownDrives: knownDrives, hasDrive: hasDrive, refreshDrives: refreshDrives,
         serviceToken: function () { return readToken(); }, askService: askService, addDownloaded: addDownloaded, openUrl: openUrl, list: list, isVideo: isVideo, isSub: isSub, isHidden: isHidden, showHidden: showHidden, setShowHidden: setShowHidden, humanSize: humanSize,
         parseName: parseName, choose: choose, matchOf: matchOf, lookup: lookup, matchFolder: matchFolder, parsedOf: parsedOf, setMatch: setMatch, forgetMatches: forgetMatches, searchTitles: searchTitles,
-        scan: scan, stopScan: stopScan, continueMatching: continueMatching, status: status, clearIndex: clearIndex, streamsFor: streamsFor, subsForTitle: subsForTitle, isStandaloneSub: isStandaloneSub, streamForUrl: streamForUrl, isLocalStream: isLocalStream, subtitleExtra: subtitleExtra,
+        scan: scan, stopScan: stopScan, continueMatching: continueMatching, status: status, clearIndex: clearIndex, streamsFor: streamsFor, subsForTitle: subsForTitle, isStandaloneSub: isStandaloneSub, __sidecars: sidecars, __standaloneSubs: standaloneSubs, streamForUrl: streamForUrl, isLocalStream: isLocalStream, subtitleExtra: subtitleExtra, fileInfo: fileInfo, prepare: prepare, serviceUrl: serviceUrl,
         play: play, playPlain: playPlain, resumePlain: resumePlain, plainId: plainId, parsePlainId: parsePlainId,
         matchingAllowed: matchingAllowed, matchingAsked: matchingAsked, setMatching: setMatching, wouldMatch: wouldMatch, isPlainId: function (id) { return /^local:/.test('' + id); }
     };

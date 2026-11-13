@@ -230,9 +230,85 @@
     }
     // A file's cues: CUES_MAX at most, CUE_TEXT_MAX characters of text each (a broken or hostile
     // file can't hold the remote: the whole parse stays in time with the file's length).
+    // A cue: { start, end, text } (text: as read, plain), with runs when it has styling: [{ t, i, b,
+    // u, c }] (italic, bold, underline, a color '#rrggbb'), pieces drawn as text (drawCues).
+    // The format told by the file's content, whatever its name: ASS / SSA, SAMI, MicroDVD, MPL2,
+    // TMPlayer, else SRT / WebVTT.
     var CUES_MAX = 20000, CUE_TEXT_MAX = 1000;
     function parseCues(text) {
-        text = ('' + text).replace(/\r/g, '');
+        text = ('' + text).replace(/\r/g, '').replace(/^﻿/, '');
+        var head = text.slice(0, 4096), cues;
+        if (/^\s*\[script info\]/i.test(head) || /^\[v4\+? styles\]/im.test(head) || /^dialogue\s*:/im.test(head)) { cues = parseAss(text); }
+        else if (/<sami[\s>]/i.test(head)) { cues = parseSami(text); }
+        else if (/^\s*\{\d+\}\{\d*\}/.test(head)) { cues = parseFramed(text); }
+        else if (/^\s*\[\d+\]\[\d*\]/.test(head)) { cues = parseMpl2(text); }
+        else if (/^\s*\d{1,2}:\d{2}:\d{2}[:=]/.test(head) && head.indexOf('-->') === -1) { cues = parseTmp(text); }
+        else { cues = parseSrt(text); }
+        cues.sort(function (a, b) { return a.start - b.start; });
+        return cues;
+    }
+    // A cue from its runs: neighbours styled alike joined, the ends' spaces trimmed; runs kept only
+    // when one is styled; Skip lines with applied (a line taken out: the cue plain).
+    function makeCue(start, end, runs, skip) {
+        var out = [];
+        runs.forEach(function (r) {
+            if (!r.t) { return; }
+            var last = out[out.length - 1];
+            if (last && !!last.i === !!r.i && !!last.b === !!r.b && !!last.u === !!r.u && (last.c || '') === (r.c || '')) { last.t += r.t; return; }
+            out.push(runOf(r.t, r));
+        });
+        while (out.length && !/\S/.test(out[0].t)) { out.shift(); }
+        while (out.length && !/\S/.test(out[out.length - 1].t)) { out.pop(); }
+        if (!out.length) { return null; }
+        out[0].t = out[0].t.replace(/^\s+/, '');
+        out[out.length - 1].t = out[out.length - 1].t.replace(/\s+$/, '');
+        var plain = out.map(function (r) { return r.t; }).join('').slice(0, CUE_TEXT_MAX);
+        var txt = skip(plain);
+        if (!txt) { return null; }
+        var cue = { start: start, end: end, text: txt };
+        if (txt === plain && out.some(function (r) { return r.i || r.b || r.u || r.c; })) { cue.runs = out; }
+        return cue;
+    }
+    function runOf(t, st) {
+        var r = { t: t };
+        if (st.i) { r.i = true; } if (st.b) { r.b = true; } if (st.u) { r.u = true; } if (st.c) { r.c = st.c; }
+        return r;
+    }
+    // A color as '#rrggbb': #rgb / #rrggbb, or a plain color name (red); else none.
+    function cssColor(x) {
+        x = ('' + (x || '')).trim().toLowerCase().replace(/^["']|["']$/g, '');
+        var m = /^#?([0-9a-f]{6})$/.exec(x);
+        if (m) { return '#' + m[1]; }
+        m = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/.exec(x);
+        if (m) { return '#' + m[1] + m[1] + m[2] + m[2] + m[3] + m[3]; }
+        return /^[a-z]{3,20}$/.test(x) ? x : '';
+    }
+    // HTML-like text (SRT, WebVTT, SAMI) as runs: <i> <b> <u> <font color> kept as styling, <br> a new
+    // line, other tags and a stray < left out (one pass, in time with the text's length), character
+    // codes read after (one written as &lt; is the file's own text: "<b>" shown as written).
+    function tagRuns(t) {
+        var runs = [], st = { i: 0, b: 0, u: 0 }, colors = [], i = 0, n = t.length;
+        function add(s) { if (s) { runs.push(runOf(charCodes(s), { i: st.i > 0, b: st.b > 0, u: st.u > 0, c: colors[colors.length - 1] })); } }
+        while (i < n) {
+            var lt = t.indexOf('<', i);
+            if (lt === -1) { add(t.slice(i)); break; }
+            add(t.slice(i, lt));
+            var gt = t.indexOf('>', lt + 1);
+            if (gt === -1) { add(t.slice(lt + 1).split('<').join('')); break; }   // (no tag ends after it: the rest, its < gone)
+            var m = /^\s*(\/?)\s*([a-zA-Z]+)([\s\S]*)$/.exec(t.slice(lt + 1, gt));
+            i = gt + 1;
+            if (!m) { continue; }
+            var close = m[1] === '/', name = m[2].toLowerCase();
+            if (name === 'i' || name === 'b' || name === 'u') { st[name] = close ? Math.max(0, st[name] - 1) : st[name] + 1; }
+            else if (name === 'font') {
+                if (close) { colors.pop(); }
+                else { var cm = /color\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/i.exec(m[3]); colors.push(cm ? cssColor(cm[1]) : colors[colors.length - 1]); }
+            }
+            else if (name === 'br' && !close) { runs.push({ t: '\n' }); }
+        }
+        return runs;
+    }
+    function parseSrt(text) {
         var blocks = text.split(/\n\n+/);
         var cues = [], skip = skipper();   // (Skip lines with: your words)
         var re = /(?:(\d{1,3}):)?(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(?:(\d{1,3}):)?(\d{2}):(\d{2})[,.](\d{1,3})/;
@@ -247,39 +323,203 @@
             if (!m) { continue; }
             var start = (+(m[1] || 0)) * 3600 + (+m[2]) * 60 + (+m[3]) + ms(m[4]);
             var end = (+(m[5] || 0)) * 3600 + (+m[6]) * 60 + (+m[7]) + ms(m[8]);
-            // (tags out, a stray < with them, in one pass; then entities read: one written as &lt; is the file's own text,
-            // "<b>" shown as written. Never a tag: subtitles reach the screen as text only, textContent)
-            var txt = skip(charCodes(noTags(lines.slice(ti + 1).join('\n').slice(0, CUE_TEXT_MAX)).replace(/\{[^}]+\}/g, '')).replace(/\s+$/, ''));
-            if (txt) { cues.push({ start: start, end: end, text: txt }); }
+            var cue = makeCue(start, end, tagRuns(lines.slice(ti + 1).join('\n').slice(0, CUE_TEXT_MAX).replace(/\{\\[^}]*\}/g, '')), skip);   // ({\an8}: an ASS position, not shown)
+            if (cue) { cues.push(cue); }
         }
-        cues.sort(function (a, b) { return a.start - b.start; });
         return cues;
     }
+    // SAMI (.smi): <SYNC Start=ms> marks; a line shows until the next one (a blank one ends it).
+    function parseSami(text) {
+        var cues = [], skip = skipper(), re = /<sync[^>]*?start\s*=\s*["']?(\d+)[^>]*>/gi, marks = [], m;
+        while ((m = re.exec(text)) && marks.length < CUES_MAX) { marks.push({ at: +m[1] / 1000, from: re.lastIndex, to: text.length }); if (marks.length > 1) { marks[marks.length - 2].to = m.index; } }
+        for (var i = 0; i < marks.length; i++) {
+            var body = text.slice(marks[i].from, Math.min(marks[i].to, marks[i].from + CUE_TEXT_MAX * 4)).replace(/<\/(body|sami)>[\s\S]*$/i, '').replace(/\s*\n\s*/g, ' ');
+            var end = i + 1 < marks.length ? marks[i + 1].at : marks[i].at + 4;
+            var cue = makeCue(marks[i].at, end, tagRuns(body), skip);
+            if (cue) { cues.push(cue); }
+        }
+        return cues;
+    }
+    // A line's own styling in the frame-based formats: MicroDVD's {y:i} {y:b} {y:u} {c:$BBGGRR} at its
+    // start, a / starting a line for italics (MPL2, often MicroDVD); | between lines.
+    function slashRuns(body, st) {
+        var runs = [];
+        body.split('|').forEach(function (line, k) {
+            if (k) { runs.push({ t: '\n' }); }
+            var it = /^\s*\//.test(line);
+            runs.push(runOf(line.replace(/^\s*\//, '').replace(/\{[^}]*\}/g, ''), { i: st.i || it, b: st.b, u: st.u, c: st.c }));
+        });
+        return runs;
+    }
+    // MicroDVD (.sub, .txt): {start frame}{end frame}text, at the frame rate its first line gives
+    // ({1}{1}25.000), else 23.976.
+    function parseFramed(text) {
+        var lines = text.split('\n'), cues = [], skip = skipper(), fps = 23.976, re = /^\s*\{(\d+)\}\{(\d*)\}(.*)$/;
+        for (var i = 0; i < lines.length && cues.length < CUES_MAX; i++) {
+            var m = re.exec(lines[i]);
+            if (!m) { continue; }
+            var rate = /^\s*(\d{1,3}(?:\.\d+)?)\s*$/.exec(m[3]);
+            if (!cues.length && rate && +rate[1] >= 10 && +rate[1] <= 120 && +m[1] <= 1) { fps = +rate[1]; continue; }
+            var body = m[3].slice(0, CUE_TEXT_MAX), st = {}, code;
+            while ((code = /^\s*\{([a-zA-Z]):([^}]*)\}/.exec(body))) {
+                var k = code[1].toLowerCase(), v = code[2].toLowerCase();
+                if (k === 'y') { st.i = v.indexOf('i') !== -1; st.b = v.indexOf('b') !== -1; st.u = v.indexOf('u') !== -1; }
+                else if (k === 'c') { var hx = /\$?([0-9a-f]{6})/.exec(v); if (hx) { st.c = '#' + hx[1].slice(4, 6) + hx[1].slice(2, 4) + hx[1].slice(0, 2); } }
+                body = body.slice(code[0].length);
+            }
+            var start = +m[1] / fps, end = m[2] !== '' ? +m[2] / fps : start + 3;
+            var cue = makeCue(start, end, slashRuns(body, st), skip);
+            if (cue) { cues.push(cue); }
+        }
+        return cues;
+    }
+    // MPL2 (.txt): [start][end] in tenths of a second.
+    function parseMpl2(text) {
+        var lines = text.split('\n'), cues = [], skip = skipper(), re = /^\s*\[(\d+)\]\[(\d*)\](.*)$/;
+        for (var i = 0; i < lines.length && cues.length < CUES_MAX; i++) {
+            var m = re.exec(lines[i]);
+            if (!m) { continue; }
+            var start = +m[1] / 10, end = m[2] !== '' ? +m[2] / 10 : start + 3;
+            var cue = makeCue(start, end, slashRuns(m[3].slice(0, CUE_TEXT_MAX), {}), skip);
+            if (cue) { cues.push(cue); }
+        }
+        return cues;
+    }
+    // TMPlayer (.txt): hh:mm:ss:text, no end: each line until the next, TMP_MAX seconds at most.
+    var TMP_MAX = 5;
+    function parseTmp(text) {
+        var lines = text.split('\n'), marks = [], skip = skipper(), re = /^\s*(\d{1,2}):(\d{2}):(\d{2})[:=](.*)$/, cues = [];
+        for (var i = 0; i < lines.length && marks.length < CUES_MAX; i++) {
+            var m = re.exec(lines[i]);
+            if (m) { marks.push({ at: (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]), body: m[4].slice(0, CUE_TEXT_MAX) }); }
+        }
+        for (var j = 0; j < marks.length; j++) {
+            var next = j + 1 < marks.length ? marks[j + 1].at : Infinity;
+            var cue = makeCue(marks[j].at, Math.min(next, marks[j].at + TMP_MAX), slashRuns(marks[j].body, {}), skip);
+            if (cue) { cues.push(cue); }
+        }
+        return cues;
+    }
+    // ASS / SSA: its Dialogue lines, with each line's style (its color, bold, italic, underline) and
+    // the overrides in it ({\i1} {\b1} {\u1} {\c&HBBGGRR&} {\r}); drawings ({\p1}) and positions left out.
+    function assColor(x) {
+        x = ('' + (x || '')).trim();
+        var v = /^&h/i.test(x) ? parseInt(x.replace(/^&h/i, '').replace(/&$/, ''), 16) : parseInt(x, 10);
+        if (isNaN(v)) { return ''; }
+        var hex = function (n) { return ('0' + n.toString(16)).slice(-2); };
+        var c = '#' + hex(v & 0xFF) + hex((v >> 8) & 0xFF) + hex((v >> 16) & 0xFF);
+        return c === '#ffffff' ? '' : c;   // (white: a file's usual color, yours shown instead)
+    }
+    function assTime(s) {
+        var m = /^\s*(\d+):(\d{2}):(\d{2})[.:](\d{1,3})\s*$/.exec(s || '');
+        return m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) + +((m[4] + '00').slice(0, 3)) / 1000 : null;
+    }
+    function parseAss(text) {
+        var lines = text.split('\n'), sect = '', sFmt = null, eFmt = null, styles = {}, cues = [], skip = skipper();
+        function on(v) { v = ('' + (v || '')).trim(); return v !== '' && v !== '0'; }
+        function fields(rest, fmt) {
+            var parts = rest.split(','), f = {}, n = fmt.length;
+            if (parts.length < n) { return null; }
+            for (var k = 0; k < n - 1; k++) { f[fmt[k]] = parts[k].trim(); }
+            f[fmt[n - 1]] = parts.slice(n - 1).join(',');
+            return f;
+        }
+        for (var i = 0; i < lines.length && cues.length < CUES_MAX; i++) {
+            var l = lines[i], h = /^\s*\[([^\]]+)\]\s*$/.exec(l), m;
+            if (h) { sect = h[1].toLowerCase(); continue; }
+            if ((m = /^\s*format\s*:\s*(.*)$/i.exec(l))) {
+                var fmt = m[1].split(',').map(function (x) { return x.trim().toLowerCase(); });
+                if (/styles/.test(sect)) { sFmt = fmt; } else if (sect === 'events') { eFmt = fmt; }
+                continue;
+            }
+            if ((m = /^\s*style\s*:\s*(.*)$/i.exec(l)) && sFmt) {
+                var s = fields(m[1], sFmt);
+                if (s) { styles[(s.name || '').toLowerCase()] = { i: on(s.italic), b: on(s.bold), u: on(s.underline), c: assColor(s.primarycolour || s.primarycolor) }; }
+                continue;
+            }
+            if (!(m = /^\s*dialogue\s*:\s*(.*)$/i.exec(l))) { continue; }
+            var f = fields(m[1], eFmt || ['layer', 'start', 'end', 'style', 'name', 'marginl', 'marginr', 'marginv', 'effect', 'text']);
+            if (!f) { continue; }
+            var start = assTime(f.start), end = assTime(f.end);
+            if (start === null || end === null) { continue; }
+            var cue = makeCue(start, end, assRuns(('' + (f.text || '')).slice(0, CUE_TEXT_MAX * 2), styles, (f.style || '').replace(/^\*/, '').toLowerCase()), skip);
+            if (cue) { cues.push(cue); }
+        }
+        return cues;
+    }
+    function assRuns(t, styles, name) {
+        var base = styles[name] || styles['default'] || {}, st = runOf('', base), runs = [], draw = false, i = 0, n = t.length;
+        function add(s) {
+            if (!s || draw) { return; }
+            runs.push(runOf(s.replace(/\\[Nn]/g, '\n').replace(/\\h/g, ' '), st));
+        }
+        while (i < n) {
+            var ob = t.indexOf('{', i);
+            if (ob === -1) { add(t.slice(i)); break; }
+            add(t.slice(i, ob));
+            var cb = t.indexOf('}', ob + 1);
+            if (cb === -1) { break; }
+            var block = t.slice(ob + 1, cb), re = /\\(1c|c|[ibu]|r|p)([^\\]*)/g, m;
+            i = cb + 1;
+            while ((m = re.exec(block))) {
+                var k = m[1], v = m[2].trim();
+                if (k === 'i' || k === 'u') { if (/^[01]$/.test(v)) { st[k] = v === '1'; } }
+                else if (k === 'b') { if (/^\d+$/.test(v)) { st.b = v === '1' || +v >= 600; } }
+                else if (k === 'c' || k === '1c') { var c = /^&?h([0-9a-f]{1,8})&?$/i.exec(v); if (c || !v) { st.c = c ? assColor('&H' + c[1]) : base.c; } }   // (\c alone: the style's; \clip isn't a color)
+                else if (k === 'r') { var to = (v && styles[v.toLowerCase()]) || base; st = runOf('', to); }
+                else if (k === 'p') { draw = /^\d+$/.test(v) && +v > 0; }
+            }
+        }
+        return runs;
+    }
 
+    // Lines that overlap (dialogue and a sign) show together, up to SHOW_MAX, the earliest first.
+    var SHOW_MAX = 4;
     function renderSubs() {
         if (_embQueue.length) { flushEmbQueue(); }
         renderSecond();
         if (!_subOn || !_cues) { return; }
         var t = S.cur - _subDelay;   // timing adjustment: + shows later, − earlier
-        var show = '';
+        var show = [], key = '';
         // Skip the prefix of cues that already ended (they can't show again unless we go
-        // back in time, which resets the index), then scan as before. Same cue as a full
+        // back in time, which resets the index), then scan as before. Same cues as a full
         // scan from 0, without walking the whole list late in a movie on every tick.
+        // (A long cue keeps the index at it: those after it that ended are passed over below.)
         if (t < _cueT) { _cueIdx = 0; }
         _cueT = t;
         while (_cueIdx < _cues.length && _cues[_cueIdx].end < t) { _cueIdx++; }
-        for (var i = _cueIdx; i < _cues.length; i++) {
-            if (_cues[i].start <= t && t <= _cues[i].end) { show = _cues[i].text; break; }
+        for (var i = _cueIdx; i < _cues.length && show.length < SHOW_MAX; i++) {
             if (_cues[i].start > t) { break; }
+            if (t <= _cues[i].end) { show.push(_cues[i]); key += i + ','; }
         }
-        if (show) {
+        if (show.length) {
             S.subsEl.className = '';
             var span = S.subsEl.firstChild;
             if (!span) { span = document.createElement('span'); S.subsEl.appendChild(span); styleSpan(span); }
-            if (span.textContent !== show) { span.textContent = show; }
+            key += P.subCfgVersion ? P.subCfgVersion() : '';
+            if (span.__cues !== key || span.__list !== _cues) { drawCues(span, show); span.__cues = key; span.__list = _cues; }   // (drawn again only when what shows changes)
         } else {
             S.subsEl.className = 'hidden';
         }
+    }
+    // The line's text, from its cues: each its own line; a styled cue's pieces each their own span,
+    // written as text (textContent: never markup). The file's colors only with Subtitles ›
+    // Appearance › The file's colors On (else yours: the line's own color).
+    function drawCues(span, cues) {
+        var colors = getSubCfg().fileColors === 'on';
+        U.clear(span);
+        cues.forEach(function (cue, k) {
+            var runs = (k ? [{ t: '\n' }] : []).concat(cue.runs || [{ t: cue.text }]);   // (each cue its own line: the break unstyled)
+            runs.forEach(function (r) {
+                var piece = document.createElement('span');
+                piece.textContent = r.t;
+                if (r.i) { piece.style.fontStyle = 'italic'; }
+                if (r.b) { piece.style.fontWeight = 'bold'; }
+                if (r.u) { piece.style.textDecoration = 'underline'; }
+                if (r.c && colors) { piece.style.color = r.c; }
+                span.appendChild(piece);
+            });
+        });
     }
 
     // Each choice (a track, Off, a built-in one) is a new one: a download still on its way
@@ -440,16 +680,25 @@
         var w = _embWant; _embWant = null;
         if (!w || _subOn) { return; }   // an addon track was chosen meanwhile
         var tracks = getTextTracks(), pick = null, key = w.lang ? langKey(w.lang) : '';
+        // (of a language's tracks, by the file's header: a full one in text, then any in text — a
+        // picture one, PGS, shows nothing here — then a forced one)
+        var own = P.fileTracks ? P.fileTracks('subs', tracks) : null;
+        function best(match) {
+            var c = tracks.filter(match);
+            if (!own || c.length < 2) { return c[0] || null; }
+            var o = function (t) { return own[tracks.indexOf(t)] || {}; };
+            return c.filter(function (t) { return o(t).text !== false && !o(t).forced; })[0] || c.filter(function (t) { return o(t).text !== false; })[0] || c[0];
+        }
         if (w.index != null) {
             pick = tracks.find(function (t) { return t.index === w.index && (!key || langKey(textLang(t)) === key); }) || null;
         }
-        if (!pick && key) { pick = tracks.find(function (t) { return langMatches(key, textLang(t)); }) || null; }
+        if (!pick && key) { pick = best(function (t) { return langMatches(key, textLang(t)); }); }
         if (!pick && w.nth != null && S.ctx && S.ctx._relayCc) { pick = tracks[w.nth] || null; }   // (a live channel's closed captions: in the order asked for)
         if (!pick && w.lang2) {   // nothing in the default language anywhere: the second choice, a track to download first
             var key2 = langKey(w.lang2);
             var dl = _subTracks.find(function (t) { return langMatches(key2, t.lang); });
             if (dl) { loadTrack(dl); return; }
-            pick = tracks.find(function (t) { return langMatches(key2, textLang(t)); }) || null;
+            pick = best(function (t) { return langMatches(key2, textLang(t)); });
         }
         if (pick) { selectEmbeddedSub(pick); _embNudge = { index: pick.index, at: Date.now() + EMB_NUDGE_MS }; }
     }
@@ -512,7 +761,7 @@
         S.subsEl.className = '';
         var span = S.subsEl.firstChild;
         if (!span) { span = document.createElement('span'); S.subsEl.appendChild(span); styleSpan(span); }
-        span.textContent = t;
+        span.textContent = t; span.__list = null;
         _embTimer = setTimeout(function () { S.subsEl.className = 'hidden'; }, Math.max(500, (+duration) || 3000));
     }
 
@@ -685,9 +934,10 @@
                     run: function () { closeMenu(); rememberSub(S.ctx.id, { embedded: true, nth: x.n, lang: c.lang }); P.ccOn(c); } };
             }
             if (x.emb) {
-                var tr = x.emb, l = textLang(tr);
+                var tr = x.emb, l = textLang(tr), own = P.fileTrack ? P.fileTrack('subs', getTextTracks(), x.n) : null;
                 if (_embSub === tr.index) { idx = i; }
                 return { label: (S.ctx && S.ctx._relayCc ? U.t('Closed captions') : U.t('Built into the file')) + (l ? '  (' + l + ')' : '  ·  ' + U.t('track {n}', { n: x.n + 1 })), sel: _embSub === tr.index,
+                    detail: own && P.fileTrackNote ? P.fileTrackNote(own) || undefined : undefined,   // (its own name and marks, from the file's header)
                     run: function () {
                         _embDelay = 0; _embQueue = []; _embNudge = null; selectEmbeddedSub(tr); rememberSub(S.ctx.id, { embedded: true, index: tr.index, lang: l });
                         if (menuOpen()) { replaceTop(langTracksMenu(key, list)); }
@@ -770,7 +1020,7 @@
     }
     P.activeSub = activeSub;
     P.subsKey = subsKey;
-    P.fileHints = fileHints; P.parseCues = parseCues; P.loadTrack = loadTrack; P.subsOff = subsOff;
+    P.fileHints = fileHints; P.parseCues = parseCues; P.drawCues = drawCues; P.loadTrack = loadTrack; P.subsOff = subsOff;
     P.resetSubs = resetSubs; P.closeSubs = closeSubs; P.startSubtitles = startSubtitles;
     P.subsBeforeOpen = subsBeforeOpen; P.subsOnTick = subsOnTick; P.subtitleSummary = subtitleSummary;
     P.wantEmbedded = wantEmbedded;
