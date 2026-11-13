@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "🌐 Add or correct a language (pull request)"
+    url: "https://github.com/Kepler75/StremioK/blob/main/docs/TRANSLATING.md"
+    about: "Each language is one file in translations/: edit it on GitHub and propose the change. No issue needed."
+  - name: "💬 Ask a question"
+    url: "https://github.com/Kepler75/StremioK/discussions"
+    about: "How do I…, is it possible to…, which addon…: ask in Discussions."
+  - name: "📖 User guide and troubleshooting"
+    url: "https://github.com/Kepler75/StremioK/blob/main/docs/TROUBLESHOOTING.md"
+    about: "Most problems have an answer here already."

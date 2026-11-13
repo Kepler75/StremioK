@@ -1,0 +1,27 @@
+name: "✨ Suggest a feature"
+description: "Something StremioK could do, or do better."
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Please check the [user guide](https://github.com/Kepler75/StremioK/blob/main/docs/USER-GUIDE.md) first: it may be there already, under another name. For a question rather than a suggestion, use [Discussions](https://github.com/Kepler75/StremioK/discussions).
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you'd like
+      description: "What it would do, from where you'd use it (which screen, which button)."
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: "What you're trying to do, and what gets in the way today."
+    validations:
+      required: true
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: "Another app that does it well, screenshots, your TV's model and Tizen version if it matters."

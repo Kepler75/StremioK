@@ -1,0 +1,47 @@
+name: "🐞 Report a bug"
+description: "Something doesn't work as it should. Your logs help most."
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting it. First, please **update to the latest version** (it may be fixed already) and look at [Troubleshooting](https://github.com/Kepler75/StremioK/blob/main/docs/TROUBLESHOOTING.md).
+
+        **Your logs say most of what's needed:** make the problem happen again, then on the TV go to **Settings › Diagnostics › Logs › Send to your phone** and download `stremiok-logs.txt` on your phone (or **Save to a USB drive**). It has StremioK's version, how it's installed, your TV's model and Tizen version, and the recent problems, with keys and passwords masked. Look it over before posting it.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Your logs
+      description: "Drag `stremiok-logs.txt` here, or paste what's in it."
+      placeholder: "StremioK logs…"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: "What you did, step by step, what happened, and what you expected instead."
+      placeholder: "1. Opened a film's page…\n2. Pressed Play on the first source…\n3. …"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How StremioK is installed
+      options:
+        - "Sideloaded (the .wgt, with Apps2Samsung or Tizen Studio)"
+        - "TizenBrew"
+        - "Not sure"
+    validations:
+      required: true
+  - type: input
+    id: tv
+    attributes:
+      label: TV model and Tizen version
+      description: "In the logs already; here if you couldn't send them."
+      placeholder: "UE55MU6100, Tizen 3.0"
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: "Photos of the screen, the addon or source involved, whether it worked before."
