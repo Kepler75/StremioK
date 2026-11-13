@@ -129,10 +129,15 @@ var YTPlay = (function () {
     // Where a Nuvio plugin's Worker sends its requests (js/plugins.js): { url, headers }, the
     // token in the link (a Worker's POST then needs no preflight). lan: home-network requests
     // allowed (Local-network links from internet addons).
+    // Without the token (it can't be read on every TV), the guide ticket goes in the link too: a
+    // Worker's POST can carry an Origin (seen on a Tizen 4 TV: every plugin request refused,
+    // "not allowed (origin)"), which the service lets through only with one of them (#21).
     function pluginNet(lan) {
         if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
         return ensureService().then(entryAuth).then(function (a) {
-            return { url: PROXY + '/plug/fetch?' + (a.q || '').replace(/^&/, '') + (lan ? '&lan=1' : ''), headers: a.h || {} };
+            return (a.q ? Promise.resolve(a.q) : ticketOf(a)).then(function (cred) {
+                return { url: PROXY + '/plug/fetch?' + (cred || '').replace(/^&/, '') + (lan ? '&lan=1' : ''), headers: a.h || {} };
+            });
         });
     }
     function liveOpen(url, h, force, opts, cancel) {

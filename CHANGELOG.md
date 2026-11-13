@@ -3,6 +3,11 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.3.8 — 2026-11-13
+- **Catalan** (Settings › Appearance › *Language*), contributed by deivids84 (#22).
+- **Fixed: Nuvio plugins finding nothing on some TVs:** every request a plugin made was refused
+  by StremioK's own service ("not allowed (origin)" in Diagnostics › Logs) (#21).
+
 ## 2.3.7 — 2026-11-13
 - **Windows / NAS shares (SMB) and DLNA media servers** as network folders (Settings › Content ›
   Network folders): a share's server, sign-in (or a guest) and one of its shares; or a media

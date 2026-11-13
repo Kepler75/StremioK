@@ -4,6 +4,7 @@
    how numbers change its words (and whether it runs right to left). Global: I18N_LANGS (read by js/i18n.js) */
 var I18N_LANGS = [
     { code: "ar", name: "العربية", matches: ["ar"], plural: "arabic", direction: "rtl" },
+    { code: "ca", name: "Català", matches: ["ca"], plural: "one" },
     { code: "de", name: "Deutsch", matches: ["de"], plural: "one" },
     { code: "es", name: "Español", matches: ["es"], plural: "one" },
     { code: "fi", name: "Suomi", matches: ["fi"], plural: "one" },

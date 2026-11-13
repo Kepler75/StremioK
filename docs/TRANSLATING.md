@@ -27,7 +27,7 @@ folder: you can correct one, or start a new one, from GitHub without touching th
 
 | `plural` | Forms | Languages |
 |---|---|---|
-| `"one"` | one (1), other | English, Spanish, German, Italian, Finnish |
+| `"one"` | one (1), other | English, Spanish, Catalan, German, Italian, Finnish |
 | `"zero-one"` | one (0 and 1), other | Portuguese, French, Hindi |
 | `"none"` | other (always) | Japanese, Korean, Chinese, Turkish |
 | `"slavic"` | one (1, 21, 31…), few (2–4, 22–24…), many (the rest) | Russian, Ukrainian |

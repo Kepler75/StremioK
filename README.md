@@ -37,7 +37,7 @@ video through Samsung's AVPlay API.
   with SponsorBlock, DeArrow, chapters and captions.
 - **Local:** the videos on a USB drive or a network folder (WebDAV, SMB, DLNA), matched to their titles.
 - **Jellyfin, Emby and Plex:** your server's libraries on Home, its files as sources.
-- **16 languages** ([translating](docs/TRANSLATING.md)).
+- **17 languages** ([translating](docs/TRANSLATING.md)).
 - **Nuvio plugins** (2017+ TVs): plugins made for the Nuvio apps as sources
   ([what they are, and the risks](docs/PLUGINS.md)).
 - **Torrents**, through Stremio's streaming server or a TorrServer you run on your network.
