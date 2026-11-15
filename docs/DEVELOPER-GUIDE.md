@@ -48,6 +48,9 @@ locally, use a wrapper package, or use the
 | `js/stremio.js` | Addon client (manifests, catalog / meta / stream / subtitles), source cache and de-duplication, source details (resolution, codec, HDR, audio…), Formats (learning, allowed resolutions), TMDB / OMDb / MDBList / TheIntroDB / SkipDB / IntroDB |
 | `js/stremio-account.js` | Importing addons from your Stremio account: the link.stremio.com sign-in code, reading the account's addons, signing out at once |
 | `js/stremio-sync.js` | Stremio account sync (Continue Watching, watched, Library) |
+| `js/profiles.js` | Profiles: which saved keys are a profile's, which the TV's |
+| `js/nuvio-import.js` | Nuvio's TV sign-in; reading its profiles, addons and plugins |
+| `js/nuvio-sync.js` | A profile kept in step with a Nuvio profile (progress, watched, Library) |
 | `js/trakt.js` | Trakt: device-code sign-in (StremioK's built-in Client ID, no secret), watched marks and Continue Watching from Trakt, progress and watched sent to it |
 | `js/keys.js` | Registers TV media and channel keys; maps key codes to actions |
 | `js/focus.js` | Geometry-based spatial (D-pad) focus engine |

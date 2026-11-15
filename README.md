@@ -99,8 +99,8 @@ responsibility.
 
 - Under TizenBrew there's no TV player (only the `.wgt` has it): one audio track per file, no
   built-in subtitle tracks, no PlayReady or Widevine channels; opening apps depends on TizenBrew.
-- No StremioK account and no profiles: settings, addons and progress stay on the TV. The
-  only syncs are optional: Trakt and your Stremio account.
+- No StremioK account: settings, addons and progress stay on the TV, in a profile per person if
+  you like. The only syncs are optional: Trakt and your Stremio account.
 - Subtitles use an HTML overlay; gzipped (`.gz`) subtitle files aren't decoded.
 - No playback speed control (the TV's player mutes audio at other speeds), and no
   HDR / frame-rate mode switching (not available to web apps on Tizen 3).
@@ -119,6 +119,10 @@ It includes [Shaka Player](https://github.com/shaka-project/shaka-player) 5.3.3 
 Apache License 2.0: [js/vendor/SHAKA-LICENSE](js/vendor/SHAKA-LICENSE)), loaded only to play
 ClearKey channels. Nuvio plugins' runtime (`js/vendor/quickjs/`: quickjs-emscripten, cheerio,
 crypto-js; MIT, with BSD and ISC parts, licenses there) loads only when a plugin runs.
+
+Nuvio features use Nuvio's published backend
+([self-host](https://github.com/NuvioMedia/self-host), Apache License 2.0); StremioK isn't
+affiliated with Nuvio, and it may stop working if Nuvio changes it.
 
 The service's SMB, DLNA and WebDAV Digest clients are adapted from
 [Tessel](https://github.com/PatrickSt1991/tessel-tizen-tv) (© 2026 Patrick, MIT License).

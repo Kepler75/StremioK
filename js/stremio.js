@@ -109,7 +109,7 @@ var Stremio = (function () {
 
     // Where an addon came from (Settings › Addons' letter badges): 'stremio' (your Stremio
     // account), 'aiomanager' (an AIOManager sync), 'config' (a configuration file), or '' (you).
-    var ORIGIN_KEY = 'stremiok.addonorigin', ORIGINS = { stremio: 1, aiomanager: 1, config: 1 };
+    var ORIGIN_KEY = 'stremiok.addonorigin', ORIGINS = { stremio: 1, aiomanager: 1, config: 1, nuvio: 1 };
     function originsAll() { var o = U.store.get(ORIGIN_KEY, {}); return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {}; }
     function addonOrigin(url) { var k = originsAll()[url]; return ORIGINS[k] ? k : ''; }
     function setAddonOrigin(url, kind) {
@@ -449,6 +449,7 @@ var Stremio = (function () {
             if (hasYouTube()) { addons.push(YouTube.synthAddon()); }   // (after your addons: its rows last on Home)
             if (typeof Trakt !== 'undefined' && Trakt.isConnected()) { addons.push(Trakt.synthAddon()); }   // (your Watchlist and Up next)
             if (typeof StremioSync !== 'undefined' && StremioSync.isConnected()) { addons.push(StremioSync.synthAddon()); }   // (your Stremio account's Library)
+            if (typeof NuvioSync !== 'undefined' && NuvioSync.isConnected()) { addons.push(NuvioSync.synthAddon()); }   // (the Nuvio profile's Library, kept in step)
             _loaded = addons;
             U.mark('addons');
             var stale = urls.filter(function (u) { return !_refreshedUrls[u] && saved[u]; });
@@ -609,6 +610,7 @@ var Stremio = (function () {
         out.push('# StremioK configuration, exported ' + new Date(Date.now()).toISOString().slice(0, 10) + (version ? ' from StremioK ' + version : '') + '.');
         out.push('# It holds your addon links, playlist logins, API keys and MAC addresses: keep it private.');
         out.push('# To import it: Settings › Content › Import configuration file (▣ From your phone: choose this file, or paste it).');
+        if (typeof Profiles !== 'undefined' && Profiles.count() > 1 && Profiles.active()) { out.push(EXPORT_LINE + 'profile ' + JSON.stringify({ name: Profiles.active().name, color: Profiles.active().color })); }   // (the profile it's from: offered as a new profile's name on import)
         if (want.addons) { out.push(''); getAddonUrls().forEach(function (u) { out.push(u); }); }
         if (want.playlists) {
             out.push('');
@@ -662,6 +664,7 @@ var Stremio = (function () {
                 return;
             }
             if (m[1] === 'store' && typeof o.k === 'string' && EXPORT_STORE.indexOf('stremiok.' + o.k) !== -1 && o.v !== undefined && o.v !== null) { store.push(o); return; }
+            if (m[1] === 'profile' && typeof o.name === 'string') { out.profile = { name: U.drawable(o.name).trim().slice(0, 24), color: typeof o.color === 'string' ? o.color : '' }; return; }
             if (m[1] === 'history' && typeof o.k === 'string' && HISTORY_STORE.indexOf('stremiok.' + o.k) !== -1 && o.v !== undefined && o.v !== null) { hist.push(o); return; }
             out.ignored++;
         }

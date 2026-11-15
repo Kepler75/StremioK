@@ -478,9 +478,297 @@
         else if (_settingsSection === 'appearance') { settingsAppearance(wrap); }
         else if (_settingsSection === 'home') { settingsHome(wrap); }
         else if (_settingsSection === 'formats') { settingsFormats(wrap); }
+        else if (_settingsSection === 'profiles') { settingsProfiles(wrap); }
         else { settingsMenu(wrap); }
         var ver = appVersion();
         if (ver) { s.appendChild(U.el('div', 'settings-version', 'StremioK ' + ver)); }
+    }
+
+    // ----- Settings › Profiles (js/profiles.js) -----
+    // Each profile: Switch to it, Rename, Color, Delete. + Add a profile: its name, then a copy of
+    // this one (addons, settings, media server sign-ins; not its history or accounts) or empty.
+    // Ask who's watching when StremioK opens (two or more).
+    var PROFILE_COLOR_NAMES = { indigo: U.t('Indigo'), teal: U.t('Teal'), orange: U.t('Orange'), pink: U.t('Pink'), green: U.t('Green'), red: U.t('Red'), purple: U.t('Purple'), amber: U.t('Amber') };
+    var PROFILE_STORAGE_MAX = 4194304;   // (bytes of the settings storage used: no new profile past this, the 2017 TV keeps about 5 MB)
+    function storageUsed() {
+        var n = 0;
+        try { for (var i = 0; i < window.localStorage.length; i++) { var k = window.localStorage.key(i); n += (k.length + (window.localStorage.getItem(k) || '').length) * 2; } } catch (e) {}
+        return n;
+    }
+    function settingsProfiles(wrap) {
+        wrap.appendChild(U.el('h2', null, U.t('Profiles')));
+        var list = Profiles.list(), now = Profiles.active(), focus = null;
+        if (!list.length) { list = [{ id: '', name: U.t('Profile {n}', { n: 1 }), color: 'indigo', slot: '' }]; now = list[0]; }
+        list.forEach(function (p) {
+            var mine = now && p.id === now.id, r = U.el('div', 'addon-item focusable cfg-row pf-setting');
+            var nm = U.el('div', 'a-name');
+            nm.appendChild(V.profileBadge(p, 'small'));
+            nm.appendChild(document.createTextNode('  ' + p.name + (mine ? '   ·   ' + U.t('in use') : '')));
+            r.appendChild(nm);
+            r.__onselect = function () {
+                var opts = [];
+                if (!mine) { opts.push(['switch', U.t('Switch to it')]); }
+                opts.push(['rename', U.t('Rename')], ['color', U.t('Color')]);
+                if (!mine && list.length > 1) { opts.push(['delete', U.t('Delete')]); }
+                pickList(p.name, opts, null, function (v) {
+                    _focusChild = 'pf:' + p.id;
+                    if (v === 'switch') { V.switchProfile(p.id); }
+                    else if (v === 'rename') { profileName(U.t('Rename “{name}”', { name: p.name }), p.name, function (name) { profileEnsure(); Profiles.rename(p.id || Profiles.active().id, name); renderSettings(); }); }
+                    else if (v === 'color') {
+                        pickList(U.t('Color'), Profiles.COLORS.map(function (c) { return [c, PROFILE_COLOR_NAMES[c] || c, null, V.PROFILE_COLORS[c]]; }), p.color, function (c) { profileEnsure(); Profiles.recolor(p.id || Profiles.active().id, c); renderSettings(); });
+                    } else if (v === 'delete') {
+                        confirm(U.t('Delete “{name}”? Its addons, settings, progress, watched marks and sign-ins go with it; the rest of the TV’s doesn’t.', { name: p.name }), U.t('Delete'), function () {
+                            Profiles.remove(p.id, U.bigStore && U.bigStore.removeExact);
+                            U.toast(U.t('“{name}” deleted', { name: p.name }));
+                            renderSettings();
+                        });
+                    }
+                });
+            };
+            if (_focusChild === 'pf:' + p.id) { focus = r; }
+            wrap.appendChild(r);
+        });
+        if (list.length < Profiles.MAX) {
+            var add = U.el('div', 'addon-item focusable cfg-row');
+            add.appendChild(U.el('div', 'a-name', U.t('+ Add a profile')));
+            add.appendChild(U.el('div', 'a-url', U.t('Its name, then a copy of this profile’s addons and settings, or none')));
+            add.__onselect = function () {
+                if (storageUsed() > PROFILE_STORAGE_MAX) { U.toast(U.t('The TV’s storage is nearly full: no room for another profile (Settings › Diagnostics › Storage).'), 6000); return; }
+                profileName(U.t('New profile'), '', function (name) {
+                    var starts = [['copy', U.t('A copy of this profile’s addons and settings')], ['empty', U.t('Nothing: its own from the start')]];
+                    if (typeof StremioAccount !== 'undefined' && typeof StremioSync !== 'undefined') { starts.push(['stremio', U.t('A Stremio account: its addons, Continue Watching and watched marks')]); }
+                    if (typeof NuvioImport !== 'undefined' && typeof NuvioSync !== 'undefined') { starts.push(['nuvio', U.t('A Nuvio account’s profile: kept in step with it')]); }
+                    pickList(U.t('“{name}” starts with', { name: name }), starts, 'copy', function (how) {
+                        if (how === 'stremio') { profileFromStremio(name); return; }
+                        if (how === 'nuvio') { nuvioConnect(name); return; }
+                        var p = Profiles.add(name, null, U.t('Profile {n}', { n: 1 }));
+                        if (!p) { U.toast(U.t('Up to {n} profiles', { n: Profiles.MAX }), 4000); return; }
+                        if (how === 'copy') { Profiles.copyInto(p.slot, Profiles.slot()); }
+                        markHomeDirty();
+                        _focusChild = 'pf:' + p.id;
+                        renderSettings();
+                        confirm(U.t('“{name}” added. Switch to it now?', { name: p.name }), U.t('Switch to it'), function () { V.switchProfile(p.id); }, { plain: true, noLabel: U.t('Not now'), focusYes: true });
+                    });
+                });
+            };
+            wrap.appendChild(add);
+        } else {
+            wrap.appendChild(U.el('div', 'hint', U.t('Up to {n} profiles', { n: Profiles.MAX })));
+        }
+        if (list.length < Profiles.MAX && typeof NuvioImport !== 'undefined') {
+            var nv = U.el('div', 'addon-item focusable cfg-row');
+            nv.appendChild(U.el('div', 'a-name', U.t('⇩  Import profiles from Nuvio')));
+            nv.appendChild(U.el('div', 'a-url', U.t('Sign in on your phone, pick its profiles: each with its addons, watched marks and recent progress. Once; Nuvio’s account isn’t changed')));
+            nv.__onselect = nuvioImport;
+            wrap.appendChild(nv);
+        }
+        if (Profiles.count() > 1) {
+            var askOn = Profiles.askSetting(), ask = U.el('div', 'addon-item focusable cfg-row');
+            ask.appendChild(U.el('div', 'a-name', U.t('Ask who’s watching when StremioK opens:') + ' ' + (askOn ? U.t('On') : U.t('Off'))));
+            ask.appendChild(U.el('div', 'a-url', askOn ? U.t('Each time it opens, before anything else') : U.t('It opens in the last profile used; switch from the top menu')));
+            ask.__onselect = function () { Profiles.setAsk(!askOn); _focusChild = 'pf:ask'; renderSettings(); };
+            if (_focusChild === 'pf:ask') { focus = ask; }
+            wrap.appendChild(ask);
+        }
+        wrap.appendChild(U.el('div', 'hint', U.t('Each profile keeps its own addons and their order, settings, progress, watched marks, Continue Watching, Trakt, Stremio account and media server sign-ins. Playlists, USB drives, network folders, plugins, API keys and the streaming server are the TV’s, for every profile.')));
+        if (focus) { _focusChild = null; Focus.setScope(scr('settings'), focus); } else { focusSettings(); }
+    }
+    // A new profile from a Stremio account (one account, one profile: a Stremio account has no
+    // profiles of its own): signed in on your phone, its addons read; the profile made with them
+    // and the account kept connected for it (its sign-in under the profile's own keys), so when
+    // it's in use its Continue Watching, watched marks and Library sync in (js/stremio-sync.js).
+    function profileFromStremio(name) {
+        stremioSignIn(U.t('New profile from a Stremio account'), function (key, body, gone, fail) {
+            U.clear(body);
+            body.appendChild(U.el('div', 'tc-line', U.t('Reading your addons…')));
+            var user = StremioAccount.call('getUser', { type: 'GetUser', authKey: key }).then(function (u) { return u && typeof u.email === 'string' ? U.drawable(u.email).slice(0, 120) : ''; }, function () { return ''; });
+            return Promise.all([StremioAccount.addons(key), user]).then(function (r) {
+                if (gone()) { StremioAccount.signOut(key); return; }
+                var p = Profiles.add(name, null, U.t('Profile {n}', { n: 1 }));
+                if (!p) { StremioAccount.signOut(key); fail(new Error(U.t('Up to {n} profiles', { n: Profiles.MAX }))); return; }
+                var urls = [], origin = {};
+                r[0].forEach(function (a) { var u = (Stremio.normalizeAddonUrl && Stremio.normalizeAddonUrl(a.url)) || a.url; if (urls.indexOf(u) === -1) { urls.push(u); origin[u] = 'stremio'; } });
+                function put(k, v) { try { window.localStorage.setItem(Profiles.keyFor(p.slot, 'stremiok.' + k), JSON.stringify(v)); } catch (e) {} }
+                if (urls.length) { put('addons', urls); put('addonorigin', origin); }
+                put('stremio', { key: key, user: r[1], at: Date.now() });
+                closeModal();
+                markHomeDirty();
+                _focusChild = 'pf:' + p.id;
+                renderSettings();
+                confirm(U.t('“{name}” added, with {n} addons from {user}. Switch to it now?', { name: p.name, n: urls.length, user: r[1] || 'Stremio' }), U.t('Switch to it'), function () { V.switchProfile(p.id); }, { plain: true, noLabel: U.t('Not now'), focusYes: true });
+            });
+        });
+    }
+    // Profiles from a Nuvio account (js/nuvio-import.js): Nuvio's TV sign-in (a code and a QR code
+    // of its page, approved on your phone), its profiles read and the session signed out at once;
+    // the ones you tick (as many as there's room for) made StremioK profiles, with their addons,
+    // watched marks and recent progress (its titles' names and posters from this profile's addons).
+    // Nuvio's sign-in box (js/nuvio-import.js): a code and a QR code of Nuvio's page, approved on
+    // your phone; then signedIn(cfg, session, body, gone, fail) (gone(): the box closed meanwhile).
+    function nuvioSignIn(title, note, signedIn) {
+        var existing = document.querySelector('.modal-overlay');
+        if (existing) { existing.parentNode.removeChild(existing); }
+        var overlay = U.el('div', 'modal-overlay'), box = U.el('div', 'modal-box'), body = U.el('div', 'trakt-connect');
+        box.appendChild(U.el('div', 'modal-msg', title));
+        body.appendChild(U.el('div', 'tc-line', U.t('Asking Nuvio for a code…')));
+        box.appendChild(body);
+        var row = U.el('div', 'modal-row'), cancel = U.el('div', 'pill focusable modal-btn', U.t('Cancel'));
+        cancel.__onselect = function () { closeModal(); };
+        row.appendChild(cancel); box.appendChild(row); overlay.appendChild(box); document.body.appendChild(overlay);
+        showModal(overlay, cancel);
+        var gone = false, cfg = null;
+        onModalClose(function () { gone = true; });
+        function stopped() { return gone; }
+        function fail(e) { if (gone) { return; } U.clear(body); body.appendChild(U.el('div', 'tc-line', U.t('It failed: {why}', { why: (e && e.message) || U.t('unknown') }))); }
+        NuvioImport.discover().then(function (c) { cfg = c; return NuvioImport.start(c); }).then(function (sess) {
+            if (gone) { return; }
+            U.clear(body);
+            var qrSpot = body.appendChild(U.el('div', 'tc-qr-spot'));
+            var goTo = body.appendChild(U.el('div', 'tc-line', U.t('On your phone or computer, go to:')));
+            (typeof qrcode !== 'undefined' ? Promise.resolve() : U.loadScript('js/qrcode.js')).then(function () {
+                var qr = U.qrCanvas(sess.link, 6);
+                if (!qr || !qrSpot.parentNode) { return; }
+                qr.className = 'tc-qr';
+                qrSpot.appendChild(U.el('div', 'tc-line', U.t('Scan with your phone:')));
+                qrSpot.appendChild(qr);
+                goTo.textContent = U.t('or go to');
+            }, function () {});
+            body.appendChild(U.el('div', 'tc-url', sess.link));
+            body.appendChild(U.el('div', 'tc-line', U.t('Code:')));
+            body.appendChild(U.el('div', 'tc-code', sess.code));
+            body.appendChild(U.el('div', 'tc-line small', note));
+            return NuvioImport.wait(cfg, sess, stopped).then(function (tok) {
+                if (gone) { NuvioImport.signOut(cfg, tok.access); return; }
+                U.clear(body);
+                body.appendChild(U.el('div', 'tc-line', U.t('Reading your profiles…')));
+                return signedIn(cfg, tok, body, stopped, fail);
+            });
+        }).then(null, function (e) { if (!e || e.message !== 'stopped') { fail(e); } });
+    }
+    function nuvioImport() {
+        nuvioSignIn(U.t('Import profiles from Nuvio'), U.t('Sign in to Nuvio there and approve (Nuvio calls it signing in a TV). StremioK reads your profiles once, then signs out. Waiting…'), function (cfg, tok, body, gone) {
+            return NuvioImport.readAll(cfg, tok.access).then(function (list) {
+                if (gone()) { return; }
+                closeModal();
+                nuvioPick(list);
+            });
+        });
+    }
+    // Kept in sync (js/nuvio-sync.js): the Nuvio profile this one follows, picked; then for a new
+    // profile (name) made from it, or for the one in use (no name).
+    function nuvioConnect(name) {
+        nuvioSignIn(name ? U.t('New profile from a Nuvio account') : U.t('Nuvio account'), U.t('Sign in to Nuvio there and approve (Nuvio calls it signing in a TV). The profile you pick then stays in step with this one. Waiting…'), function (cfg, tok, body, gone, fail) {
+            return NuvioImport.readAll(cfg, tok.access, true).then(null, function (e) { NuvioImport.signOut(cfg, tok.access); throw e; }).then(function (list) {
+                if (gone()) { NuvioImport.signOut(cfg, tok.access); return; }
+                if (!list.length) { NuvioImport.signOut(cfg, tok.access); fail(new Error(U.t('That Nuvio account has no profiles'))); return; }
+                closeModal();
+                function chosen(n) {
+                    if (!name) {
+                        NuvioSync.connect(cfg, tok, n).then(function () { markHomeDirty(); renderSettings(); });
+                        U.toast(U.t('Connected to Nuvio’s “{name}”: syncing…', { name: n.name }), 4000);
+                        renderSettings();
+                        offerPlugins(n.plugins, null);
+                        return;
+                    }
+                    U.spinner(true, U.t('Importing…'));
+                    nuvioMake(n, name).then(function (p) {
+                        U.spinner(false);
+                        if (!p) { NuvioImport.signOut(cfg, tok.access); U.toast(U.t('Up to {n} profiles', { n: Profiles.MAX }), 4000); return; }
+                        NuvioSync.connectFor(p.slot, cfg, tok, n);
+                        markHomeDirty();
+                        _focusChild = 'pf:' + p.id;
+                        renderSettings();
+                        offerPlugins(n.plugins, function () {
+                            confirm(U.t('“{name}” added, kept in step with Nuvio’s “{nuvio}”. Switch to it now?', { name: p.name, nuvio: n.name }), U.t('Switch to it'), function () { V.switchProfile(p.id); }, { plain: true, noLabel: U.t('Not now'), focusYes: true });
+                        });
+                    });
+                }
+                if (list.length === 1) { chosen(list[0]); return; }
+                var picked = false;
+                pickList(U.t('Which Nuvio profile?'), list.map(function (n, i) { return ['' + i, n.name + (n.locked ? '  ·  ' + U.t('PIN-locked in Nuvio') : '')]; }), null, function (i) { picked = true; chosen(list[+i]); });
+                onModalClose(function () { setTimeout(function () { if (!picked) { NuvioImport.signOut(cfg, tok.access); } }, 0); });   // (none picked: signed out)
+            });
+        });
+    }
+    // Nuvio's plugin repositories (a profile's), offered to add to Nuvio plugins (the TV's, every
+    // profile's: Settings › Content › Nuvio plugins), those already there left out; then().
+    function offerPlugins(repos, then) {
+        var have = typeof Plugins !== 'undefined' && Plugins.repos ? Plugins.repos().map(function (r) { return r.url; }) : null;
+        var fresh = have && Plugins.supported && Plugins.supported() ? (repos || []).filter(function (r) { var u = Plugins.manifestUrl ? Plugins.manifestUrl(r.url) : r.url; return u && have.indexOf(u) === -1; }) : [];
+        if (!fresh.length) { if (then) { then(); } return; }
+        var adding = false;
+        pickMany(U.t('Its Nuvio plugins: add them too? (for every profile on this TV)'), fresh.map(function (r, i) { return { key: '' + i, label: (r.name || U.t('Repository')) + '  ·  ' + shortHost(r.url) }; }),
+            { on: fresh.map(function (r, i) { return '' + i; }), button: function (n) { return U.tn(n, 'Add {n} repository', 'Add {n} repositories'); } }, function (keys) {
+                adding = true;
+                U.spinner(true, U.t('Adding…'));
+                keys.reduce(function (chain, k) { return chain.then(function () { return Plugins.addRepo(fresh[+k].url).then(null, function () {}); }); }, Promise.resolve()).then(function () {
+                    U.spinner(false);
+                    U.toast(U.t('Added to Settings › Content › Nuvio plugins (turn them on there)'), 5000);
+                    if (then) { then(); }
+                });
+            });
+        // (closed without adding: then() all the same; Add closes it first, so its turn is let pass)
+        if (then) { onModalClose(function () { setTimeout(function () { if (!adding) { then(); } }, 0); }); }
+    }
+    function nuvioPick(list) {
+        if (!list.length) { U.toast(U.t('That Nuvio account has no profiles'), 5000); return; }
+        var room = Profiles.MAX - Math.max(1, Profiles.count());
+        var items = list.map(function (p, i) {
+            return { key: '' + i, label: p.name + '  ·  ' + U.tn(p.addons.length, '{n} addon', '{n} addons') + ', ' + U.tn(Object.keys(p.watched).length, '{n} watched', '{n} watched'),
+                note: p.locked ? U.t('PIN-locked in Nuvio') : '' };
+        });
+        pickMany(U.tn(room, 'Nuvio’s profiles: tick up to {n}', 'Nuvio’s profiles: tick up to {n}'), items, { button: function (n) { return U.tn(n, 'Import {n} profile', 'Import {n} profiles'); } }, function (keys) {
+            keys = keys.slice(0, room);
+            U.spinner(true, U.t('Importing…'));
+            var made = [];
+            keys.reduce(function (chain, k) { return chain.then(function () { return nuvioMake(list[+k]).then(function (p) { if (p) { made.push(p); } }); }); }, Promise.resolve()).then(function () {
+                U.spinner(false);
+                markHomeDirty();
+                renderSettings();
+                if (!made.length) { U.toast(U.t('Nothing imported'), 4000); return; }
+                var repos = [];
+                keys.forEach(function (k) { (list[+k].plugins || []).forEach(function (r) { if (!repos.some(function (x) { return x.url === r.url; })) { repos.push(r); } }); });
+                offerPlugins(repos, function () {
+                    if (made.length === 1) {
+                        confirm(U.t('“{name}” added. Switch to it now?', { name: made[0].name }), U.t('Switch to it'), function () { V.switchProfile(made[0].id); }, { plain: true, noLabel: U.t('Not now'), focusYes: true });
+                    } else { U.toast(U.tn(made.length, 'Imported {n} profile', 'Imported {n} profiles'), 4000); }
+                });
+            });
+        });
+    }
+    function nuvioMake(n, name) {
+        var p = Profiles.add(name || n.name, NuvioImport.nearestColor(n.color, V.PROFILE_COLORS), U.t('Profile {n}', { n: 1 }));
+        if (!p) { return Promise.resolve(null); }
+        function put(k, v) { try { window.localStorage.setItem(Profiles.keyFor(p.slot, 'stremiok.' + k), JSON.stringify(v)); } catch (e) {} }
+        var urls = [];
+        n.addons.forEach(function (u) { var x = (Stremio.normalizeAddonUrl && Stremio.normalizeAddonUrl(u)) || ''; if (x && urls.indexOf(x) === -1) { urls.push(x); } });
+        if (urls.length) { var origin = {}; urls.forEach(function (u) { origin[u] = 'nuvio'; }); put('addons', urls); put('addonorigin', origin); }
+        if (Object.keys(n.watched).length) { put('watched', n.watched); }
+        // (its progress: each title's name and poster looked up, the most recent first; one that
+        // can't be found isn't brought)
+        var recent = n.progress.slice().sort(function (a, b) { return b.updated - a.updated; });
+        return Promise.all(recent.map(function (x) {
+            return Promise.resolve(Stremio.getMeta(x.type, x.parent)).then(function (m) { return m && m.name ? { x: x, m: m } : null; }, function () { return null; });
+        })).then(function (found) {
+            var all = {};
+            found.forEach(function (f) {
+                if (!f) { return; }
+                var x = f.x, ep = x.type === 'series';
+                all[x.type + ':' + x.id] = { id: x.id, type: x.type, name: ep ? f.m.name + '  S' + x.season + 'E' + x.episode : f.m.name, poster: f.m.poster, background: f.m.background,
+                    parent: ep ? x.parent : undefined, position: x.position, duration: x.duration, updated: x.updated || Date.now() };
+            });
+            if (Object.keys(all).length) { put('progress', all); }
+            return p;
+        });
+    }
+    // The list kept from the first change on (the profile StremioK has always run as, the first).
+    function profileEnsure() { Profiles.ensure(U.t('Profile {n}', { n: 1 })); }
+    function profileName(title, value, then) {
+        App.openEntry({
+            title: title, hint: U.t('Its name, as the profiles list shows it. RETURN cancels.'), value: value || '', placeholder: U.t('name'),
+            validate: function (v) { return ('' + v).trim() ? null : U.t('A name, please'); },
+            onConfirm: function (v) { App.back(); then(('' + v).trim().slice(0, 24)); }
+        });
     }
 
     // The app version, from the ?v= cache-buster build.sh stamps on every script tag
@@ -521,6 +809,7 @@
         wrap.appendChild(sectionRow(U.t('Appearance'), U.t('Look, background, accent color, zoom, posters, spoilers'), 'appearance'));
         wrap.appendChild(sectionRow(U.t('Home'), U.t('The tab it opens on, the top menu, Home feeds, Search results'), 'home'));
         wrap.appendChild(sectionRow(U.t('Diagnostics'), U.t('Logs, storage, installed apps; how StremioK was installed'), 'diagnostics'));
+        if (typeof Profiles !== 'undefined') { wrap.appendChild(sectionRow(U.t('Profiles'), U.t('Who watches: each profile its own addons, settings, progress and accounts'), 'profiles')); }
         if (typeof YTPlay !== 'undefined' && YTPlay.installMode && YTPlay.installMode() === 'tizenbrew') { wrap.appendChild(U.el('div', 'hint', TIZENBREW_NOTE)); }
         focusBack(wrap);
     }
@@ -666,6 +955,16 @@
                 acct.__onselect = stremioImport;
                 wrap.appendChild(acct);
             }
+            if (typeof NuvioImport !== 'undefined') {
+                var nacct = U.el('div', 'addon-item focusable add-row');
+                var nn = U.el('div', 'a-name', U.t('Import addons from Nuvio'));
+                nn.appendChild(originBadge('nuvio'));
+                nacct.appendChild(nn);
+                nacct.appendChild(U.el('div', 'a-url', typeof NuvioSync !== 'undefined' && NuvioSync.isConnected() && !NuvioSync.connectStatus().reconnect ? U.t('From the Nuvio account connected in Integrations: tick the addons to add')
+                    : U.t('Sign in on your phone with a QR code, then tick the addons to add (StremioK signs out straight after)')));
+                nacct.__onselect = nuvioAddonsImport;
+                wrap.appendChild(nacct);
+            }
             if (typeof YTPlay !== 'undefined' && YTPlay.aiomAddons && YTPlay.installMode() !== 'browser') {
                 var am = aiomSaved();
                 var aio = U.el('div', 'addon-item focusable');
@@ -711,6 +1010,48 @@
                 closeModal();
                 importPick(list);
             });
+        });
+    }
+    // Import addons from Nuvio: the connected account's (its kept session; the profile it follows
+    // first), else Nuvio's sign-in, read and signed out at once; a profile picked (if several),
+    // then its addons to tick, as Stremio's.
+    function nuvioAddonsImport() {
+        function chooseFrom(list, first) {
+            list = list.filter(function (p) { return p.addons.length; });
+            if (!list.length) { U.toast(U.t('That Nuvio account has no addons StremioK can use'), 5000); return; }
+            if (list.length === 1) { nuvioAddonPick(list[0]); return; }
+            pickList(U.t('Which Nuvio profile?'), list.map(function (p, i) { return ['' + i, p.name + '  ·  ' + U.tn(p.addons.length, '{n} addon', '{n} addons')]; }),
+                first != null ? '' + Math.max(0, list.map(function (p) { return p.index; }).indexOf(first)) : null, function (i) { nuvioAddonPick(list[+i]); });
+        }
+        if (typeof NuvioSync !== 'undefined' && NuvioSync.isConnected() && !NuvioSync.connectStatus().reconnect) {
+            U.spinner(true);
+            NuvioSync.session().then(function (s) { return NuvioImport.readAddons(s.cfg, s.token, true).then(function (list) { U.spinner(false); chooseFrom(list, s.profile); }); }).then(null, function (e) {
+                U.spinner(false);
+                U.toast(U.t('Couldn’t import: {why}', { why: (e && e.message) || U.t('unknown') }), 5000);
+            });
+            return;
+        }
+        nuvioSignIn(U.t('Import addons from Nuvio'), U.t('Sign in to Nuvio there and approve (Nuvio calls it signing in a TV). StremioK reads your addons once, then signs out. Waiting…'), function (cfg, tok, body, gone) {
+            return NuvioImport.readAddons(cfg, tok.access).then(function (list) {
+                if (gone()) { return; }
+                closeModal();
+                chooseFrom(list, null);
+            });
+        });
+    }
+    function nuvioAddonPick(p) {
+        var mine = Stremio.getAddonUrls();
+        var items = p.addons.map(function (x, i) {
+            var u = (Stremio.normalizeAddonUrl && Stremio.normalizeAddonUrl(x.url)) || x.url;
+            return { key: '' + i, label: (x.name || shortHost(x.url)) + '  ·  ' + shortHost(x.url), have: mine.indexOf(x.url) !== -1 || mine.indexOf(u) !== -1 };
+        });
+        pickMany(U.t('Nuvio’s “{name}” addons: tick the ones to add', { name: p.name }), items, { button: function (n) { return U.tn(n, 'Import {n} addon', 'Import {n} addons'); } }, function (keys) {
+            var n = 0, last = null;
+            keys.forEach(function (k) { var added = Stremio.addAddon(p.addons[+k].url); if (added) { n++; last = added; if (Stremio.setAddonOrigin) { Stremio.setAddonOrigin(added, 'nuvio'); } } });
+            clearCatalogCache();
+            refreshAddonRows(last);
+            U.toast(U.tn(n, 'Imported {n} addon', 'Imported {n} addons'), 3000);
+            renderSettings();
         });
     }
     function importPick(list) {
@@ -788,7 +1129,7 @@
     // refuses is forgotten (the address stays) and asked for again.
     var AIOM_KEY = 'stremiok.aiomanager';
     // Where an addon came from (Stremio.addonOrigin): a letter badge, and the words for it.
-    var ORIGIN_BADGE = { stremio: ['S', 'src-s', U.t('From Stremio')], aiomanager: ['A', 'src-a', U.t('From AIOManager')], config: ['C', 'src-c', U.t('From a configuration file')] };
+    var ORIGIN_BADGE = { stremio: ['S', 'src-s', U.t('From Stremio')], aiomanager: ['A', 'src-a', U.t('From AIOManager')], config: ['C', 'src-c', U.t('From a configuration file')], nuvio: ['N', 'src-n', U.t('From Nuvio')] };
     function originBadge(kind) { var b = ORIGIN_BADGE[kind]; return b ? U.el('span', 'src-badge ' + b[1], b[0]) : null; }
     function aiomSaved() {
         var x = U.store.get(AIOM_KEY, {}) || {};
@@ -929,9 +1270,26 @@
     // A configuration file's text: what it has listed, none ticked, to tick and import. here():
     // the entry screen still showing (back to Settings from it). Imported settings: StremioK
     // starts again with them.
-    function importText(text, here) {
+    function importText(text, here, intoThis) {
         var parsed = Stremio.parseSetupList(text);
         if (!parsed.items.length) { U.toast(U.t('No supported entries found in that file') + (parsed.ignored ? ' ' + U.t('({n} ignored)', { n: parsed.ignored }) : ''), 4500); return; }
+        // (into this profile, or a new one: made, the file kept for it, and StremioK started in it,
+        // where it's listed to tick: js/profiles.js)
+        if (!intoThis && typeof Profiles !== 'undefined' && Profiles.list().length < Profiles.MAX && Profiles.list().length !== Profiles.MAX) {
+            var fromName = parsed.profile && parsed.profile.name;
+            pickList(U.t('Import it into'), [['this', U.t('This profile')], ['new', fromName ? U.t('A new profile: “{name}”', { name: fromName }) : U.t('A new profile')]], 'this', function (v) {
+                if (v === 'this') { importText(text, here, true); return; }
+                function make(name) {
+                    var p = Profiles.add(name, parsed.profile && parsed.profile.color, U.t('Profile {n}', { n: 1 }));
+                    if (!p) { U.toast(U.t('Up to {n} profiles', { n: Profiles.MAX }), 4000); return; }
+                    try { window.localStorage.setItem(Profiles.keyFor(p.slot, 'stremiok.importpending'), JSON.stringify(('' + text).slice(0, 1572864))); } catch (e) {}
+                    if (here()) { App.back(); }
+                    V.switchProfile(p.id);
+                }
+                if (fromName) { make(fromName); } else { profileName(U.t('New profile'), '', make); }
+            });
+            return;
+        }
         if (here()) { App.back(); renderSettings(); }
         pickMany(U.t('In that file: tick what to import'), parsed.items.map(function (it, i) { return { key: '' + i, label: it.label, have: it.have, note: it.note }; }),
             { button: function (n) { return U.t('Import {n}', { n: n }); } }, function (keys) {
@@ -1088,7 +1446,7 @@
         if (!st.url) { return U.t('Not read yet'); }
         parts.push(U.tn(st.count || 0, '{n} channel', '{n} channels', { n: thousands(st.count || 0) }) + (st.groups ? ' ' + U.tn(st.groups, 'in {n} group', 'in {n} groups') : ''));
         if (st.fetchedAt) { var d = new Date(st.fetchedAt); parts.push(U.t('downloaded {when}', { when: U.dayLabel(st.fetchedAt) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes()) })); }
-        if (st.dropped) { parts.push(U.t('{n} more left out (a playlist keeps its first 30,000)', { n: thousands(st.dropped) })); }
+        if (st.dropped) { parts.push(U.t('{n} more left out (a playlist keeps its first {max}: Largest playlist, below)', { n: thousands(st.dropped), max: thousands(IPTV.maxChannels()) })); }
         if (p.genres) { parts.push(U.tn(p.genres.length, '{n} group chosen', '{n} groups chosen')); }
         if (st.cut) { parts.push(st.cut > 0 ? U.t('stopped short of {n}: OK on it, then Channel groups, reads only what you want', { n: thousands(st.cut) }) : U.t('stopped short: OK on it, then Channel groups, reads only what you want')); }
         if (st.uncached) { parts.push(U.t('too large to save on the TV: downloaded each launch')); }
@@ -1111,7 +1469,7 @@
     function playlistProblem(p) {
         var st = Stremio.iptvStatus(p.id);
         if (p.off || !st.error) { return ''; }
-        return '⚠ ' + (st.stale ? U.t('Couldn’t refresh it (showing the saved copy):') + ' ' : '') + st.error;
+        return '⚠ ' + (st.stale ? U.t('Couldn’t refresh it (showing the saved copy):') + ' ' : '') + st.error + (/^Too large/.test(st.error) ? ' — ' + U.t('see Largest playlist, below') : '');
     }
     // + Add Xtream account: its server, username and password, a page each (a whole Xtream link
     // in the server's fills the rest); checked with the server, then added (Stremio.iptvAddXtream).
@@ -1331,6 +1689,23 @@
             wrap.appendChild(subPickRow(U.t('Auto-refresh'), IPTV_EVERY, 'every',
                 { get: function () { return { every: String(Stremio.iptvRefreshEvery()) }; }, set: function (c) { Stremio.iptvSetRefreshEvery(+c.every); } }));
         }
+        // Largest playlist: what one may be (MB) and keep (channels); raised, the playlists it
+        // cut short or refused are read again.
+        var IPTV_SIZES = IPTV.SIZES.map(function (n) {
+            var v = { mb: n, n: thousands(n * 1500) };
+            return [String(n), n === 20 ? U.t('{mb} MB, up to {n} channels (default)', v) : U.t('{mb} MB, up to {n} channels', v)];
+        });
+        wrap.appendChild(subPickRow(U.t('Largest playlist'), IPTV_SIZES, 'size', {
+            warning: U.t('Above 20 MB, an older TV may run out of memory and close StremioK; a big playlist takes longer to read, and may be too large to save on the TV'),
+            get: function () { return { size: String(IPTV.sizeMb()) }; },
+            set: function (c) {
+                var was = IPTV.sizeMb();
+                IPTV.setSizeMb(+c.size);
+                if (IPTV.sizeMb() <= was) { return; }
+                playlists.filter(function (p) { var st = Stremio.iptvStatus(p.id); return !p.off && !IPTV.isStalker(p) && (st.dropped || /^Too large/.test(st.error || '')); })
+                    .forEach(function (p) { Stremio.iptvReload(p.id).then(function () { refreshAddonRows('local:iptv'); }); });
+            }
+        }));
         wrap.appendChild(subPickRow(U.t('Stalker channels'), [['pages', U.t('First 100 pages (about 1,400 channels)')], ['all', U.t('Whole portal (up to 30,000 channels)')]], 'stalker', {
             warning: U.t('Whole portal can take many minutes on every Reload and Auto-refresh, the IPTV rows wait for a first read, and a portal may slow down, cut off or block a MAC address that asks so much'),
             get: function () { return { stalker: IPTV.stalkerAll() ? 'all' : 'pages' }; },
@@ -1574,6 +1949,7 @@
 
         // Your Stremio account, kept in step (js/stremio-sync.js)
         if (typeof StremioSync !== 'undefined' && typeof StremioAccount !== 'undefined') {
+            if (typeof NuvioSync !== 'undefined') { wrap.appendChild(U.el('h2', null, U.t('Nuvio account'))); wrap.appendChild(nuvioAccountRow()); }
             wrap.appendChild(U.el('h2', null, U.t('Stremio account')));
             wrap.appendChild(stremioAccountRow());
             wrap.appendChild(U.el('div', 'hint', U.t('Connect your Stremio account (sign in on your phone): its Continue Watching, watched marks and Library then sync with StremioK, both ways.')));
@@ -1665,6 +2041,24 @@
 
     // Your Stremio account: connected (who, when it last synced, OK for Sync now / Disconnect), or
     // not (OK to connect: Stremio's sign-in code, as the addon import).
+    // This profile kept in step with a Nuvio account's profile (js/nuvio-sync.js).
+    function nuvioAccountRow() {
+        var st = NuvioSync.connectStatus(), r = U.el('div', 'addon-item focusable cfg-row');
+        function two(x) { return (x < 10 ? '0' : '') + x; }
+        var d = st.lastSync ? new Date(st.lastSync) : null;
+        r.appendChild(U.el('div', 'a-name', U.t('Nuvio account') + (st.connected && st.name ? ':  ' + st.name : '')));
+        r.appendChild(U.el('div', 'a-url', st.connected && st.reconnect ? U.t('Its sign-in no longer works — press OK to connect again')
+            : st.connected ? (d ? U.t('Last synced {when}', { when: (U.dayLabel ? U.dayLabel(st.lastSync) + ' ' : '') + two(d.getHours()) + ':' + two(d.getMinutes()) }) : U.t('Not synced yet')) + (st.err ? '   ·   ⚠ ' + st.err : '') + '   ·   ' + U.t('OK for options')
+            : U.t('Not connected — press OK to connect (where you stopped, watched marks and Library, both ways)')));
+        r.__onselect = function () {
+            if (!st.connected || st.reconnect) { if (st.reconnect) { NuvioSync.disconnect(); } nuvioConnect(null); return; }
+            pickList(U.t('Nuvio account'), [['now', U.t('Sync now')], ['off', U.t('Disconnect')]], null, function (v) {
+                if (v === 'now') { U.toast(U.t('Syncing with Nuvio…')); NuvioSync.sync().then(function () { markHomeDirty(); renderSettings(); }); }
+                else if (v === 'off') { confirm(U.t('Disconnect from Nuvio? Nothing here is removed.'), U.t('Disconnect'), function () { NuvioSync.disconnect(); U.toast(U.t('Disconnected from Nuvio')); renderSettings(); }); }
+            });
+        };
+        return r;
+    }
     function stremioAccountRow() {
         var st = StremioSync.connectStatus(), r = U.el('div', 'addon-item focusable cfg-row');
         function two(x) { return (x < 10 ? '0' : '') + x; }
@@ -3014,5 +3408,6 @@
     V.backInSettings = backInSettings;
     V.renderEntry = renderEntry;
     V.renderSettings = renderSettings;
+    V.importText = function (text) { ++_importGen; importText(text, function () { return false; }, true); };   // (a file imported as a new profile, once it's in use: js/app.js)
     V.settingsRoot = settingsRoot;
 })(ViewParts);

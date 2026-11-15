@@ -17,12 +17,15 @@
     function posterActions() { return V.posterActions.apply(null, arguments); }   // core
     function scr() { return V.scr.apply(null, arguments); }   // core
     function toggleNowPlaying() { return V.toggleNowPlaying.apply(null, arguments); }   // core
-    // Your Stremio account's Library (connected): + Stremio Library / ✓ In Stremio Library.
-    function libraryPill(type, id) {
-        if (!V.libraryOn() || _d.addonType) { return null; }
-        var p = U.el('div', 'pill focusable', V.libraryLabel(type, id));
-        p.__onselect = function () { V.toggleLibrary(type, _d.meta); setTimeout(function () { p.textContent = V.libraryLabel(type, id); }, 0); };
-        return p;
+    // The Libraries connected (a Stremio account's, a Nuvio profile's): + Stremio Library / ✓ In
+    // Stremio Library, one pill each.
+    function libraryPills(type, id) {
+        if (!V.libraryOn() || _d.addonType) { return []; }
+        return V.libraries().map(function (L) {
+            var p = U.el('div', 'pill focusable', V.libraryLabel(type, id, L.id));
+            p.__onselect = function () { V.toggleLibrary(type, _d.meta, L.id); setTimeout(function () { p.textContent = V.libraryLabel(type, id, L.id); }, 0); };
+            return p;
+        });
     }
     function trimMeta() { return V.trimMeta.apply(null, arguments); }   // home
     function searchFor() { return V.searchFor.apply(null, arguments); }   // search
@@ -867,8 +870,7 @@
         np.__onselect = function () { toggleNowPlaying('series', _d.meta); _d._focusNp = true; drawDetail(); };
         if (_d._focusNp) { _d._epFocus = np; _d._focusNp = false; }
         row.appendChild(np);
-        var lp = libraryPill('series', _d.meta.id || _d.id);
-        if (lp) { row.appendChild(lp); }
+        libraryPills('series', _d.meta.id || _d.id).forEach(function (lp) { row.appendChild(lp); });
         var tp = trailerPill();
         if (tp) { row.appendChild(tp); }
         var mp = morePill();
@@ -1894,8 +1896,7 @@
             var np = U.el('div', 'pill focusable', nowPlayingLabel('movie', npId));
             np.__onselect = function () { toggleNowPlaying('movie', _d.meta); np.textContent = nowPlayingLabel('movie', npId); };
             row.appendChild(np);
-            var mlp = libraryPill('movie', npId);
-            if (mlp) { row.appendChild(mlp); }
+            libraryPills('movie', npId).forEach(function (mlp) { row.appendChild(mlp); });
             var tp = trailerPill();
             if (tp) { row.appendChild(tp); }
             var mp = morePill();

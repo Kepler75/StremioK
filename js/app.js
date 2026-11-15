@@ -251,6 +251,14 @@ var App = (function () {
         Keys.init();
         Keys.setHandler(onKey);
         Views.applyAppearance();   // background / accent color from Settings
+        // Who's watching (two or more profiles, unless you turned the question off; not when opened
+        // from a home bar tile): asked before anything else starts, so nothing is sent to Trakt,
+        // a Stremio account or a media server for the wrong person (js/profiles.js).
+        var fromTile = typeof HubPreview !== 'undefined' && HubPreview.fromTile && HubPreview.fromTile();
+        if (typeof Profiles !== 'undefined' && Profiles.ask() && !fromTile && Views.profilePicker) { Views.profilePicker(started); return; }
+        started();
+    }
+    function started() {
         // The TV's database filled with old versions of what was saved: tidied up, once started
         setTimeout(function () { if (U.bigStore && U.bigStore.tidyIfNeeded) { U.bigStore.tidyIfNeeded(); } }, 30000);
         // New episodes out for the shows in Watching: said once, half a minute in (Home's ready)
@@ -275,6 +283,12 @@ var App = (function () {
             StremioSync.sync().then(function () { if (_current === 'home' && !Player.isActive()) { Views.renderHome(); } });
         }
         serverMarks();
+        // ...and a Nuvio account's profile, both ways (js/nuvio-sync.js; at launch, every 15 minutes).
+        if (typeof NuvioSync !== 'undefined' && NuvioSync.isConnected()) { NuvioSync.start(function () { if (_current === 'home' && !Player.isActive()) { Views.renderHome(); } }); }
+        if (typeof HubPreview !== 'undefined') { HubPreview.start(); }   // (the home bar's tiles: the profile in use's)
+        // A configuration file imported as this new profile (Settings › Import): listed to tick now.
+        var pending = U.store.get('stremiok.importpending', null);
+        if (typeof pending === 'string' && pending) { U.store.remove('stremiok.importpending'); if (Views.importText) { setTimeout(function () { Views.importText(pending); }, 500); } }
     }
     // Your media servers' watched marks: read at launch, when a server is added, reloaded or
     // removed, on coming back to the foreground and every MARKS_EVERY (each one again once it's
@@ -359,4 +373,4 @@ var App = (function () {
     };
 })();
 
-window.onload = function () { App.start(); if (typeof HubPreview !== 'undefined') { HubPreview.start(); } };
+window.onload = function () { App.start(); };   // (the home bar preview starts once StremioK has: see started())

@@ -62,7 +62,10 @@
         tellTrakt(type, ids, on);
         tellStremio(type, ids, on);
     }
-    function tellStremio(type, ids, on) { if (typeof StremioSync !== 'undefined' && StremioSync.onMarked) { StremioSync.onMarked(type, ids, !!on); } }
+    function tellStremio(type, ids, on) {
+        if (typeof StremioSync !== 'undefined' && StremioSync.onMarked) { StremioSync.onMarked(type, ids, !!on); }
+        if (typeof NuvioSync !== 'undefined' && NuvioSync.soon) { NuvioSync.soon(); }   // (a Nuvio account's: js/nuvio-sync.js)
+    }
     // A "not watched" Trakt has confirmed (and its copy shows): dropped here, so Trakt decides.
     function clearUnwatched(type, id) {
         var a = watchedAll(), k = type + ':' + id, v = a[k];

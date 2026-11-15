@@ -24,8 +24,19 @@
         var why = U.urlProblem ? U.urlProblem(text) : (U.parseUrl(text) ? null : U.t('Not a link'));
         return why ? why + ' ' + U.t('(a link starts with https:// or http://)') : null;
     }
+    // A YouTube playlist's page (youtube.com/playlist?list=…, m. or music. too): its id, or ''.
+    // (A video's page with a list= plays the video.)
+    function ytPlaylistOf(url) {
+        var m = ('' + url).match(/^https?:\/\/(?:www\.|m\.|music\.)?youtube\.com\/playlist\?(?:[^#]*&)?list=([A-Za-z0-9_-]{10,64})(?:[&#]|$)/);
+        return m ? m[1] : '';
+    }
+    // A YouTube page, video's or playlist's (pasted into Search: opened, not searched for).
+    function isYouTubeLink(text) {
+        var t = ('' + text).trim();
+        return /^https?:\/\/(?:(?:www\.|m\.)?youtube\.com\/watch\?(?:.*&)?v=[A-Za-z0-9_-]{11}|youtu\.be\/[A-Za-z0-9_-]{11})/.test(t) || !!ytPlaylistOf(t);
+    }
     // Played as it is (nothing recorded): a YouTube video's page through StremioK's YouTube
-    // service, anything else straight to the player.
+    // service, a playlist's opened as its videos, anything else straight to the player.
     function playLink(text) {
         var p = U.parseUrl(text);
         if (!p) { U.toast(U.t('That isn’t a link StremioK can play')); return; }
@@ -40,6 +51,8 @@
             }, function () { if (gen === _gen) { U.toast(YTPlay.unavailableMessage('video'), 6000); } });
             return;
         }
+        var list = ytPlaylistOf(url);
+        if (list) { App.openDetail('YouTube', 'ytk:p:' + list, null); return; }   // (its videos as episodes, js/youtube.js)
         var name = '';
         try { name = decodeURIComponent((p.path || '').split('/').pop() || ''); } catch (e) { name = ''; }
         Player.play({ url: url, type: 'movie', id: 'link:' + url.length + ':' + url.slice(-40), name: (name || p.host || U.t('Link')).slice(0, 120), streams: [], link: true, private: true }, back);
@@ -180,6 +193,7 @@
         query = ('' + query).trim();
         var results = U.byId('search-results');
         if (!query) { return; }
+        if (isYouTubeLink(query)) { playLink(query); return; }   // (a YouTube page pasted in: opened, not searched for)
         rememberSearch(query);
         renderRecent(-1);
         U.clear(results);

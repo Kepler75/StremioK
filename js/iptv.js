@@ -13,9 +13,15 @@ var IPTV = (function () {
     var PLAYLISTS_KEY = 'stremiok.iptv.playlists';
     var CACHE_PREFIX = 'stremiok.iptv.cache.';       // one key per playlist id
     var _cache = null;   // merged { ts, channels, groups, byId, byGroup, catalogs }
-    // A playlist is downloaded up to PLAYLIST_MAX and kept to MAX_CHANNELS channels: bigger
+    // A playlist is downloaded up to playlistMax() and kept to maxChannels() channels: bigger
     // ones would exhaust an older TV's memory (both show in Settings > IPTV when they apply).
-    var PLAYLIST_MAX = 20 * 1024 * 1024, MAX_CHANNELS = 30000;
+    // Settings › Content › IPTV › Largest playlist: 20 MB (30,000 channels) unless raised, the
+    // channels in step (1,500 per MB), the download given longer (15 s per 20 MB).
+    var SIZE_KEY = 'stremiok.iptv.size', SIZES = [20, 40, 60, 100], CHANNELS_PER_MB = 1500;
+    function sizeMb() { var n = +U.store.get(SIZE_KEY, 20); return SIZES.indexOf(n) !== -1 ? n : 20; }
+    function setSizeMb(n) { n = +n; if (SIZES.indexOf(n) === -1 || n === 20) { U.store.remove(SIZE_KEY); } else { U.store.set(SIZE_KEY, n); } }
+    function playlistMax() { return sizeMb() * 1024 * 1024; }
+    function maxChannels() { return sizeMb() * CHANNELS_PER_MB; }
     var _status = {};    // playlist id -> { url, count, groups, error, uncached, title, fetchedAt, stale }
     var NAME_MAX = 60;
 
@@ -485,7 +491,7 @@ var IPTV = (function () {
         return r.channels;
     }
     // The same, PARSE_CHUNK lines at a time with a pause between (the remote stays
-    // responsive while a 20 MB playlist is read); onProgress(channels so far). Resolves
+    // responsive while a big playlist is read); onProgress(channels so far). Resolves
     // { channels, dropped }. The text isn't kept once split.
     var PARSE_CHUNK = 3000;
     function parseM3UAsync(text, max, onProgress) {
@@ -576,7 +582,7 @@ var IPTV = (function () {
 
         function finish(text, at) {
             st.fetchedAt = at || 0;
-            return parseM3UAsync(text, MAX_CHANNELS, function (n) { progress(playlist.id, n); }).then(function (r) {
+            return parseM3UAsync(text, maxChannels(), function (n) { progress(playlist.id, n); }).then(function (r) {
                 if (r.dropped) { st.dropped = r.dropped; }   // (kept to what the TV can hold; the rest dropped, and said so)
                 st.title = r.title || '';
                 st.guides = r.guides || [];
@@ -624,7 +630,7 @@ var IPTV = (function () {
             });
         }
         function fetchIt() {
-            return (isStalker(playlist) ? stalkerText() : U.getText(playlist.url, 15000, PLAYLIST_MAX)).then(function (text) {
+            return (isStalker(playlist) ? stalkerText() : U.getText(playlist.url, 15000 * sizeMb() / 20, playlistMax())).then(function (text) {
                 var at = Date.now();
                 return writePersist(playlist.id, src, text, at).then(function (ok) {
                     st.uncached = !ok;
@@ -856,6 +862,7 @@ var IPTV = (function () {
         macOf: macOf, stbUa: STB_UA, stalkerPortal: stalkerPortal, stalkerCheck: stalkerCheck, addStalker: addStalker, isStalker: isStalker, stalkerAll: stalkerAll, setStalkerAll: setStalkerAll, stalkerGroups: stalkerGroups, setStalkerGroups: setStalkerGroups,
         xtreamParts: xtreamParts, xtreamUrl: xtreamUrl, xtreamCheck: xtreamCheck, addXtream: addXtream, xtreamFormat: xtreamFormat, setXtreamFormat: setXtreamFormat,
         isFavorite: isFavorite, setFavorite: setFavorite, refreshEvery: refreshEvery, setRefreshEvery: setRefreshEvery, readAt: readAt,
+        sizeMb: sizeMb, setSizeMb: setSizeMb, maxChannels: maxChannels, SIZES: SIZES,
         channels: function () { return _cache ? _cache.channels : []; }, channel: function (id) { return _cache ? _cache.byId[id] || null : null; }, isEnabled: isEnabled, reset: reset, status: status,
         load: load, reload: reload, catalog: catalog, meta: meta, streams: streams, synthAddon: synthAddon, isReady: isReady,
         onProgress: onProgress

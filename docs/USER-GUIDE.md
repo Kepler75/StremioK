@@ -11,6 +11,7 @@ How to use StremioK, task by task. Also:
 
 - [Getting started](#getting-started)
 - [Getting around](#getting-around)
+- [Profiles](#profiles)
 - [Finding something to watch](#finding-something-to-watch)
 - [Title pages](#title-pages)
 - [Choosing a source](#choosing-a-source)
@@ -200,6 +201,20 @@ network you trust: addon and playlist links often carry your tokens or passwords
 the TV both say so). It exists only while the QR code is on screen, behind a one-time code,
 and takes one entry (see [Privacy and data](PRIVACY.md#sending-text-from-your-phone)).
 
+## Profiles
+
+One for everyone, or one each (up to 5): Settings › **Profiles** › *+ Add a profile*, starting
+as a copy of this one's addons and settings, empty, from a Stremio account or from a Nuvio
+account's profile (both kept in sync). *Import profiles from Nuvio* brings Nuvio's profiles once
+(addons, watched marks, recent progress); both offer that profile's Nuvio plugins too. A
+configuration file can also be imported as a new profile.
+
+- **A profile's own:** addons, settings, progress, watched marks, and its Trakt, Stremio and
+  media server sign-ins. **Shared:** playlists, USB drives, network folders, plugins, API keys,
+  the streaming server.
+- **Who's watching?** is asked as StremioK opens (or not: *Ask who's watching*). The badge at the
+  end of the top menu switches; StremioK then starts again in that profile.
+
 ## Finding something to watch
 
 ### Home
@@ -308,7 +323,8 @@ Search (top menu) asks every addon catalog that can search.
 - Your last 5 searches are listed on the right (hold OK on one to remove it).
 - **▶ Play a link** (next to the field) plays a video's direct link (`https://…/film.mkv`, an
   HLS `….m3u8`, a YouTube video's page), typed or sent from your phone. It plays as it is,
-  and nothing about it is recorded (no progress, no Continue Watching).
+  and nothing about it is recorded (no progress, no Continue Watching). A YouTube playlist's
+  page opens as its videos. A YouTube page typed into Search itself opens too.
 
 ## Title pages
 

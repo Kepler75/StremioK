@@ -208,7 +208,8 @@
         if (m.description) { o.description = ('' + m.description).slice(0, 320); }
         return o;
     }
-    function addonsSig() { return Stremio.getAddonUrls().join('|'); }
+    // (Home's saved rows are the TV's, kept once: the profile they're for in it, so another's are never shown: js/profiles.js)
+    function addonsSig() { return (typeof Profiles !== 'undefined' && Profiles.count() > 1 ? 'profile:' + Profiles.slot() + '|' : '') + Stremio.getAddonUrls().join('|'); }
     function sizeOf(o) {   // (about how many bytes a trimmed card takes saved)
         var n = 40;
         for (var k in o) { if (Object.prototype.hasOwnProperty.call(o, k)) { n += k.length + ('' + o[k]).length + 6; } }

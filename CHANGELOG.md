@@ -3,6 +3,20 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.4.0 — 2026-11-14
+- **Profiles** (Settings › Profiles): up to 5, each with its own addons, settings, progress,
+  watched marks and sign-ins; playlists, drives, folders, plugins and API keys stay the TV's.
+  "Who's watching?" as StremioK opens; the badge in the top menu switches (#23).
+- **A new profile from a Stremio or Nuvio account**, kept in sync with it (Nuvio: where you
+  stopped, watched marks and its Library), or from a configuration file. *Import profiles from
+  Nuvio* copies its profiles once, offering their plugins too.
+- **Import addons from Nuvio** (Settings › Content › Addons), as from a Stremio account. Nuvio
+  features use Nuvio's published backend; StremioK isn't affiliated with Nuvio.
+- **YouTube playlist links:** a playlist's page in *▶ Play a link*, or a YouTube page pasted into
+  Search, opens as its videos.
+- **Largest playlist** (Settings › Content › IPTV): 20 MB and 30,000 channels by default; up to
+  100 MB and 150,000 channels for a bigger playlist, at a risk on older TVs.
+
 ## 2.3.8 — 2026-11-13
 - **Catalan** (Settings › Appearance › *Language*), contributed by deivids84 (#22).
 - **Fixed: Nuvio plugins finding nothing on some TVs:** every request a plugin made was refused

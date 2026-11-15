@@ -50,6 +50,7 @@ is shown or appears in an error message, and in the logs.
 | Your Nuvio plugins' websites | Whatever the plugin asks: the title's TMDB number, season and episode, and your TMDB key ([Nuvio plugins](PLUGINS.md)) | When on, as you open titles |
 | AIOManager | Your API key, to read your addon list; StremioK shows in its *Connections* as a *Pull* app. Your addons are never sent | When you sync |
 | Your Stremio account | To import: read once, then signed out. Connected: what you play (where you stopped, watched), your marks and Library changes. No password reaches the TV | When you import, or while connected |
+| Nuvio (`api.nuvio.tv`) | Its TV sign-in; profiles, addons, plugins, progress, watched marks (an import then signs out); synced: progress, watched marks, Library | Importing, or connected |
 | TheIntroDB, SkipDB, IntroDB, AniSkip, ARM | The title's ids, season, episode and length, to find skip times | As something plays |
 | YouTube | What any YouTube page asks for (no account, no key), through StremioK's service | YouTube videos, trailers, YouTube catalogs |
 | SponsorBlock (`sponsor.ajay.app`) | The first 4 characters of a hash of the video's id: the answer covers every video sharing them, so it isn't told which one. For DeArrow titles in a list, the listed videos' ids (what a channel lists, not what you watch) | YouTube videos and lists |

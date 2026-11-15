@@ -718,7 +718,7 @@ var U = (function () {
         var LEFTOVER_SHARE = 0.5, _busy = null, _refusalTidy = false;
         // Use the TV's database (Settings › Diagnostics › Storage; on unless turned off):
         // off, the big copies are kept in the settings storage (BIG_KEY: the ones that go here).
-        var USE_KEY = 'stremiok.bigdb', BIG_KEY = /^stremiok\.(homecache|local\.index|iptv\.cache\.|trakt\.watched|media\.watched|stremio\.items)/;
+        var USE_KEY = 'stremiok.bigdb', BIG_KEY = /^stremiok\.(p[2-9]\.)?(homecache|local\.index|iptv\.cache\.|trakt\.watched|media\.watched|stremio\.items)/;   // (a profile's own under its slot: js/profiles.js)
         function enabled() { return store.get(USE_KEY, true) !== false; }
         function lsBigKeys() {
             var out = [];
@@ -757,6 +757,7 @@ var U = (function () {
         }
         return {
             get: function (key) {
+                key = phys(key);   // (the profile's own, or the TV's: js/profiles.js)
                 return open().then(function (db) {
                     if (!db) { return store.get(key, null, true); }
                     return tx(db, 'readonly', function (os) { return os.get(key); }).then(function (v) { return v === undefined || v === true ? null : v; });
@@ -772,6 +773,7 @@ var U = (function () {
             // a newer save of the same key replaces the one waiting. Each refusal is noted with
             // the item's size, the database's figures and the TV's free disk.
             set: function (key, value) {
+                key = phys(key);
                 delete _retry[key];   // (a newer copy: the one waiting to be tried again isn't wanted)
                 return open().then(function (db) {
                     if (!db) { return store.set(key, value); }
@@ -821,9 +823,16 @@ var U = (function () {
                     });
                 });
             },
+            // A key exactly as kept (a profile not in use, gone: js/profiles.js), not the active profile's.
+            removeExact: function (key) {
+                delete _retry[key];
+                try { window.localStorage.removeItem(key); delete _memo[key]; } catch (e) {}
+                return open().then(function (db) { return db ? tx(db, 'readwrite', function (os) { os['delete'](key); }) : true; });
+            },
             // keepRetry: a save waiting to be tried again stays (the Trakt history, moved to the
             // settings storage meanwhile, goes back into the database when it's taken)
             remove: function (key, keepRetry) {
+                key = phys(key);
                 if (!keepRetry) { delete _retry[key]; }
                 store.remove(key);
                 return open().then(function (db) { return db ? tx(db, 'readwrite', function (os) { os['delete'](key); }) : true; });
@@ -1024,6 +1033,9 @@ var U = (function () {
        Pass noMemo=true for large one-shot blobs (IPTV playlist text) so they aren't
        kept in memory for the whole session. */
     var _memo = {};
+    // A key as kept for the profile StremioK runs in (js/profiles.js: the TV's own keys as they
+    // are, a profile's under its slot; with one profile, every key as it is).
+    function phys(key) { return (typeof Profiles !== 'undefined' && Profiles.key) ? Profiles.key(key) : key; }
     // Regenerable caches, cleared first (in this order) when the storage is full.
     var CACHES = ['stremiok.homesnap', 'stremiok.homecache', 'stremiok.iptv.cache.', 'stremiok.showinfo', 'stremiok.manifests'];
     var _fullToldAt = null;   // (when you were last told the storage is full)
@@ -1049,6 +1061,7 @@ var U = (function () {
         // whether anything changed since (the title page re-ranks its sources then).
         writes: function () { return _writes; },
         get: function (key, fallback, noMemo) {
+            key = phys(key);
             var m = _memo[key];
             if (!m) {
                 try {
@@ -1066,15 +1079,17 @@ var U = (function () {
         // keep: what was saved stays in memory as it is, so the next read needn't parse it again
         // (the playback progress, saved over and over).
         set: function (key, value, keep) {
+            var cache = isCacheKey(key);
+            key = phys(key);
             delete _memo[key];
             _writes++;
             var text;
             try { text = JSON.stringify(value); } catch (e0) { return false; }
             if (tryWrite(key, text)) { if (keep) { _memo[key] = { missing: false, val: value }; } return true; }
-            if (isCacheKey(key)) { return false; }
+            if (cache) { return false; }
             var freed = [];
             for (var i = 0; i < CACHES.length; i++) {
-                var gone = clearCache(CACHES[i]);
+                var gone = clearCache(phys(CACHES[i]));
                 if (gone) { freed.push(CACHES[i]); }
                 if (gone && tryWrite(key, text)) { log('storage', 'TV storage full: cleared ' + freed.join(', ') + ' to save ' + key); return true; }
             }
@@ -1084,6 +1099,7 @@ var U = (function () {
             return false;
         },
         remove: function (key) {
+            key = phys(key);
             delete _memo[key];
             _writes++;
             try { window.localStorage.removeItem(key); } catch (e) {}

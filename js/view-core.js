@@ -204,6 +204,60 @@ var ViewParts = {};
         _modalScope = null; _modalPrevFocus = null;
     }
 
+    // ----- profiles: who's watching (js/profiles.js) -----
+    var PROFILE_COLORS = { indigo: '#5c6bc0', teal: '#26a69a', orange: '#fb8c00', pink: '#ec407a', green: '#43a047', red: '#e53935', purple: '#8e24aa', amber: '#ffb300' };
+    // A profile's round badge: its color, the first character of its name.
+    function profileBadge(p, cls) {
+        var b = U.el('span', 'pf-badge' + (cls ? ' ' + cls : ''));
+        b.style.background = PROFILE_COLORS[p.color] || PROFILE_COLORS.indigo;
+        var m = /^[\uD800-\uDBFF][\uDC00-\uDFFF]|^[\s\S]/.exec(('' + (p.name || '?')).trim() || '?');
+        b.textContent = (m ? m[0] : '?').toUpperCase();
+        return b;
+    }
+    // "Who's watching?": every profile, the one in use focused. OK on it: then(); on another:
+    // StremioK starts again in it (switchProfile). BACK: as you were (then()).
+    function profilePicker(then, title) {
+        var list = (typeof Profiles !== 'undefined') ? Profiles.list() : [], now = Profiles.active();
+        var existing = document.querySelector('.modal-overlay');
+        if (existing) { existing.parentNode.removeChild(existing); }
+        var overlay = U.el('div', 'modal-overlay pf-overlay'), box = U.el('div', 'pf-box'), row = U.el('div', 'pf-row'), focus = null, done = false;
+        box.appendChild(U.el('div', 'pf-title', title || U.t('Who’s watching?')));
+        function finish() { if (done) { return; } done = true; if (then) { then(); } }
+        list.forEach(function (p) {
+            var c = U.el('div', 'pf-card focusable');
+            c.appendChild(profileBadge(p, 'big'));
+            c.appendChild(U.el('div', 'pf-name', p.name));
+            c.__onselect = function () {
+                if (now && p.id === now.id) { onModalClose(null); closeModal(); finish(); return; }
+                done = true; onModalClose(null); switchProfile(p.id);
+            };
+            if (now && p.id === now.id) { focus = c; }
+            row.appendChild(c);
+        });
+        box.appendChild(row);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+        showModal(overlay, focus || row.firstChild);
+        onModalClose(finish);
+    }
+    // Another profile: what's waiting to go to Trakt or your Stremio account given a moment
+    // (SWITCH_WAIT at most: what doesn't go is kept, and sent when that profile is in use again),
+    // then StremioK starts again in it (each profile's settings, language and syncs are read as
+    // StremioK starts).
+    var SWITCH_WAIT = 3000;
+    function switchProfile(id) {
+        if (typeof Profiles === 'undefined') { return; }
+        U.spinner(true, U.t('Switching profile…'));
+        var waits = [];
+        try { if (typeof Trakt !== 'undefined' && Trakt.isConnected() && Trakt.flush) { waits.push(Trakt.flush()); } } catch (e) {}
+        try { if (typeof StremioSync !== 'undefined' && StremioSync.isConnected() && StremioSync.sync) { waits.push(StremioSync.sync()); } } catch (e2) {}
+        try { if (typeof NuvioSync !== 'undefined' && NuvioSync.isConnected()) { waits.push(NuvioSync.sync()); } } catch (e4) {}
+        var gone = false;
+        function go() { if (gone) { return; } gone = true; Profiles.setActive(id); try { window.location.reload(); } catch (e3) {} }
+        setTimeout(go, SWITCH_WAIT);
+        Promise.all(waits.map(function (w) { return Promise.resolve(w).then(null, function () {}); })).then(go);
+    }
+
     // A YouTube channel or playlist (StremioK's own, or YouTubio's): its source for your
     // YouTube catalogs (Settings › Content › YouTube), or '' when it isn't one.
     function youTubeList(id) {
@@ -585,6 +639,14 @@ var ViewParts = {};
         var strip = U.el('div', 'menu-scroll');
         strip.appendChild(tabbar);
         item('hchip', 'settings', U.t('Settings'), '⚙', function () { App.openSettings(); }, strip);
+        if (typeof Profiles !== 'undefined' && Profiles.count() > 1) {   // (who's watching: OK to switch)
+            var me = Profiles.active() || { name: '?' }, chip = U.el('div', 'hchip pf-chip focusable');
+            chip.appendChild(profileBadge(me, 'small'));
+            chip.setAttribute('aria-label', me.name);
+            chip.__onselect = function () { profilePicker(null, U.t('Switch profile')); };
+            chip.__navDOWN = down;
+            strip.appendChild(chip);
+        }
         head.appendChild(strip);
         setTimeout(function () { showActiveItem(strip); }, 0);   // (once it's on screen)
         var brand = U.el('div', 'brand');
@@ -827,9 +889,8 @@ var ViewParts = {};
             if (type === 'movie' || eps.length) {
                 opts.push(['watched', watched ? U.t('Mark unwatched') : (type === 'series' ? U.t('Mark whole series watched') : U.t('Mark watched'))]);
             }
-            // Your Stremio account's Library (connected): in it, or not
-            var lib = typeof StremioSync !== 'undefined' && StremioSync.isConnected() && (type === 'movie' || type === 'series');
-            if (lib) { opts.push(['lib', StremioSync.inLibrary(type, m.id) ? U.t('Remove from Stremio Library') : U.t('Add to Stremio Library')]); }
+            // The Libraries connected (your Stremio account's, a Nuvio profile's): in each, or not
+            if (type === 'movie' || type === 'series') { libraries().forEach(function (L) { opts.push(['lib:' + L.id, L.has(type, m.id) ? L.remove : L.add]); }); }
             // Rate on Trakt (connected, a title with an IMDb id): yours shown once rated
             var canRate = typeof Trakt !== 'undefined' && Trakt.isConnected() && Trakt.rate && /^tt\d+$/.test(m.id);
             var mine = canRate ? Trakt.myRating(type, m.id) : null;
@@ -837,7 +898,7 @@ var ViewParts = {};
             return { name: m.name || m.title || '', items: opts, run: function (v) {
                 if (v === 'details') { App.openDetail(type, m.id, meta); }
                 else if (v === 'np') { toggleNowPlaying(type, m); }
-                else if (v === 'lib') { toggleLibrary(type, m); }
+                else if (/^lib:/.test(v)) { toggleLibrary(type, m, v.slice(4)); }
                 else if (v === 'watched') { setTitleWatched(type, m, !watched); }
                 else if (v === 'rate') { rateOnTrakt(type, m.id, m.name || m.title || ''); }
             } };
@@ -943,13 +1004,29 @@ var ViewParts = {};
     // one it was opened by, e.g. a TMDB id in Discover for an IMDb one).
     function nowPlayingLabel(type, id) { return inNowPlaying(type, id) ? U.t('✓  In Continue Watching') : U.t('+  Add to Continue Watching'); }
     // Your Stremio account's Library (Settings › Integrations › Stremio account): a title in it or not.
-    function libraryLabel(type, id) { return StremioSync.inLibrary(type, id) ? U.t('✓  In Stremio Library') : U.t('+  Stremio Library'); }
-    function toggleLibrary(type, m) {
-        var on = !StremioSync.inLibrary(type, m.id);
-        StremioSync.setInLibrary(type, { id: m.id, name: m.name || m.title || '', poster: m.poster || '' }, on);
-        U.toast(on ? U.t('Added to your Stremio Library') : U.t('Removed from your Stremio Library'));
+    // The Libraries this profile has: its Stremio account's (connected), its Nuvio profile's (kept in step).
+    function libraries() {
+        var out = [];
+        if (typeof StremioSync !== 'undefined' && StremioSync.isConnected()) {
+            out.push({ id: 'stremio', has: StremioSync.inLibrary, set: StremioSync.setInLibrary, add: U.t('Add to Stremio Library'), remove: U.t('Remove from Stremio Library'),
+                inLabel: U.t('✓  In Stremio Library'), outLabel: U.t('+  Stremio Library'), added: U.t('Added to your Stremio Library'), removed: U.t('Removed from your Stremio Library') });
+        }
+        if (typeof NuvioSync !== 'undefined' && NuvioSync.isConnected()) {
+            out.push({ id: 'nuvio', has: NuvioSync.inLibrary, set: NuvioSync.setInLibrary, add: U.t('Add to Nuvio Library'), remove: U.t('Remove from Nuvio Library'),
+                inLabel: U.t('✓  In Nuvio Library'), outLabel: U.t('+  Nuvio Library'), added: U.t('Added to your Nuvio Library'), removed: U.t('Removed from your Nuvio Library') });
+        }
+        return out;
     }
-    function libraryOn() { return typeof StremioSync !== 'undefined' && StremioSync.isConnected(); }
+    function libraryOf(which) { return libraries().filter(function (L) { return L.id === (which || 'stremio'); })[0] || libraries()[0]; }
+    function libraryLabel(type, id, which) { var L = libraryOf(which); return L ? (L.has(type, id) ? L.inLabel : L.outLabel) : ''; }
+    function toggleLibrary(type, m, which) {
+        var L = libraryOf(which);
+        if (!L) { return; }
+        var on = !L.has(type, m.id);
+        L.set(type, { id: m.id, name: m.name || m.title || '', poster: m.poster || '', background: m.background || '' }, on);
+        U.toast(on ? L.added : L.removed);
+    }
+    function libraryOn() { return libraries().length > 0; }
 
     // "Hold OK for more": shown while the focused item has a menu of its own behind a held OK
     // (a card, a season, an episode, a source, a file on the USB drive…), so those menus can
@@ -970,6 +1047,7 @@ var ViewParts = {};
     V._current = _current;
     V.addonActions = addonActions;
     V.buildTopMenu = buildTopMenu;
+    V.profilePicker = profilePicker; V.switchProfile = switchProfile; V.profileBadge = profileBadge; V.PROFILE_COLORS = PROFILE_COLORS;
     V.closeModal = closeModal;
     V.confirm = confirm;
     V.qrModal = qrModal; V.phoneGive = phoneGive;
@@ -991,4 +1069,5 @@ var ViewParts = {};
     V.libraryLabel = libraryLabel;
     V.toggleLibrary = toggleLibrary;
     V.libraryOn = libraryOn;
+    V.libraries = libraries;
 })(ViewParts);

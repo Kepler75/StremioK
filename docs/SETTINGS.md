@@ -21,6 +21,7 @@ In a list you order, ▲ / ▼ move an item one place and ⇈ / ⇊ move it to t
 - [Home](#home)
 - [Diagnostics](#diagnostics): [Logs](#logs), [Storage](#storage),
   [Installed apps](#installed-apps)
+- [Profiles](#profiles)
 
 ## Content
 
@@ -33,6 +34,7 @@ Adding, ordering and managing addons: the user guide's
 |---------|---------|--------------|
 | *+ Add addon* | a manifest link | Adds an addon (`https://…/manifest.json`, or a `stremio://` install link). Only v3 addons work. |
 | *Import addons from your Stremio account* | | Lists your Stremio account's addons to tick and import. |
+| *Import addons from Nuvio* | | The same for a Nuvio profile's addons (badged N). |
 | *AIOManager* | | Its own page: see [AIOManager](#aiomanager). |
 | Each addon | *Refresh*, *Turn off* / *Turn on*, *Remove*, *Share*, *Configure*, ⇈ ▲ ▼ ⇊ | Reloads, switches off (kept, not asked) or on, removes, shows a QR code of its link (with your tokens: your devices only) or setup page, or moves it. Higher addons describe titles first. |
 | *Wait for addons* | **Normal** (12 s; sources 15, search 25), 20, 30, 45, 60 seconds | How long StremioK waits for an addon. Longer helps one that sleeps when unused. |
@@ -71,22 +73,23 @@ sources that are only torrents; Stremio's can also convert a video the TV can't 
 | *Where to watch: country* | **automatic** (the TV's language region; US when it has none), or a country | The country for TMDB's where-to-watch services and Discover's Browse catalogs. |
 | *Trakt account* | connect / disconnect | See [Trakt](USER-GUIDE.md#trakt). |
 | *Trakt sync* | *Sync now*, *Let them go* | When it last synced, changes waiting, and any Trakt refused with what it said. |
+| *Nuvio account* | connect; *Sync now*, *Disconnect* | Kept in step with a Nuvio profile: progress, watched marks, Library. |
 | *Stremio account* | connect; *Sync now*, *Disconnect* | See [Your Stremio account](USER-GUIDE.md#your-stremio-account). |
 
 ### IPTV
 
-Your M3U playlists: *Add playlist*, *Add Xtream account* (server, username, password: checked,
-then its channels and guide added; OK on it for *Format*: **MPEG-TS** or HLS), *Add Stalker portal*
-(its address and MAC address: checked, then its channels added), ▲ / ▼ to order
+Your M3U playlists: *Add playlist*, *Add Xtream account* (server, username, password; OK on
+it for *Format*: **MPEG-TS** or HLS), *Add Stalker portal* (its address and MAC address), ▲ / ▼ to order
 them, and OK on one for *Rename*, *Turn off* /
 *Turn on*, *Edit link*, *Guide link* (empty: the playlist's own TV guide), *Reload*, *Remove*.
 Each says whether its guide was read. See [IPTV and radio](USER-GUIDE.md#iptv-and-radio).
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Auto-refresh* | **Off**, Every hour, Every 3 hours, Every 6 hours, Every 12 hours | All playlists and their TV guides downloaded again, as *Reload* does. |
-| *Stalker channels* | **First 100 pages**, Whole portal | How much of a portal's channel list is read (100 pages: about 1,400). *Whole portal* (up to 30,000): minutes each *Reload*; a portal may block such a MAC. *Channel groups*: only those. |
-| *Stalker films and series* | **Kept 10 minutes**, Kept 5 minutes, Off | How long a portal's row, category or search is kept, so showing it again doesn't ask it. Off: asked each time. |
+| *Auto-refresh* | **Off**, Every hour, Every 3 hours, Every 6 hours, Every 12 hours | Everything read again, as *Reload* does. |
+| *Largest playlist* | **20 MB**, 40, 60, 100 MB | It keeps 1,500 channels per MB. Above 20 MB an older TV may run out of memory. |
+| *Stalker channels* | **First 100 pages**, Whole portal | How much of a portal is read (100 pages: about 1,400). *Whole portal*: minutes each *Reload*; a portal may block such a MAC. *Channel groups*: only those. |
+| *Stalker films and series* | **Kept 10 minutes**, Kept 5 minutes, Off | How long a portal's row, category or search is kept before it's asked again. |
 
 ### YouTube
 
@@ -329,3 +332,14 @@ with its last steps. *Startup* shows how long this launch and the one before too
 
 The TV's apps with their IDs (hidden system apps on request). OK on one opens it: a check of
 which apps StremioK may launch from this install. On the TV only.
+
+## Profiles
+
+See the user guide's [Profiles](USER-GUIDE.md#profiles).
+
+| Setting | Choices | What it does |
+|---------|---------|--------------|
+| Each profile | *Switch to it*, *Rename*, *Color*, *Delete* | Delete takes what it kept; not the one in use. |
+| *+ Add a profile* | a copy, empty, a Stremio account, a Nuvio account's profile | Up to 5. Nuvio: kept in step (where you stopped, watched marks, Library). |
+| *Import profiles from Nuvio* | its profiles, ticked | Once: addons, watched marks, recent progress. |
+| *Ask who's watching* | **On**, Off | Off: the last profile used. |

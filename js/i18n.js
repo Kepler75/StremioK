@@ -51,12 +51,13 @@ var I18N = (function () {
     // so it doesn't change on a later launch.
     function choice() {
         var p = null, ls = null;
-        try { ls = window.localStorage; p = JSON.parse(ls.getItem(PREFS_KEY) || 'null'); } catch (e) {}
+        var pk = (typeof Profiles !== 'undefined' && Profiles.key) ? Profiles.key(PREFS_KEY) : PREFS_KEY;   // (the profile's own settings: js/profiles.js)
+        try { ls = window.localStorage; p = JSON.parse(ls.getItem(pk) || 'null'); } catch (e) {}
         if (p && typeof p.lang === 'string') { return p.lang === 'auto' || known(p.lang) ? p.lang : 'auto'; }
         var used = false;
         try { for (var i = 0; ls && i < ls.length; i++) { if (/^stremiok\./.test(ls.key(i) || '')) { used = true; break; } } } catch (e2) {}
         var c = used ? 'en' : 'auto';
-        try { p = (p && typeof p === 'object') ? p : {}; p.lang = c; ls.setItem(PREFS_KEY, JSON.stringify(p)); } catch (e3) {}
+        try { p = (p && typeof p === 'object') ? p : {}; p.lang = c; ls.setItem(pk, JSON.stringify(p)); } catch (e3) {}
         return c;
     }
     var _choice = choice(), _lang = _choice === 'auto' ? auto() : _choice;

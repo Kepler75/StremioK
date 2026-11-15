@@ -358,7 +358,8 @@ channels where it gives one; the rest is read from the source's name and file.
   like `The Book ThiefDrama / 2013 / 7.6`), else its title, looked up on TMDB (with your key,
   Spanish titles too), else Cinemeta (original titles only). One sure match (the same name, and
   the year when known) opens its page; anything else, a show included, opens Search.
-- **Size:** each playlist is downloaded up to 20 MB and keeps its first 30,000 channels. Big ones
+- **Size:** each playlist is downloaded up to 20 MB and keeps its first 30,000 channels
+  (*Largest playlist*: up to 100 MB, 150,000). Big ones
   are read in chunks, with a count ("Reading playlists… 12,000 channels"), so the remote stays
   responsive. Copies are saved in the TV's database.
 - **Duplicates:** a channel listed twice is shown once only when it's exactly the same (link,
@@ -719,6 +720,11 @@ them.
 - **Two stores:** the settings storage (about 5 MB, shared by progress, watched marks and
   settings) and the TV's database (IndexedDB) for big copies: Home's saved rows, IPTV playlist
   copies, USB drive indexes, the Trakt history. Saving to the database doesn't hold StremioK up.
+- **Per profile or the TV's:** a profile's own keys (addons, settings, progress, history,
+  sign-ins) keep StremioK's usual names for the first profile and carry its slot for the others
+  (`stremiok.p2.progress`); the TV's (playlists and their copies, USB indexes, network folders,
+  plugins, API keys, the streaming server, Formats, Home's saved rows) are shared. With one
+  profile nothing is renamed. Switching starts StremioK again.
 - **When the settings storage is full,** what matters wins: saving progress, watched marks,
   settings, addons or playlists clears regenerable caches (saved Home rows, playlist copies, show
   info, saved manifests) until it fits; if it still can't be saved, you're told and it's in

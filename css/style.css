@@ -338,6 +338,19 @@ html, body {
 
 /* --- Confirm modal --- */
 .modal-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 45; background: rgba(0,0,0,0.72); display: flex; align-items: center; justify-content: center; }
+/* Profiles (js/profiles.js): who's watching, the badge in the top menu and Settings › Profiles */
+.pf-overlay { background: #0e1117; }
+.pf-box { text-align: center; }
+.pf-title { font-size: 44px; font-weight: 600; color: #e6e9ef; margin-bottom: 48px; }
+.pf-row { display: flex; justify-content: center; flex-wrap: wrap; }
+.pf-card { width: 200px; margin: 0 18px; padding: 22px 0 18px; border-radius: 18px; border: 4px solid transparent; }
+.pf-card.focusable.focused { border-color: #fff; background: #1a1f2b; box-shadow: none; }
+.pf-name { font-size: 26px; color: #c9cfda; margin-top: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px; }
+.pf-card.focused .pf-name { color: #fff; }
+.pf-badge { display: inline-block; width: 40px; height: 40px; line-height: 40px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 20px; text-align: center; vertical-align: middle; }
+.pf-badge.big { width: 130px; height: 130px; line-height: 130px; font-size: 60px; }
+.pf-badge.small { width: 32px; height: 32px; line-height: 32px; font-size: 16px; }
+.header .hchip.pf-chip { padding: 4px; }
 .modal-box { width: 820px; background: #161b26; border: 2px solid #2a3346; border-radius: 16px; padding: 44px 48px; text-align: center; }
 .modal-msg { font-size: 30px; line-height: 1.4; color: #e6e9ef; margin-bottom: 36px; }
 .modal-row { display: flex; justify-content: center; }
@@ -541,6 +554,7 @@ html, body {
 .src-s { background: #7b5bf5; }
 .src-a { background: #0f9f8f; }
 .src-c { background: #6b7280; }
+.src-n { background: #d9480f; }
 /* an IPTV channel card: what's on now (its TV guide), and how far along it is, along its top (its name is at the bottom) */
 .card-epg { position: absolute; left: 0; right: 0; top: 0; padding: 5px 8px 4px; background: rgba(10, 12, 18, 0.82); }
 .card-epg-t { font-size: 15px; color: #e6e9ef; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

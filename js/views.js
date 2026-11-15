@@ -5,7 +5,7 @@
 var Views = (function (V) {
     'use strict';
     return {
-        renderHome: V.renderHome, renderDetail: V.renderDetail, applyAppearance: V.applyAppearance,
+        renderHome: V.renderHome, renderDetail: V.renderDetail, applyAppearance: V.applyAppearance, profilePicker: V.profilePicker, switchProfile: V.switchProfile, importText: V.importText,
         renderPerson: V.renderPerson, detailSnapshot: V.detailSnapshot, restoreDetail: V.restoreDetail, lightSnapshot: V.lightSnapshot, renderSettings: V.renderSettings,
         settingsRoot: V.settingsRoot, backInSettings: V.backInSettings, guideBackOn: V.guideBackOn,
         // a screen left: its downloads still running (a title page's details, Discover's

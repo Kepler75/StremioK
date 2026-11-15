@@ -70,6 +70,13 @@ var HubPreview = (function () {
             if (req && req.appControl) { picked(req.appControl.data); }
         } catch (e) {}
     }
+    // Opened from one of its tiles (then straight to that title, no question first).
+    function fromTile() {
+        try {
+            var req = tizen.application.getCurrentApplication().getRequestedAppControl(), d = req && req.appControl && req.appControl.data;
+            return !!(d && d.some(function (x) { return x.key === 'PAYLOAD' || x.key === 'action_data'; }));
+        } catch (e) { return false; }
+    }
     function start() {
         if (!available()) { return; }
         received();   // (opened from a tile)
@@ -77,5 +84,5 @@ var HubPreview = (function () {
         try { document.addEventListener('visibilitychange', function () { if (U.isHidden()) { send(); } }, false); } catch (e2) {}
         setTimeout(function () { if (Views.withShowInfo) { Views.withShowInfo(function () { send(); }); } else { send(); } }, 8000);
     }
-    return { start: start, send: send, available: available, picked: picked, payload: payload };
+    return { start: start, send: send, available: available, picked: picked, payload: payload, fromTile: fromTile };
 })();

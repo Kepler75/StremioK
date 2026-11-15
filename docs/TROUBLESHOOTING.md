@@ -167,7 +167,7 @@ sources. Try again later.
 | What you see | Why, and what to do |
 |--------------|---------------------|
 | A channel's sound stutters | Some servers cut a channel's sound into pieces the TV's player stutters on. StremioK restarts the channel through its service ("Fixing this channel's sound…"), or choose it yourself: Red › *Sound*. |
-| A big playlist is missing channels | A playlist keeps its first 30,000 channels (up to 20 MB); its status line says when some were left out. |
+| A big playlist is missing channels, or is "Too large" | A playlist keeps its first 30,000 channels (up to 20 MB); its status line says when some were left out. Settings › Content › IPTV › *Largest playlist* raises both, at a risk on older TVs. |
 | A Stalker portal is missing channels or genres | Only its first 100 pages may have been read: see *Stalker channels* in [Settings](SETTINGS.md). |
 | A playlist didn't refresh | The saved copy stays, and the playlist says why. *Reload* tries again. |
 | No TV guide on the cards | The playlist's line says why. Not every channel is in a guide; *Guide link* sets another. |

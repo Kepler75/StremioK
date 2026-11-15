@@ -189,6 +189,7 @@ var PlayerParts = {};
         }
         writeProgress(all);
         if (typeof StremioSync !== 'undefined' && StremioSync.onProgress) { StremioSync.onProgress(S.ctx, S.cur, S.dur, !fromTicker); }   // (your Stremio account's place)
+        if (!fromTicker && typeof NuvioSync !== 'undefined' && NuvioSync.soon) { NuvioSync.soon(); }   // (a Nuvio account's: js/nuvio-sync.js)
     }
     // What's saved to resume: a converted playback's own link (not the server's conversion), and a
     // torrent's infoHash, file and trackers (its link depends on the server set when it resumes).
