@@ -1083,8 +1083,17 @@
     // the whole show.
     // byActivity: the most recent activity first, whatever order you gave the row (Move): the
     // home bar's tiles (previewTiles).
+    // An entry with no title id (one kept that way, from wherever: #20, the whole tab came up
+    // blank): left out, and said so once in Diagnostics › Logs, with what it is.
+    var _unsound = {};
+    function sound(e) {
+        if (e && typeof e.id === 'string' && e.id && typeof e.type === 'string') { return true; }
+        var what = e ? (e.type + ' “' + (e.name || '') + '”' + (e._trakt ? ' (Trakt)' : e._stremio ? ' (Stremio account)' : '')) : String(e);
+        if (!_unsound[what]) { _unsound[what] = 1; U.log('home', 'Continue Watching: left out an entry with no title id: ' + what); }
+        return false;
+    }
     function continueEntries(byActivity) {
-        var local = Player.continueList(), traktOn = typeof Trakt !== 'undefined' && Trakt.isConnected();
+        var local = Player.continueList().filter(sound), traktOn = typeof Trakt !== 'undefined' && Trakt.isConnected();
         if (traktOn && Trakt.watchedPast) { local = local.filter(function (e) { return !Trakt.watchedPast(e); }); }
         var stremioOn = typeof StremioSync !== 'undefined' && StremioSync.isConnected();
         if (stremioOn) {
@@ -1114,6 +1123,7 @@
                 if (!had[k]) { had[k] = 1; merged.push(e); }
             });
         }
+        merged = merged.filter(sound);
         var list = onePerShow(merged);   // (the most recent activity first)
         return byActivity ? list : inYourOrder(list);
     }

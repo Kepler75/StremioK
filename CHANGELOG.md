@@ -3,6 +3,13 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.4.1 — 2026-11-15
+- **When StremioK opens** (Settings › Profiles, with 2 or more): ask who's watching, the last
+  profile used, or always one of them.
+- **Fixed: switching profile asked "Who's watching?" again**, so it seemed not to have switched.
+- **Fixed: a blank Watching tab:** one saved title without an id stopped the whole tab drawing
+  (#20).
+
 ## 2.4.0 — 2026-11-14
 - **Profiles** (Settings › Profiles): up to 5, each with its own addons, settings, progress,
   watched marks and sign-ins; playlists, drives, folders, plugins and API keys stay the TV's.

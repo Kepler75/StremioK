@@ -165,7 +165,7 @@ var PlayerParts = {};
     // since the last one (paused); a stop, a leave or a jump always saves.
     var _savedSig = '', _savedAt = 0, SAVE_EVERY_MS = 60000;
     function saveProgress(fromTicker) {
-        if (!S.ctx || !S.dur || S.isLive || S.ctx.trailer || S.ctx.private || isNotice() || /^iptv:/.test(S.ctx.id || '')) { return; }   // (a notice clip, private viewing, a film in a playlist: nothing saved, nothing removed)
+        if (!S.ctx || typeof S.ctx.id !== 'string' || !S.ctx.id || !S.dur || S.isLive || S.ctx.trailer || S.ctx.private || isNotice() || /^iptv:/.test(S.ctx.id || '')) { return; }   // (a notice clip, private viewing, a film in a playlist: nothing saved, nothing removed)
         var sig = progressKey(S.ctx) + '|' + Math.floor(S.cur) + '|' + Math.floor(S.dur);
         if (fromTicker && (sig === _savedSig || Date.now() - _savedAt < SAVE_EVERY_MS)) { return; }
         _savedSig = sig; _savedAt = Date.now();

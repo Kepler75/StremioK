@@ -212,7 +212,7 @@ configuration file can also be imported as a new profile.
 - **A profile's own:** addons, settings, progress, watched marks, and its Trakt, Stremio and
   media server sign-ins. **Shared:** playlists, USB drives, network folders, plugins, API keys,
   the streaming server.
-- **Who's watching?** is asked as StremioK opens (or not: *Ask who's watching*). The badge at the
+- **Who's watching?** is asked as StremioK opens (or not: *When StremioK opens*). The badge at the
   end of the top menu switches; StremioK then starts again in that profile.
 
 ## Finding something to watch

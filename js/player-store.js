@@ -164,6 +164,7 @@
     // title, it stays until it's finished or removed, even if you back out right away.
     // e = { id, type, name, poster, parent }. Never overwrites real progress.
     function addToContinue(e) {
+        if (!e || typeof e.id !== 'string' || !e.id) { U.log('home', 'Add to Continue Watching: no title id, not added (' + (e && e.name) + ')'); return; }
         var all = progressAll(), k = e.type + ':' + e.id;
         if (all[k]) { all[k].added = true; }
         else { all[k] = { id: e.id, type: e.type, name: e.name, poster: e.poster, background: e.background, parent: e.parent, position: 0, duration: 0, updated: Date.now(), added: true }; }

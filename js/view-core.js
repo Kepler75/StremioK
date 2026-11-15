@@ -253,7 +253,7 @@ var ViewParts = {};
         try { if (typeof StremioSync !== 'undefined' && StremioSync.isConnected() && StremioSync.sync) { waits.push(StremioSync.sync()); } } catch (e2) {}
         try { if (typeof NuvioSync !== 'undefined' && NuvioSync.isConnected()) { waits.push(NuvioSync.sync()); } } catch (e4) {}
         var gone = false;
-        function go() { if (gone) { return; } gone = true; Profiles.setActive(id); try { window.location.reload(); } catch (e3) {} }
+        function go() { if (gone) { return; } gone = true; Profiles.setActive(id, true); try { window.location.reload(); } catch (e3) {} }
         setTimeout(go, SWITCH_WAIT);
         Promise.all(waits.map(function (w) { return Promise.resolve(w).then(null, function () {}); })).then(go);
     }

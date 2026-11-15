@@ -562,11 +562,14 @@
             nv.__onselect = nuvioImport;
             wrap.appendChild(nv);
         }
-        if (Profiles.count() > 1) {
-            var askOn = Profiles.askSetting(), ask = U.el('div', 'addon-item focusable cfg-row');
-            ask.appendChild(U.el('div', 'a-name', U.t('Ask who’s watching when StremioK opens:') + ' ' + (askOn ? U.t('On') : U.t('Off'))));
-            ask.appendChild(U.el('div', 'a-url', askOn ? U.t('Each time it opens, before anything else') : U.t('It opens in the last profile used; switch from the top menu')));
-            ask.__onselect = function () { Profiles.setAsk(!askOn); _focusChild = 'pf:ask'; renderSettings(); };
+        if (Profiles.count() > 1) {   // When StremioK opens: ask, the last profile used, or one always
+            var startList = [['ask', U.t('Ask who’s watching')], ['last', U.t('The last profile used')]].concat(list.map(function (p) { return [p.id, U.t('Always “{name}”', { name: p.name })]; }));
+            var ask = U.el('div', 'addon-item focusable cfg-row'), choice = Profiles.startChoice();
+            ask.appendChild(U.el('div', 'a-name', U.t('When StremioK opens:') + '  ' + labelFor(startList, choice)));
+            ask.appendChild(U.el('div', 'a-url', choice === 'ask' ? U.t('Each time it opens, before anything else') : (choice === 'last' ? U.t('It opens in the last profile used; switch from the top menu') : U.t('It opens in that profile, whichever was used last; switch from the top menu'))));
+            ask.__onselect = function () {
+                pickList(U.t('When StremioK opens'), startList, choice, function (v) { Profiles.setStart(v); _focusChild = 'pf:ask'; renderSettings(); });
+            };
             if (_focusChild === 'pf:ask') { focus = ask; }
             wrap.appendChild(ask);
         }

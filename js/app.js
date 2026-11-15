@@ -255,7 +255,8 @@ var App = (function () {
         // from a home bar tile): asked before anything else starts, so nothing is sent to Trakt,
         // a Stremio account or a media server for the wrong person (js/profiles.js).
         var fromTile = typeof HubPreview !== 'undefined' && HubPreview.fromTile && HubPreview.fromTile();
-        if (typeof Profiles !== 'undefined' && Profiles.ask() && !fromTile && Views.profilePicker) { Views.profilePicker(started); return; }
+        var switched = typeof Profiles !== 'undefined' && Profiles.justSwitched && Profiles.justSwitched();   // (just picked: not asked again)
+        if (typeof Profiles !== 'undefined' && Profiles.ask() && !fromTile && !switched && Views.profilePicker) { Views.profilePicker(started); return; }
         started();
     }
     function started() {

@@ -38,6 +38,12 @@ var Profiles = (function () {
         try { var d = JSON.parse(window.localStorage.getItem(KEY) || 'null'); return valid(d) ? d : null; } catch (e) { return null; }
     }
     var _data = read();
+    // When StremioK opens (Settings › Profiles): ask (the default), the last profile used, or one
+    // profile always (_data.start, with ask off) — except right after a switch (see setActive).
+    function recentSwitch() { var at = _data && +_data.switched, now = Date.now(); return !!at && at <= now && now - at < 60000; }
+    if (_data && _data.ask === false && _data.start && _data.start !== _data.active && !recentSwitch()) {
+        for (var s0 = 0; s0 < _data.list.length; s0++) { if (_data.list[s0].id === _data.start) { _data.active = _data.start; save(); break; } }   // (save: hoisted, below)
+    }
     function active() {
         if (!_data) { return null; }
         for (var i = 0; i < _data.list.length; i++) { if (_data.list[i].id === _data.active) { return _data.list[i]; } }
@@ -102,9 +108,24 @@ var Profiles = (function () {
     }
     function rename(id, name) { var p = find(id); if (p && cleanName(name)) { p.name = cleanName(name); save(); } }
     function recolor(id, color) { var p = find(id); if (p && COLORS.indexOf(color) !== -1) { p.color = color; save(); } }
-    function setAsk(on) { if (_data) { _data.ask = !!on; save(); } }
+    function setAsk(on) { if (_data) { _data.ask = !!on; delete _data.start; save(); } }
+    // 'ask' | 'last' | a profile's id.
+    function startChoice() { if (!_data || _data.ask !== false) { return 'ask'; } return (_data.start && find(_data.start)) ? _data.start : 'last'; }
+    function setStart(v) {
+        if (!_data) { return; }
+        if (v === 'ask') { _data.ask = true; delete _data.start; } else if (v === 'last' || !find(v)) { _data.ask = false; delete _data.start; } else { _data.ask = false; _data.start = v; }
+        save();
+    }
     // The profile StremioK starts in next time (switching: then started again, see setActive's caller).
-    function setActive(id) { if (find(id)) { _data.active = id; save(); } }
+    // switched: chosen just now (a switch, which restarts StremioK): the restart doesn't ask
+    // "Who's watching?" again (justSwitched, read once, within a minute).
+    function setActive(id, switched) { if (find(id)) { _data.active = id; if (switched) { _data.switched = Date.now(); } else { delete _data.switched; } save(); } }
+    function justSwitched() {
+        if (!_data || !_data.switched) { return false; }
+        var was = recentSwitch();
+        delete _data.switched; save();
+        return was;
+    }
     // A profile's own keys in the settings storage: [physical key].
     function keysOf(slot) {
         var out = [];
@@ -139,6 +160,7 @@ var Profiles = (function () {
         keysOf(p.slot).forEach(function (k) { try { window.localStorage.removeItem(k); } catch (e) {} });
         if (bigRemove) { BIG.forEach(function (k) { bigRemove(keyFor(p.slot, 'stremiok.' + k)); }); }
         _data.list = _data.list.filter(function (x) { return x.id !== id; });
+        if (_data.start === id) { delete _data.start; }   // (opened in: then the last one used)
         save();
         return true;
     }
@@ -150,9 +172,10 @@ var Profiles = (function () {
         list: list,
         active: function () { var a = active(); return a ? { id: a.id, name: a.name, color: a.color, slot: a.slot } : null; },
         count: function () { return _data ? _data.list.length : 1; },
+        justSwitched: justSwitched,
         ask: function () { return !!(_data && _data.list.length > 1 && _data.ask !== false); },
         askSetting: function () { return !_data || _data.ask !== false; },
-        ensure: function (firstName) { ensure(firstName); save(); }, add: add, rename: rename, recolor: recolor, setAsk: setAsk, setActive: setActive, remove: remove, copyInto: copyInto, keysOf: keysOf, COPY: COPY,
+        ensure: function (firstName) { ensure(firstName); save(); }, add: add, rename: rename, recolor: recolor, setAsk: setAsk, startChoice: startChoice, setStart: setStart, setActive: setActive, remove: remove, copyInto: copyInto, keysOf: keysOf, COPY: COPY,
         __data: function () { return _data; }, __reload: function () { _data = read(); _slot = (active() || { slot: '' }).slot; }
     };
 })();
