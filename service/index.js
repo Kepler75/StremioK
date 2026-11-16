@@ -3325,7 +3325,7 @@ function plugControl(res, query, text, leaving) {
 // headers and its byte range (seeking works), the answer streamed back as it comes, nothing kept.
 // Shares the relays' count (LIVE_MAX); dropped after LIVE_FILM_IDLE_MS unused. Redirects: the
 // downloads' host rule (never the TV itself), and into the home network only when allowed (lan).
-function liveFileSession(u, who, lan) {
+function liveFileSession(u, who, lan, keep) {
     var ids = Object.keys(_live);
     if (ids.length >= LIVE_MAX) {
         ids.sort(function (x, y) { return _live[x].last - _live[y].last; });
@@ -3333,9 +3333,201 @@ function liveFileSession(u, who, lan) {
         delete _live[ids[0]];
     }
     var s = { id: crypto.randomBytes(16).toString('hex'), file: u, ua: who.ua, ref: who.ref, cookie: who.cookie || '', origin: who.origin || '', accept: who.accept || '', lang: who.lang || '',
-        lan: !!lan, film: true, links: {}, last: Date.now() };
+        lan: !!lan, film: true, links: {}, last: Date.now(), keep: keep || null };
     _live[s.id] = s;
     return s;
+}
+
+// ---- An MKV's other subtitle tracks left out, as the file passes (blank: /live/file?blank=1) ----
+// The 2017 TV's player breaks after a forward jump in an MKV with dozens of subtitle tracks (the
+// picture stutters and loses frames; the same file with video and audio only plays clean), even
+// with subtitles off. So such a file can come through the relay with those tracks blanked: each
+// one's TrackEntry, each of its blocks (SimpleBlock or BlockGroup) and its Cues entries get the
+// one-byte ID of a Void element, which every reader skips. Nothing changes size: every offset
+// (Cues, SeekHead, cluster sizes, the player's byte ranges) stays the file's own. keep: the
+// subtitle tracks kept, by their place among the file's subtitle tracks (the app's choice: your
+// languages). The plan (blankPlan) is read once per session from the header and the Cues.
+var EBML_VOID = 0xEC, BLANK_BACK_MAX = 64 * 1048576, BLANK_HOLD_MAX = 262144;
+var MKV_TOP = { 0x1F43B675: 1, 0x1C53BB6B: 1, 0x1254C367: 1, 0x1043A770: 1, 0x1941A469: 1, 0x114D9B74: 1, 0x1549A966: 1, 0x1654AE6B: 1 };
+// cb(err, plan | null): { segData, firstCluster, clustersEnd, clusters: [abs], blank: { trackNo: 1 },
+// patches: [abs offsets of IDs made Void], subs, blanked }; null: nothing to blank (not an MKV,
+// too few subtitle tracks, or all kept).
+function blankPlan(s, cb) {
+    cb = once(cb);
+    var stops = [], r = miReader(miHttpReader(s.file, s, s.lan, stops)), I = MKV_IDS;
+    var plan = { segData: 0, firstCluster: -1, clustersEnd: Infinity, clusters: [], blank: {}, patches: [], subs: 0, blanked: 0 };
+    var seek = {}, steps = 0, keep = {};
+    (s.keep || []).forEach(function (k) { keep[k] = 1; });
+    var timer = setTimeout(function () { stops.forEach(function (f) { f(); }); cb(upError('timed out', 504)); }, MI_MS);
+    function done(err, p) { clearTimeout(timer); cb(err, p); }
+    r.get(0, 64, function (e, b) {
+        var id = !e && ebmlId(b, 0), sz = id && ebmlSize(b, id.n);
+        if (!sz || sz.v < 0 || id.v !== 0x1A45DFA3) { done(null, null); return; }
+        var at = id.n + sz.n + sz.v;
+        r.get(at, 16, function (e2, b2) {
+            var sid = !e2 && ebmlId(b2, 0), ssz = sid && ebmlSize(b2, sid.n);
+            if (!ssz || sid.v !== I.SEGMENT) { done(null, null); return; }
+            plan.segData = at + sid.n + ssz.n;
+            walk(plan.segData);
+        });
+    });
+    // Each child of b[o..end) with its element's start: fn(id, start, dataStart, dataSize).
+    function children(b, o, end, fn) {
+        for (var n = 0; o < end && n < 65536; n++) {
+            var id = ebmlId(b, o), sz = id && ebmlSize(b, o + id.n);
+            if (!id || !sz) { return; }
+            var d = o + id.n + sz.n, z = sz.v < 0 ? end - d : Math.min(sz.v, end - d);
+            fn(id.v, o, d, z);
+            o = d + z;
+        }
+    }
+    function tracks(b, abs) {   // abs: where b[0] is in the file
+        var subs = 0;
+        children(b, 0, b.length, function (id, st, d, z) {
+            if (id !== 0xAE) { return; }
+            var no = 0, type = 0;
+            children(b, d, d + z, function (cid, cst, cd, cz) { if (cid === 0xD7) { no = ebmlUint(b, cd, cz); } else if (cid === 0x83) { type = ebmlUint(b, cd, cz); } });
+            if (type !== 17 || !no) { return; }
+            if (!keep[subs]) { plan.blank[no] = 1; plan.patches.push(abs + st); plan.blanked++; }
+            subs++;
+        });
+        plan.subs = subs;
+    }
+    function cues(b, abs) {
+        children(b, 0, b.length, function (id, st, d, z) {
+            if (id !== 0xBB) { return; }
+            children(b, d, d + z, function (cid, cst, cd, cz) {
+                if (cid !== 0xB7) { return; }
+                var tr = 0, pos = -1;
+                children(b, cd, cd + cz, function (x, xs, xd, xz) { if (x === 0xF7) { tr = ebmlUint(b, xd, xz); } else if (x === 0xF1) { pos = ebmlUint(b, xd, xz); } });
+                if (plan.blank[tr]) { plan.patches.push(abs + cst); }
+                if (pos >= 0) { plan.clusters.push(plan.segData + pos); }
+            });
+        });
+    }
+    function element(at, then) {
+        r.get(at, 16, function (e, b) {
+            var id = !e && ebmlId(b, 0), sz = id && ebmlSize(b, id.n);
+            if (!sz) { then(-1, 0, 0); return; }
+            var d = at + id.n + sz.n;
+            if (id.v === I.CLUSTER) { then(-1, id.v, d); return; }
+            if (sz.v < 0) { then(-1, 0, 0); return; }
+            if ((id.v === I.TRACKS || id.v === I.SEEKHEAD || id.v === I.CUES) && sz.v <= MI_ELEMENT_MAX) {
+                r.get(d, sz.v, function (e2, body) {
+                    if (!e2) {
+                        if (id.v === I.TRACKS) { tracks(body, d); seek.gotTracks = true; }
+                        else if (id.v === I.CUES) { cues(body, d); seek.gotCues = true; }
+                        else if (!seek.head) {
+                            seek.head = true;
+                            children(body, 0, body.length, function (cid, st, cd, cz) {
+                                if (cid !== I.SEEK) { return; }
+                                var sid = 0, pos = -1;
+                                children(body, cd, cd + cz, function (x, xs, xd, xz) { if (x === I.SEEKID) { sid = ebmlUint(body, xd, xz); } else if (x === I.SEEKPOS) { pos = ebmlUint(body, xd, xz); } });
+                                if (pos < 0) { return; }
+                                if (sid === I.TRACKS) { seek.tracks = pos; } else if (sid === I.CUES) { seek.cues = pos; }
+                                else if (sid === 0x1254C367 || sid === 0x1043A770 || sid === 0x1941A469) { seek.after = Math.min(seek.after === undefined ? Infinity : seek.after, pos); }
+                            });
+                        }
+                    }
+                    then(d + sz.v, id.v, d);
+                });
+                return;
+            }
+            then(d + sz.v, id.v, d);
+        });
+    }
+    function walk(at) {
+        if (at < 0 || steps++ > 64 || (r.size() !== null && at >= r.size())) { finish(); return; }
+        element(at, function (next, id) {
+            if (id === I.CLUSTER) { plan.firstCluster = at; finish(); return; }
+            walk(next);
+        });
+    }
+    function finish() {
+        if (plan.firstCluster < 0) { done(null, null); return; }
+        if (!seek.gotTracks && seek.tracks >= 0) { var t = seek.tracks; seek.tracks = -1; element(plan.segData + t, function () { finish(); }); return; }
+        if (!seek.gotTracks || !plan.blanked) { done(null, null); return; }
+        if (!seek.gotCues && seek.cues >= 0) { var c = seek.cues; seek.cues = -1; element(plan.segData + c, function () { finish(); }); return; }
+        var ends = [seek.cues >= 0 ? plan.segData + seek.cues : Infinity];
+        if (seek.after !== undefined) { ends.push(plan.segData + seek.after); }
+        ends.forEach(function (x) { if (x > plan.firstCluster && x < plan.clustersEnd) { plan.clustersEnd = x; } });
+        if (seek.cuesAt > plan.firstCluster && seek.cuesAt < plan.clustersEnd) { plan.clustersEnd = seek.cuesAt; }
+        plan.clusters.push(plan.firstCluster);
+        plan.clusters = plan.clusters.filter(function (x) { return x >= plan.firstCluster && x < plan.clustersEnd; }).sort(function (a, b) { return a - b; });
+        plan.patches.sort(function (a, b) { return a - b; });
+        done(null, plan);
+    }
+}
+// Where to start reading for a range from x: a cluster's start at or before it (the blocks are
+// read from there), else as asked (before the clusters, or past them: offsets only).
+function blankFrom(plan, x) {
+    if (x < plan.firstCluster || x >= plan.clustersEnd) { return x; }
+    var lo = 0, hi = plan.clusters.length - 1, best = plan.firstCluster;
+    while (lo <= hi) { var mid = (lo + hi) >> 1; if (plan.clusters[mid] <= x) { best = plan.clusters[mid]; lo = mid + 1; } else { hi = mid - 1; } }
+    return x - best > BLANK_BACK_MAX ? x : best;
+}
+// The bytes from start, blanked as they pass: { push(buf) -> Buffer, end() -> Buffer }, what's
+// returned following on from what came before. start: a cluster's start, or anywhere outside
+// the clusters (blankFrom); else only the offsets (TrackEntries, Cues) are blanked.
+function mkvBlanker(plan, start) {
+    var pend = allocBuffer(0), base = start, mode, skipTo = 0, afterSkip = '', clusterEnd = Infinity, pi = 0, ended = false;
+    while (pi < plan.patches.length && plan.patches[pi] < start) { pi++; }
+    if (start < plan.firstCluster) { mode = 'skip'; skipTo = plan.firstCluster; afterSkip = 'seg'; }
+    else if (start >= plan.clustersEnd || plan.clusters.indexOf(start) === -1) { mode = 'skip'; skipTo = Infinity; afterSkip = ''; }
+    else { mode = 'seg'; }
+    var out = [];
+    function emit(n) {
+        if (n <= 0) { return; }
+        var piece = pend.slice(0, n);
+        while (pi < plan.patches.length && plan.patches[pi] < base + n) { piece[plan.patches[pi] - base] = EBML_VOID; pi++; }
+        out.push(piece);
+        pend = pend.slice(n); base += n;
+    }
+    function giveUp() { mode = 'skip'; skipTo = Infinity; afterSkip = ''; }
+    function step() {   // true: went on; false: needs more bytes
+        if (mode === 'skip') {
+            var n = Math.min(skipTo - base, pend.length);
+            emit(n);
+            if (base >= skipTo && afterSkip) { mode = afterSkip; return true; }
+            return false;
+        }
+        if (mode === 'clu' && base >= clusterEnd) { mode = 'seg'; }
+        if (base >= plan.clustersEnd) { giveUp(); return true; }
+        var id = ebmlId(pend, 0), sz = id && ebmlSize(pend, id.n);
+        if (!id || !sz) {
+            if (pend.length >= 12 || (ended && pend.length)) { giveUp(); return true; }
+            return false;
+        }
+        var hdr = id.n + sz.n;
+        if (mode === 'seg' || (clusterEnd === Infinity && MKV_TOP[id.v])) {
+            if (id.v === MKV_IDS.CLUSTER) { clusterEnd = sz.v < 0 ? Infinity : base + hdr + sz.v; emit(hdr); mode = 'clu'; return true; }
+            if (sz.v < 0) { giveUp(); return true; }
+            mode = 'skip'; skipTo = base + hdr + sz.v; afterSkip = 'seg'; return true;
+        }
+        if (sz.v < 0) { giveUp(); return true; }
+        var tn = -1;
+        if (id.v === 0xA3) {
+            var t = ebmlSize(pend, hdr);
+            if (!t) { if (ended || pend.length > BLANK_HOLD_MAX) { tn = 0; } else { return false; } } else { tn = t.v; }
+        } else if (id.v === 0xA0) {
+            var o = hdr, gEnd = hdr + sz.v;
+            while (o < gEnd) {
+                var cid = ebmlId(pend, o), csz = cid && ebmlSize(pend, o + cid.n);
+                if (!cid || !csz) { break; }
+                if (cid.v === 0xA1) { var bt = ebmlSize(pend, o + cid.n + csz.n); if (bt) { tn = bt.v; } break; }
+                if (csz.v < 0) { tn = 0; break; }
+                o += cid.n + csz.n + csz.v;
+            }
+            if (tn < 0 && o < gEnd) { if (ended || pend.length > BLANK_HOLD_MAX) { tn = 0; } else { return false; } }
+        }
+        if (tn > 0 && plan.blank[tn]) { pend[0] = EBML_VOID; }
+        mode = 'skip'; skipTo = base + hdr + sz.v; afterSkip = 'clu'; return true;
+    }
+    function run() { while (pend.length && step()) { /* on */ } }
+    return {
+        push: function (buf) { pend = pend.length ? Buffer.concat([pend, buf]) : buf; out = []; run(); return out.length === 1 ? out[0] : Buffer.concat(out); },
+        end: function () { ended = true; out = []; run(); if (pend.length) { mode = 'skip'; skipTo = Infinity; emit(pend.length); } return Buffer.concat(out); }
+    };
 }
 // A host in the home network (by its name or address): a private, link-local or carrier-grade
 // address, a name without a dot, or a .local / .lan / .home.arpa / .internal one.
@@ -3355,8 +3547,24 @@ function isLanName(host) {
 // outside it, unless Local-network links from internet addons allows it.
 function fileHopOk(firstHost, nextHost, lan) { return lan || isLanName(firstHost) || !isLanName(nextHost); }
 function liveFile(s, req, res) {
+    if (s.keep && s.plan === undefined) {   // (blanking: the plan first, once; meanwhile the player's requests wait)
+        if (s.planWait) { s.planWait.push(function () { liveFile(s, req, res); }); return; }
+        s.planWait = [function () { liveFile(s, req, res); }];
+        blankPlan(s, function (err, plan) {
+            s.plan = err ? null : plan;
+            if (err) { log('file relay: the subtitle tracks couldn\'t be read, the file as it is (' + err.message + ')'); }
+            else if (plan) { log('file relay: ' + plan.blanked + ' of ' + plan.subs + ' subtitle tracks left out'); }
+            var w = s.planWait; s.planWait = null;
+            w.forEach(function (f) { f(); });
+        });
+        return;
+    }
     var r = null, gone = false, hops = 0, firstHost = '';
     var range = /^bytes=\d*-\d*(,\s*\d*-\d*)*$/.test(String(req.headers.range || '')) ? String(req.headers.range) : '';
+    // (blanked: one range, read from a cluster's start at or before it: blankFrom)
+    var plan = s.plan || null, want = plan ? /^bytes=(\d*)-(\d*)$/.exec(range || 'bytes=0-') : null, x = 0, y = '';
+    if (plan && (!want || want[1] === '')) { plan = null; }
+    if (plan) { x = +want[1]; y = want[2]; range = 'bytes=' + blankFrom(plan, x) + '-' + y; }
     function stop() { gone = true; try { if (r) { r.abort(); } } catch (e) {} }
     res.on('close', stop);
     function fail(code, why) { if (gone) { return; } if (!res.headersSent) { send(res, code, 'text/plain', 'failed: ' + why); } else { try { res.end(); } catch (e) {} } stop(); }
@@ -3378,6 +3586,7 @@ function liveFile(s, req, res) {
                 if (sc >= 300 && sc < 400 && resp.headers.location && hops < 5) { resp.resume(); hops++; get(urllib.resolve(url, resp.headers.location)); return; }
                 if (sc !== 200 && sc !== 206) { resp.resume(); clearTimeout(timer); fail(sc >= 400 && sc < 600 ? sc : 502, 'HTTP ' + sc); return; }
                 clearTimeout(timer);
+                if (plan) { blanked(resp, sc); return; }
                 var out = { 'Content-Type': String(resp.headers['content-type'] || 'application/octet-stream'), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Accept-Ranges': 'bytes' };
                 if (resp.headers['content-length']) { out['Content-Length'] = resp.headers['content-length']; }
                 if (resp.headers['content-range']) { out['Content-Range'] = resp.headers['content-range']; }
@@ -3393,6 +3602,31 @@ function liveFile(s, req, res) {
             guardSelf(r, function () { fail(400, 'a link it can\'t follow'); });
             r.on('error', function (e) { clearTimeout(timer); fail(502, (e && e.message) || 'network error'); });
         } catch (e) { clearTimeout(timer); fail(400, 'bad link'); }
+    }
+    // The answer blanked (mkvBlanker) from where it starts, the player given its own range.
+    function blanked(resp, sc) {
+        var cr = /^bytes (\d+)-\d+\/(\d+)$/.exec(String(resp.headers['content-range'] || ''));
+        var from = sc === 206 && cr ? +cr[1] : 0, total = cr ? +cr[2] : +(resp.headers['content-length'] || 0);
+        if (from > x || !(total > 0)) { resp.resume(); fail(502, 'the host sent another part of the file'); return; }
+        var last = y !== '' ? Math.min(+y, total - 1) : total - 1;
+        var out = { 'Content-Type': String(resp.headers['content-type'] || 'application/octet-stream'), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Accept-Ranges': 'bytes', 'Content-Length': String(last - x + 1) };
+        if (req.headers.range) { out['Content-Range'] = 'bytes ' + x + '-' + last + '/' + total; }
+        res.writeHead(req.headers.range ? 206 : 200, out);
+        var bl = mkvBlanker(plan, from), at = from;
+        function give(b) {   // (what comes before x, read only to follow the blocks: not sent)
+            var n = b.length;
+            if (at + n <= x) { at += n; return true; }
+            if (at < x) { b = b.slice(x - at); }
+            at += n;
+            return b.length ? res.write(b) : true;
+        }
+        resp.on('data', function (c) {
+            if (gone) { return; }
+            s.last = Date.now();
+            if (!give(bl.push(c))) { resp.pause(); res.once('drain', function () { if (!gone) { resp.resume(); } }); }
+        });
+        resp.on('end', function () { if (!gone) { give(bl.end()); try { res.end(); } catch (e) {} } });
+        resp.on('error', function () { fail(502, 'the host stopped sending'); });
     }
     get(s.file);
 }
@@ -3461,7 +3695,8 @@ function liveControl(req, res, path, query, leaving) {
         if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
         var fu = q.u || '';
         if (!/^https?:\/\/[^\s]+$/i.test(fu) || fu.length > 2000) { send(res, 400, 'text/plain', 'bad link'); return; }
-        var fsn = liveFileSession(fu, liveWho(q), q.lan === '1');
+        var keep = q.blank === '1' ? String(q.keep || '').split(',').filter(function (k) { return /^\d{1,3}$/.test(k); }).map(Number).slice(0, 16) : null;
+        var fsn = liveFileSession(fu, liveWho(q), q.lan === '1', keep);
         send(res, 200, 'application/json', JSON.stringify({ url: liveBase(fsn) + 'f' }));
         return;
     }

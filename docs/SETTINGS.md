@@ -201,11 +201,12 @@ Addons (in order), playlists, portals, API keys, settings and, if ticked, your h
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Seek step* | 5, **10**, 15, 30 seconds | How far LEFT / RIGHT jump. FF / REW jump three steps; holding a direction speeds up. |
-| *Reconnect live channels* | Off, **A few times**, Keep trying | A channel that drops (lost, frozen or ended) opens again at the live edge: 3 times in 5 minutes, or with no limit, up to a minute apart (BACK stops it). Off: the player closes. |
-| *Buffer* | **Normal (the TV's own)**, More, Most | What the TV's player loads before starting and after running dry (More: 8 and 10 seconds; Most: 15 and 20): slower to start, dry less often. |
-| *Read the file's details* | **USB drives only**, All files, Off | Its codec, HDR and tracks, read from its start for Stream info. Links and network folders: a few requests more as it starts. |
-| *HLS through StremioK's service* | **Off**, Sources that need headers, All HLS sources | The service fetches it with the source's own headers (the TV's player can't always send them): a step more to start. Hold OK on a source: once. Files that need headers the player can't send always go through it. |
+| *Seek step* | 5, **10**, 15, 30 seconds | How far LEFT / RIGHT jump; FF / REW three steps; holding speeds up. |
+| *Reconnect live channels* | Off, **A few times**, Keep trying | A channel that drops opens again at the live edge: 3 times in 5 minutes, or always, up to a minute apart (BACK stops it). Off: it closes. |
+| *Buffer* | **Normal (the TV's own)**, More, Most | Loaded before starting and after running dry (More: 8 and 10 s; Most: 15 and 20): slower to start, dry less often. |
+| *Read the file's details* | **USB drives only**, All files, Off | Its codec, HDR and tracks, read from its start for Stream info. Links, network folders: more requests as it starts. |
+| *Leave out other subtitle tracks* | Always, More than 5, **After a jump**, Never | MKVs with many can stutter after jumps: through the service, your languages' only. |
+| *HLS through StremioK's service* | **Off**, Sources that need headers, All HLS sources | Fetched by the service with the source's own headers (the TV's player can't always send them): a step more to start. Hold OK on a source: once. |
 
 ### Source ranking
 

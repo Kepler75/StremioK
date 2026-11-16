@@ -270,7 +270,9 @@
             // (the file's details read from its start: player-core's fileInfoAsk. A USB drive's by
             // default, read off the drive itself; a link's or a network folder's are more requests
             // as it starts, so only when chosen)
-            fileInfo: d.fileInfo === 'all' || d.fileInfo === 'off' ? d.fileInfo : 'usb' };
+            fileInfo: d.fileInfo === 'all' || d.fileInfo === 'off' ? d.fileInfo : 'usb',
+            // (an MKV's other subtitle tracks left out through the service: player-core's blankFits)
+            blank: d.blank === 'always' || d.blank === 'many' || d.blank === 'never' ? d.blank : 'jump' };
     }
     function setPlayerCfg(cfg) {   // (what's given changes; the rest stays)
         var d = U.store.get(PLAYERCFG_KEY, {}) || {};

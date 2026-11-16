@@ -911,12 +911,15 @@
         lines.push([U.t('In the file'), parts.filter(Boolean).join('  ·  ')]);
         if (v && v.dv) { lines.push([U.t('Dolby Vision'), dvNote(v.dv)]); }
         if (mi.audio && mi.audio.length) { lines.push([U.t('Audio tracks'), trackList(mi.audio)]); }
-        if (mi.subs && mi.subs.length) { lines.push([U.t('Subtitle tracks'), trackList(mi.subs)]); }
+        var subs = mi.subs || [], bl = S.ctx && S.ctx._relay && S.ctx._blank;
+        if (bl) { subs = subs.filter(function (t, i) { return bl.indexOf(i) !== -1; }); }   // (the others left out: "Plays" says how many)
+        if (subs.length) { lines.push([U.t('Subtitle tracks'), trackList(subs)]); }
     }
     // How it reaches the player (no link): straight from its server, or through StremioK's service.
     function howItPlays() {
         var c = S.ctx;
         if (c.yt) { return U.t('Through YouTube’s service (on the TV)'); }
+        if (c._relay && c._blank) { return U.t('Through StremioK’s service: {n} subtitle tracks left out', { n: c._blankOf - c._blank.length }); }
         if (c._relay) { return U.t('Through StremioK’s service: the sound repacked'); }
         if (c.localFile && c.localFile.dav) { return U.t('From your network folder'); }
         if (c.localFile) { return /^http:\/\/localhost/.test(typeof LocalMedia !== 'undefined' && LocalMedia.openUrl ? LocalMedia.openUrl(c.url, c.localFile.size) : '') ? U.t('From the USB drive, through StremioK’s service (over 2 GB)') : U.t('From the USB drive'); }

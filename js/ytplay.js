@@ -112,10 +112,12 @@ var YTPlay = (function () {
     // A file (not HLS) through the service's file relay, with its headers and the player's byte
     // range: { url } the player opens. lan: redirects into the home network allowed
     // (Settings › Content › Addons › Local-network links from internet addons).
-    function fileOpen(url, h, lan) {
+    // keep: an MKV's subtitle tracks to keep, by their place among its subtitle tracks; the others
+    // are blanked (the service's mkvBlanker); none: the file as it is.
+    function fileOpen(url, h, lan, keep) {
         if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
         return ensureService().then(entryAuth).then(function (a) {
-            return U.getJSON(PROXY + '/live/file?u=' + encodeURIComponent(url) + headerQuery(h) + (lan ? '&lan=1' : '') + a.q, 5000, 65536, null, a.h);
+            return U.getJSON(PROXY + '/live/file?u=' + encodeURIComponent(url) + headerQuery(h) + (lan ? '&lan=1' : '') + (keep ? '&blank=1&keep=' + keep.join(',') : '') + a.q, 5000, 65536, null, a.h);
         });
     }
     // What's in a source's file, from its header (the service's /live/mi: its container, codecs,

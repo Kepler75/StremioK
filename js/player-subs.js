@@ -673,21 +673,31 @@
             return out;
         } catch (e) { return []; }
     }
-    function textLang(tr) { return trackLang(tr); }
+    // A built-in track's language: the TV's, else the file's own for it (the 2017 TV states none
+    // for an MKV's subtitle tracks: P.fileTrack).
+    function textLang(tr) {
+        var l = trackLang(tr);
+        if (l && !P.langUnstated(l)) { return l; }
+        var tracks = getTextTracks(), i = -1;
+        for (var k = 0; k < tracks.length; k++) { if (tracks[k].index === tr.index) { i = k; break; } }
+        var own = i >= 0 && P.fileTrack ? P.fileTrack('subs', tracks, i) : null;
+        return own && own.lang ? own.lang : l;
+    }
 
     function wantEmbedded(w) { _embWant = w; if (_ticked) { applyEmbeddedWant(); } }
     function applyEmbeddedWant() {
         var w = _embWant; _embWant = null;
         if (!w || _subOn) { return; }   // an addon track was chosen meanwhile
         var tracks = getTextTracks(), pick = null, key = w.lang ? langKey(w.lang) : '';
-        // (of a language's tracks, by the file's header: a full one in text, then any in text — a
-        // picture one, PGS, shows nothing here — then a forced one)
+        // (of a language's tracks, by the file's header: a plain one in text, then SDH, then a
+        // forced one — a picture one, PGS, shows nothing here, so last)
         var own = P.fileTracks ? P.fileTracks('subs', tracks) : null;
         function best(match) {
             var c = tracks.filter(match);
             if (!own || c.length < 2) { return c[0] || null; }
             var o = function (t) { return own[tracks.indexOf(t)] || {}; };
-            return c.filter(function (t) { return o(t).text !== false && !o(t).forced; })[0] || c.filter(function (t) { return o(t).text !== false; })[0] || c[0];
+            var rank = function (t) { var f = o(t); return f.text === false ? 3 : f.forced ? 2 : f.hi ? 1 : 0; };
+            return c.slice().sort(function (x, y) { return rank(x) - rank(y) || c.indexOf(x) - c.indexOf(y); })[0];
         }
         if (w.index != null) {
             pick = tracks.find(function (t) { return t.index === w.index && (!key || langKey(textLang(t)) === key); }) || null;
@@ -936,7 +946,8 @@
             if (x.emb) {
                 var tr = x.emb, l = textLang(tr), own = P.fileTrack ? P.fileTrack('subs', getTextTracks(), x.n) : null;
                 if (_embSub === tr.index) { idx = i; }
-                return { label: (S.ctx && S.ctx._relayCc ? U.t('Closed captions') : U.t('Built into the file')) + (l ? '  (' + l + ')' : '  ·  ' + U.t('track {n}', { n: x.n + 1 })), sel: _embSub === tr.index,
+                var named = l && !P.langUnstated(l) ? langName(langKey(l)) : '';   // ("English", as the audio list says it)
+                return { label: (S.ctx && S.ctx._relayCc ? U.t('Closed captions') : U.t('Built into the file')) + (named ? '  ·  ' + named : l ? '  (' + l + ')' : '  ·  ' + U.t('track {n}', { n: x.n + 1 })), sel: _embSub === tr.index,
                     detail: own && P.fileTrackNote ? P.fileTrackNote(own) || undefined : undefined,   // (its own name and marks, from the file's header)
                     run: function () {
                         _embDelay = 0; _embQueue = []; _embNudge = null; selectEmbeddedSub(tr); rememberSub(S.ctx.id, { embedded: true, index: tr.index, lang: l });

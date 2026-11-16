@@ -3,6 +3,15 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.4.2 — 2026-11-16
+- **Built-in audio and subtitle tracks named from the file** more often: also when the TV lists
+  fewer tracks than the file. The subtitle list says each language in full, and of your
+  language's subtitles a plain one is picked before SDH.
+- **Files with dozens of subtitle tracks jump cleanly:** after a forward jump the picture could
+  stutter and lose frames, subtitles on or off. Such an MKV now plays through StremioK's service
+  with only your languages' subtitle tracks (*Leave out other subtitle tracks*, Settings ›
+  Playback › Seeking & buffering).
+
 ## 2.4.1 — 2026-11-15
 - **When StremioK opens** (Settings › Profiles, with 2 or more): ask who's watching, the last
   profile used, or always one of them.

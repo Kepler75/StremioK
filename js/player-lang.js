@@ -178,17 +178,63 @@
     }
 
     // The file's own track (its header's, S.mi: see player-core's startFileInfo) for each of the
-    // TV player's tracks of a kind ('audio' | 'subs'): by position, when the header lists as many
-    // and every language it states agrees with the player's; else null (an odd file: the player's
-    // list as it is).
+    // TV player's tracks of a kind ('audio' | 'subs'), in the TV's order; else null (the player's
+    // list as it is). As many in both, every language either states agreeing: by position. The
+    // file listing more (the TV leaves some out, often picture subtitles): its text ones only, if
+    // that makes as many; else matched in order by language, each of the TV's tracks to the next
+    // of the file's in its language (every one stating one). Not matched: said once in
+    // Diagnostics › Logs, with how many each lists.
+    function agrees(tr, ft) {
+        var tv = langKey(trackLang(tr)), fl = langKey(ft.lang || '');
+        if (!tv || !fl || P.langUnstated(tv) || P.langUnstated(fl)) { return null; }   // (one says nothing)
+        return tv === fl || langKey(('' + ft.lang).split('-')[0]) === tv;
+    }
+    function byPosition(list, tracks) {
+        if (list.length !== tracks.length) { return null; }
+        for (var i = 0; i < list.length; i++) { if (agrees(tracks[i], list[i]) === false) { return null; } }
+        return list;
+    }
+    function inOrder(list, tracks) {
+        var out = [], j = 0;
+        for (var i = 0; i < tracks.length; i++) {
+            while (j < list.length && agrees(tracks[i], list[j]) !== true) {
+                if (agrees(tracks[i], list[j]) === null) { return null; }   // (a language unstated: too unsure)
+                j++;
+            }
+            if (j >= list.length) { return null; }
+            out.push(list[j++]);
+        }
+        return out;
+    }
+    // The 2017 TV with an MKV's many subtitle tracks: it lists the first 30 only (32 tracks in all),
+    // states no language for any, and numbers them in the file's order, on from its video and audio
+    // (2, 3, 4…). Those: the file's first ones, in order. Anything else stays unmatched.
+    function firstOnes(list, tracks) {
+        var mi = P.S.mi, before = (mi && mi.video ? 1 : 0) + ((mi && mi.audio) || []).length;
+        for (var i = 0; i < tracks.length; i++) {
+            if (agrees(tracks[i], list[i]) !== null || +tracks[i].index !== before + i) { return null; }
+        }
+        return list.slice(0, tracks.length);
+    }
+    var _ftMemo = { mi: null, said: {} };
     function fileTracks(kind, tracks) {
         var list = P.S.mi && P.S.mi[kind];
-        if (!list || !tracks || list.length !== tracks.length || !list.length) { return null; }
-        for (var i = 0; i < list.length; i++) {
-            var tv = langKey(trackLang(tracks[i])), fl = langKey(list[i].lang || '');
-            if (tv && fl && !P.langUnstated(tv) && !P.langUnstated(fl) && tv !== fl && langKey(('' + list[i].lang).split('-')[0]) !== tv) { return null; }
+        if (!list || !tracks || !list.length || !tracks.length) { return null; }
+        var bl = kind === 'subs' && P.S.ctx && P.S.ctx._relay && P.S.ctx._blank;   // (the others blanked by the service: the kept ones, in order)
+        if (bl) { list = list.filter(function (t, i) { return bl.indexOf(i) !== -1; }); }
+        var got = byPosition(list, tracks);
+        if (!got && list.length > tracks.length) {
+            got = byPosition(list.filter(function (t) { return t.text !== false; }), tracks) || inOrder(list, tracks) || firstOnes(list, tracks);
         }
-        return list;
+        if (!got) {
+            if (_ftMemo.mi !== P.S.mi) { _ftMemo = { mi: P.S.mi, said: {} }; }
+            if (!_ftMemo.said[kind]) {
+                _ftMemo.said[kind] = 1;
+                U.log('player', (kind === 'audio' ? 'Audio' : 'Subtitle') + ' tracks: the TV lists ' + tracks.length + ', the file ' + list.length + ' (' +
+                    tracks.map(function (t) { return trackLang(t) || '?'; }).join(' ') + ' / ' + list.map(function (t) { return t.lang || '?'; }).join(' ') + '): not matched, the TV\'s names shown');
+            }
+        }
+        return got;
     }
     function fileTrack(kind, tracks, pos) { var l = fileTracks(kind, tracks); return l ? l[pos] || null : null; }
     P.fileTracks = fileTracks; P.fileTrack = fileTrack;

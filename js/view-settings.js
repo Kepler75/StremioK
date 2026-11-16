@@ -2475,15 +2475,18 @@
     // (an HLS source through the service, with its own headers on every piece: see player-core's viaService)
     var HLS_ROUTES = [['off', U.t('Off')], ['headers', U.t('Sources that need headers')], ['all', U.t('All HLS sources')]];
     var FILE_INFOS = [['usb', U.t('USB drives only')], ['all', U.t('All files')], ['off', U.t('Off')]];
+    // (an MKV's other subtitle tracks left out through the service: player-core's blankFits)
+    var BLANKS = [['always', U.t('Always')], ['many', U.t('More than 5 subtitle tracks')], ['jump', U.t('After a jump (more than 5)')], ['never', U.t('Never')]];
     function settingsSeeking(wrap) {
         wrap.appendChild(U.el('h2', null, U.t('Seeking & buffering')));
-        var store = { get: function () { var c = Player.playerCfg(); return { seek: '' + c.seek, buffer: c.buffer, reconnect: c.reconnect, hls: c.hls, fileInfo: c.fileInfo }; },
-            set: function (cfg) { Player.setPlayerCfg({ seek: +cfg.seek || 10, buffer: cfg.buffer, reconnect: cfg.reconnect, hls: cfg.hls, fileInfo: cfg.fileInfo }); } };
+        var store = { get: function () { var c = Player.playerCfg(); return { seek: '' + c.seek, buffer: c.buffer, reconnect: c.reconnect, hls: c.hls, fileInfo: c.fileInfo, blank: c.blank }; },
+            set: function (cfg) { Player.setPlayerCfg({ seek: +cfg.seek || 10, buffer: cfg.buffer, reconnect: cfg.reconnect, hls: cfg.hls, fileInfo: cfg.fileInfo, blank: cfg.blank }); } };
         wrap.appendChild(subPickRow(U.t('Seek step'), [['5', '5 s'], ['10', '10 s'], ['15', '15 s'], ['30', '30 s']], 'seek', store));
         wrap.appendChild(subPickRow(U.t('Buffer'), [['normal', U.t('Normal (the TV’s own)')], ['more', U.t('More')], ['most', U.t('Most')]], 'buffer', store));
         wrap.appendChild(subPickRow(U.t('Reconnect live channels'), RECONNECTS, 'reconnect', store));
         wrap.appendChild(subPickRow(U.t('HLS through StremioK’s service'), HLS_ROUTES, 'hls', store));
         wrap.appendChild(subPickRow(U.t('Read the file’s details'), FILE_INFOS, 'fileInfo', store));   // (its codec, HDR, tracks and their names: player-core's fileInfoAsk)
+        wrap.appendChild(subPickRow(U.t('Leave out other subtitle tracks'), BLANKS, 'blank', store));
         wrap.appendChild(U.el('div', 'hint', 'Seek step: FF / REW jump three. Buffer: More or Most starts slower but stops less on a slow connection. Reconnect: a live channel that drops opens again (BACK stops it). HLS through StremioK’s service: for a host that wants headers the TV’s player can’t send; a step more before it starts.'));
         focusSettings();
     }

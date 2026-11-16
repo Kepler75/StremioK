@@ -435,12 +435,13 @@ var PlayerParts = {};
     // S.mi: the answer for what's playing, else null (not asked yet, not read, or not a file:
     // HLS, DASH, YouTube, a live channel, a trailer).
     var MI_KEEP = 40, _miSeen = U.lru(MI_KEEP), _miLook = null;
-    function fileInfoAsk(ctx) {
+    function fileInfoAsk(ctx, force) {
         if (!ctx || ctx.yt || ctx.trailer || S.isLive) { return null; }
         // (Settings › Playback › Seeking & buffering › Read the file's details: a USB drive's only
-        // unless All files — the others are more requests to their server as playback starts)
+        // unless All files — the others are more requests to their server as playback starts;
+        // force: asked whatever it says, for a jump in an MKV, see blankFirst)
         var want = P.playerCfg().fileInfo;
-        if (want === 'off' || (want !== 'all' && !(ctx.localFile && !ctx.localFile.dav))) { return null; }
+        if (!force && (want === 'off' || (want !== 'all' && !(ctx.localFile && !ctx.localFile.dav)))) { return null; }
         var url = '' + (ctx.url || ''), size = ctx.stream && ctx.stream.behaviorHints ? +ctx.stream.behaviorHints.videoSize || 0 : 0;
         if (ctx.localFile) {
             if (typeof LocalMedia === 'undefined' || !LocalMedia.fileInfo) { return null; }
@@ -531,10 +532,12 @@ var PlayerParts = {};
 
         engineFor(ctx);   // (the TV's player, or a ClearKey channel's own: see startShaka)
         // (a TorrServer torrent that doesn't say which of its files: its file list asked for first)
-        var go = function () {
+        var go = function () { blankBefore(ctx, function () {
+            var bj = !ctx._blank && fileInfoAsk(ctx, true), bmi = bj && _miSeen.get(bj.key);   // (its tracks known: see blankFits)
+            if (bmi && blankFits(ctx, bmi)) { setBlank(ctx, bmi); }
             if (fileViaService(ctx)) { startFileRelay(ctx, settle); return; }
             if (useAV) { startLive(ctx, settle); } else { startHTML5(ctx.url); }
-        };
+        }); };
         // (a network folder's file that plays through the service — Digest sign-in: its ticket
         // first, LocalMedia.prepare; asked or not, it then plays)
         var prep = ctx.localFile && typeof LocalMedia !== 'undefined' && LocalMedia.prepare ? LocalMedia.prepare(ctx.url) : null;
@@ -1274,7 +1277,7 @@ var PlayerParts = {};
         if (useAV) {
             // Don't seek while buffering — queue it until buffering completes.
             if (S.buffering) { S.pendingSeek = target; U.spinner(true); return; }
-            doAVSeek(target, 0);
+            if (!blankFirst(target)) { doAVSeek(target, 0); }
         } else {
             try { S.videoEl.currentTime = target; } catch (e2) {}
         }
@@ -1294,6 +1297,84 @@ var PlayerParts = {};
     }
 
     function seekBy(delta) { seekTo(S.cur + delta); }
+
+    // ---------- an MKV with dozens of subtitle tracks ----------
+    // The 2017 TV's player breaks after a forward jump in one (the picture stutters and loses
+    // frames, subtitles on or off), and plays the same file clean with only its video and audio.
+    // So such a file plays through the service's file relay with its other subtitle tracks blanked
+    // (the service's mkvBlanker: nothing moves, seeking stays the file's). When (Settings ›
+    // Playback › Seeking & buffering › Leave out other subtitle tracks): Always, or with more than
+    // BLANK_MIN, from the start (its tracks read first, BLANK_ASK_MS at most); After a jump (the
+    // default: more than BLANK_MIN, from the first jump, which reads them and reopens there);
+    // Never. A file whose tracks are known plays through it from the start in the first three.
+    // Kept: your subtitle languages' tracks (a choice made for the title first), BLANK_KEEP at
+    // most. Not USB files, network folders, YouTube, DRM or live.
+    var BLANK_MIN = 5, BLANK_KEEP = 4, BLANK_ASK_MS = 6000, _blankAsk = null;
+    function blankKeep(ctx, mi) {
+        var cfg = P.getSubCfg(), mine = P.recallSub ? P.recallSub(ctx.id) : null;
+        var keys = [mine && mine.lang, cfg.lang, cfg.lang2].filter(function (l) { return l && l !== 'off' && l !== 'none'; }).map(P.langKey);
+        var keep = [];
+        (mi.subs || []).forEach(function (t, i) { if (keep.length < BLANK_KEEP && keys.some(function (k) { return P.langMatches(k, t.lang || ''); })) { keep.push(i); } });
+        return keep;
+    }
+    function blankFits(ctx, mi) {
+        var mode = P.playerCfg().blank;
+        if (mode === 'never' || !useAV || !ctx || !mi || mi.container !== 'mkv' || !mi.subs || mi.subs.length <= (mode === 'always' ? 0 : BLANK_MIN)) { return false; }
+        if (ctx.localFile || ctx.yt || ctx.trailer || S.isLive || (ctx.stream && ctx.stream._drm)) { return false; }
+        var url = ctx.url || '';
+        if (!/^https?:\/\//i.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)[:\/]/i.test(url)) { return false; }
+        if (blankKeep(ctx, mi).length >= mi.subs.length) { return false; }   // (every one kept: nothing to leave out)
+        return typeof YTPlay !== 'undefined' && !!YTPlay.fileOpen && YTPlay.installMode() !== 'browser';
+    }
+    function setBlank(ctx, mi) { ctx._blank = blankKeep(ctx, mi); ctx._blankOf = mi.subs.length; }
+    // Always / More than 5: an MKV's tracks read before it starts (when not known yet); then(): on.
+    function blankBefore(ctx, then) {
+        var mode = P.playerCfg().blank;
+        if ((mode !== 'always' && mode !== 'many') || ctx._blank || ctx._blankChecked || !useAV || !maybeMkv(ctx)) { then(); return; }
+        var job = fileInfoAsk(ctx, true);
+        if (!job || _miSeen.get(job.key)) { then(); return; }
+        ctx._blankChecked = true;
+        var done = false, look = U.cancelToken();
+        function on(m) { if (done) { return; } done = true; if (m && m.container) { _miSeen.set(job.key, m); } if (S.ctx === ctx && S.active) { then(); } }
+        job.ask(look).then(on, function () { on(null); });
+        setTimeout(function () { look.cancel(); on(null); }, BLANK_ASK_MS);
+    }
+    function maybeMkv(ctx) {
+        var bh = (ctx.stream && ctx.stream.behaviorHints) || {};
+        return /\.mkv(?:[?#]|$)/i.test(ctx.url || '') || /\.mkv$/i.test(bh.filename || '') || !!(ctx.formatInfo && /mkv/i.test(ctx.formatInfo.container || '')) || !!(S.mi && S.mi.container === 'mkv');
+    }
+    // A jump: true when it's taken care of here (reopened through the relay, or once its tracks
+    // are read); false: seek as usual. Asked once a playback.
+    function blankFirst(target) {
+        var ctx = S.ctx;
+        if (!ctx || ctx._blank || ctx._blankChecked || P.playerCfg().blank === 'never' || !maybeMkv(ctx)) { return false; }
+        if (_blankAsk) { _blankAsk.target = target; return true; }
+        var job = fileInfoAsk(ctx, true), mi = S.mi || (job && _miSeen.get(job.key)) || null;
+        if (mi || !job) { ctx._blankChecked = true; if (mi && blankFits(ctx, mi)) { reopenBlank(ctx, mi, target); return true; } return false; }
+        var ask = _blankAsk = { target: target, done: false }, tok = _playToken, look = U.cancelToken();
+        U.spinner(true);
+        function finish(m) {
+            if (ask.done) { return; }
+            ask.done = true; _blankAsk = null; ctx._blankChecked = true;
+            if (!S.active || S.ctx !== ctx || tok !== _playToken) { return; }
+            if (m && blankFits(ctx, m)) { reopenBlank(ctx, m, ask.target); return; }
+            U.spinner(false); doAVSeek(ask.target, 0);
+        }
+        job.ask(look).then(function (m) {
+            if (m && typeof m === 'object' && m.container) { _miSeen.set(job.key, m); if (!S.mi && S.ctx === ctx) { fileInfoIn(ctx, m); } finish(m); } else { finish(null); }
+        }, function () { finish(null); });
+        setTimeout(function () { look.cancel(); finish(null); }, BLANK_ASK_MS);
+        return true;
+    }
+    function reopenBlank(ctx, mi, target) {
+        setBlank(ctx, mi);
+        ctx._relay = null; ctx._relayFor = null;
+        ctx.resumeSec = Math.floor(target); S.cur = target;
+        _stall.t = -1; _stall.since = 0; _stall.bufSince = 0;
+        clearStartNote();
+        U.spinner(true);
+        startFileRelay(ctx, false);
+    }
 
     // ---------- jumps ahead on its own ----------
     // At normal speed, play time can't move ahead faster than the clock. After pauses, this
@@ -1569,7 +1650,7 @@ var PlayerParts = {};
         var url = ctx.url || '';
         if (!/^https?:\/\//i.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)[:\/]/i.test(url)) { return false; }
         if (HLS_LINK.test(url) || (ctx.formatInfo && ctx.formatInfo.container === 'hls') || /\.mpd(?:[?#]|$)/i.test(url)) { return false; }
-        if (ctx.viaService) { return true; }
+        if (ctx.viaService || ctx._blank) { return true; }   // (its other subtitle tracks blanked: blankFits)
         var h = U.sanitizeHeaders(ctx._headers);
         return !!h && (!useAV || !!(h.origin || h.accept || h.lang));
     }
@@ -1579,8 +1660,10 @@ var PlayerParts = {};
             if (S.ctx !== ctx || !S.active) { return; }
             if (useAV) { startLive(ctx, settle); } else { startHTML5(ctx._relay && ctx._relayFor === ctx.url ? ctx._relay : ctx.url); }
         }
-        YTPlay.fileOpen(ctx.url, U.sanitizeHeaders(ctx._headers), lan).then(function (r) {
-            if (S.ctx === ctx && S.active && relayed(ctx, r, null, false)) { U.log('player', 'Through StremioK\'s service, with the source\'s headers (' + where(ctx.url) + ')'); }
+        YTPlay.fileOpen(ctx.url, U.sanitizeHeaders(ctx._headers), lan, ctx._blank || null).then(function (r) {
+            if (S.ctx === ctx && S.active && relayed(ctx, r, null, false)) {
+                U.log('player', ctx._blank ? 'Through StremioK\'s service: ' + ctx._blankOf + ' subtitle tracks, ' + ctx._blank.length + ' kept, the others left out (jumps stay clean; ' + where(ctx.url) + ')' : 'Through StremioK\'s service, with the source\'s headers (' + where(ctx.url) + ')');
+            }
             go();
         }, go);
     }

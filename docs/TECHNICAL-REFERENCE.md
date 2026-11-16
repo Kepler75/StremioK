@@ -277,20 +277,20 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
 ## Subtitles
 
 - **Made for your file:** subtitle addons are told the playing file's name, size and
-  fingerprint (when the source gives them), as Stremio does. This is kept with Continue
-  Watching, so resuming asks the same way. For a matched USB video the fingerprint is the
+  fingerprint (when the source gives them), as Stremio does. Kept with Continue
+  Watching, so resuming asks the same. For a matched USB video the fingerprint is the
   OpenSubtitles hash of the file.
 - **Languages:** every language OpenSubtitles uses is known by its 2- and 3-letter codes and its
-  names. A file's own tracks are read whichever way the TV reports their language (`language` or
-  `track_lang`, even when its track details aren't clean JSON).
+  names. A file's own tracks' language is read however the TV reports it (`language`,
+  `track_lang`, or broken JSON).
 - **The order your language is looked for in:** an addon's, a subtitle file next to a USB video,
   a YouTube caption, or a track built into the video; only when none has it is the second
   choice looked for, in the same order (a track to download first, then a built-in one). A
   choice you made for a title wins over both. The second subtitle is the first addon subtitle in
   its language, and isn't shown when it's the language already at the bottom; *Off* in the
   subtitle languages turns both off for that title.
-- **Formats:** SRT, WebVTT, ASS / SSA, SAMI, MicroDVD (23.976 frames a second unless its first
-  line says), MPL2 and TMPlayer, told by their content.
+- **Formats:** SRT, WebVTT, ASS / SSA, SAMI, MicroDVD (23.976 fps unless stated), MPL2,
+  TMPlayer, by content.
 - **Styling:** italics, bold, underline and colors (SRT tags; ASS styles and `{\i1}`-style
   overrides) kept; no positions, karaoke or drawings. Overlapping lines show
   together.
@@ -301,6 +301,8 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
   hold it back (shown when playback gets there; a jump in between drops it) but not show it
   sooner. A built-in track picked on its own at the start is picked once more after a few
   seconds of playback: the TV can take the first pick without showing its lines.
+- **Built-in tracks' names:** matched by language, skipping any the TV leaves out; plain
+  subtitles beat SDH.
 - **Subtitle files on a USB drive:** read in their own encoding: UTF-8, UTF-16, or old Windows
   ones told apart by their letters (Western, Central European, Cyrillic). Those next to a playing USB video are there as
   soon as playback starts (one that's your choice or language shows at once; the addons' join
@@ -996,20 +998,20 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 ### The phone page
 
 The TV asks the service to open a page (`/entry/open?what=…`), polls it (`/entry/poll?t=…`) and
-closes it (`/entry/close?t=…`). At most 2 pages are open at a time (another closes the oldest)
-and 12 opened a minute. Each page has a random 128-bit code in its address, takes one entry (8 KB
-at most), and closes after 5 minutes, or 30 seconds without the TV polling it. Its port takes at
-most 8 connections, and each visit is given 20 seconds (10 s of silence). See
+closes it (`/entry/close?t=…`). At most 2 pages are open (another closes the oldest), 12 opened a
+minute. Each page has a random 128-bit code in its address, takes one entry (8 KB
+at most), and closes after 5 minutes, or 30 seconds without the TV polling it. Its port takes 8
+connections at most, 20 seconds each (10 s of silence). See
 [Typing, or sending from your phone](USER-GUIDE.md#typing-or-sending-from-your-phone).
 
 ### AIOManager
 
 `/aiom/addons` reads an account's addons with AIOManager's Hydra API (`GET <address>/hydra/addons`,
 the API key sent as `X-API-Key`), up to 2 MB, within 20 seconds in all, and keeps at most 500.
-It follows up to 4 redirects on the same server only (HTTP to HTTPS allowed, never the other
-way): the key never goes anywhere else. One cancel stops the whole chain. It then registers StremioK (`POST <address>/hydra/register`, best effort),
-which is its card in AIOManager's Connections. Nothing else is written to AIOManager. It's done
-in the service because an instance only answers the web addresses it's set to. The same host
+It follows up to 4 redirects on the same server only (HTTP to HTTPS, not back): the key goes
+nowhere else. It then registers StremioK (`POST <address>/hydra/register`, best effort),
+which is its card in AIOManager's Connections. Nothing else is written to AIOManager. Done in
+the service: an instance answers only its own web addresses. The same host
 rule as downloads applies.
 
 ### Live relay
@@ -1025,9 +1027,9 @@ downloads applies.
 source › *Play through StremioK's service*): an HLS source opens the relay without the look
 (`&force=1&fix=0`), so every playlist and piece is fetched with its headers. *Sources that need
 headers*: those with their own User-Agent, Referer or Cookie; *All HLS sources*: any `.m3u8`.
-Not YouTube, DRM or USB files. A film's (`&film=1`) keeps every link it named (a live channel's
-keeps its last 400), relays its keys, init sections and encrypted pieces too, asks a byte range
-as one, and is dropped after 3 hours unused. If the service doesn't answer, the source plays as
+Not YouTube, DRM or USB files. A film's (`&film=1`) keeps every link it named (a live channel's,
+its last 400), relays keys, init sections and encrypted pieces, asks a byte range as one, and
+is dropped after 3 hours unused. If the service doesn't answer, the source plays as
 it is.
 
 **File details** (`/live/mi`, `/fsmi`, `/dav/mi`): the playing source's header only (MKV, MP4),
@@ -1037,6 +1039,9 @@ in byte ranges: 16 MB, 10 reads, 20 s at most, two at once; redirects as the fil
 headers the TV's player can't send (Origin, Accept, Accept-Language; any, under TizenBrew), or
 asked for by hold OK. Each request goes on with its headers and byte range; redirects into your
 home network follow *Local-network links from internet addons*.
+
+**Many subtitle tracks** (`&blank=1&keep=`): an MKV goes through the file relay as *Leave out
+other subtitle tracks* says, others' IDs made Void (nothing moves); your languages' kept.
 
 Closed captions (CEA-608 in H.264, HEVC or MPEG-2 pictures) at a segment's start: the look reads
 the whole segment, up to 8 MB. Asked for (`&cc=CC1-en`; `&fix=0`: sound as it is), the relay adds
