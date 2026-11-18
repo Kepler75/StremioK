@@ -432,6 +432,7 @@ I18N.add("es", {
     "Emby {v} is too old: 4.7 or newer is needed.": "Emby {v} es demasiado antiguo: se necesita 4.7 o posterior.",
     "Emerald": "Esmeralda",
     "Endcards / credits": "Tarjetas finales / créditos",
+    "Ends {time}": "Termina {time}",
     "English": "Inglés",
     "Enter a Stremio addon manifest URL on its own page": "Ingresa la URL del manifiesto de un complemento de Stremio en su propia página",
     "Enter a URL": "Ingresa una URL",

@@ -432,6 +432,7 @@ I18N.add("ko", {
     "Emby {v} is too old: 4.7 or newer is needed.": "Emby {v}은(는) 너무 오래되었습니다. 4.7 이상이 필요합니다.",
     "Emerald": "에메랄드",
     "Endcards / credits": "엔드 카드 / 크레딧",
+    "Ends {time}": "{time} 종료",
     "English": "영어",
     "Enter a Stremio addon manifest URL on its own page": "Stremio 애드온 매니페스트 URL을 별도 페이지에서 입력",
     "Enter a URL": "URL을 입력하세요",

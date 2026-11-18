@@ -432,6 +432,7 @@ I18N.add("hi", {
     "Emby {v} is too old: 4.7 or newer is needed.": "Emby {v} बहुत पुराना है: 4.7 या नया चाहिए।",
     "Emerald": "एमरल्ड",
     "Endcards / credits": "एंडकार्ड / क्रेडिट",
+    "Ends {time}": "{time} पर खत्म",
     "English": "अंग्रेज़ी",
     "Enter a Stremio addon manifest URL on its own page": "Stremio ऐडऑन मैनिफ़ेस्ट URL उसके अपने पेज पर डालें",
     "Enter a URL": "URL डालें",

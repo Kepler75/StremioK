@@ -283,9 +283,9 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
 - **Languages:** every language OpenSubtitles uses is known by its 2- and 3-letter codes and its
   names. A file's own tracks' language is read however the TV reports it (`language`,
   `track_lang`, or broken JSON).
-- **The order your language is looked for in:** an addon's, a subtitle file next to a USB video,
-  a YouTube caption, or a track built into the video; only when none has it is the second
-  choice looked for, in the same order (a track to download first, then a built-in one). A
+- **The order your language is looked for in:** a track built into the video (on as soon as it
+  plays), an addon's (in their order; a source's own first), a USB drive's file, a YouTube
+  caption; only when none has it is the second choice looked for, in the same order. A
   choice you made for a title wins over both. The second subtitle is the first addon subtitle in
   its language, and isn't shown when it's the language already at the bottom; *Off* in the
   subtitle languages turns both off for that title.
@@ -1041,7 +1041,7 @@ asked for by hold OK. Each request goes on with its headers and byte range; redi
 home network follow *Local-network links from internet addons*.
 
 **Many subtitle tracks** (`&blank=1&keep=`): an MKV goes through the file relay as *Leave out
-other subtitle tracks* says, others' IDs made Void (nothing moves); your languages' kept.
+other subtitle tracks* says, others' IDs Void, yours and your audio first, nothing moved.
 
 Closed captions (CEA-608 in H.264, HEVC or MPEG-2 pictures) at a segment's start: the look reads
 the whole segment, up to 8 MB. Asked for (`&cc=CC1-en`; `&fix=0`: sound as it is), the relay adds

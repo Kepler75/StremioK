@@ -90,8 +90,13 @@
             ? LocalMedia.ensure().then(function () { return LocalMedia.ready(); }).then(function () { return LocalMedia.subsForTitle(ctx.type, ctx.id); }).then(null, function () { return []; })
             : Promise.resolve([]);
         if (localSubs.length) { localReady.then(function () { early = pickSubs(localSubs, true); }); }
+        // (your default language built into the file: on as soon as it plays, not after the addons)
+        var cfg0 = getSubCfg();
+        if (!recallSub(ctx.id) && cfg0.lang && cfg0.lang !== 'off' && P.useAV) { wantEmbedded({ lang: cfg0.lang, early: true }); }
         Promise.all([fromAddons, fromYouTube, localReady, usbSubs]).then(function (r) {
-            var all = localSubs.concat(ctx.sourceSubs || [], r[0] || [], r[1], r[3] || []);   // (a source's own: made for its file, so first after a USB file's)
+            // (in the order they're picked in: a source's own, made for its file, then the addons' in
+            // their order, then a USB drive's, then YouTube's; built-in tracks before all: applyEmbeddedWant)
+            var all = (ctx.sourceSubs || []).concat(r[0] || [], localSubs, r[3] || [], r[1] || []);
             if (!S.active || S.ctx !== ctx) { return; }   // (another playback started meanwhile: not its tracks)
             if (early || _subOn || _embSub != null) { _subTracks = all; updateHint(); startSecond(); return; }
             pickSubs(all, false);
@@ -128,16 +133,13 @@
                 if (partial) { return false; }
             }
 
-            // 2) Otherwise the default language: an addon track, else one built into the file;
-            //    then the second choice, the same way (see applyEmbeddedWant: once the file's own
-            //    tracks are known, so the default language built into it comes first).
+            // 2) Otherwise your default language: built into the file, else an addon's (in their
+            //    order), a USB drive's, YouTube's; then the second choice, the same way. Decided in
+            //    applyEmbeddedWant, once the file's own tracks are known (all the files in by then).
             var cfg = getSubCfg();
             if (!cfg.lang || cfg.lang === 'off') { return !partial; }
-            // "spa" also matches "es", "es-419", "Spanish", "Español"...
-            var match = _subTracks.find(function (t) { return langMatches(cfg.lang, t.lang); });
-            if (match) { loadTrack(match); return true; }
             if (partial) { return false; }
-            wantEmbedded({ lang: cfg.lang, lang2: (cfg.lang2 && cfg.lang2 !== 'none' && cfg.lang2 !== cfg.lang) ? cfg.lang2 : null });
+            wantEmbedded({ lang: cfg.lang, lang2: (cfg.lang2 && cfg.lang2 !== 'none' && cfg.lang2 !== cfg.lang) ? cfg.lang2 : null, auto: true });
             return true;
         }
     }
@@ -178,17 +180,39 @@
     // screen; picking it again by hand works). So it's picked once more when playback has run
     // a moment: through another text track first (or off and on, with only one), since picking
     // the track the TV already reports is ignored.
-    var EMB_NUDGE_MS = 2500, _embNudge = null;
+    // The way back after a moment (EMB_NUDGE_GAP_MS: the 2017 TV ignores two switches in a row,
+    // as with audio; its lines meanwhile not shown), then a look at what the TV reports a few
+    // seconds on (EMB_CHECK_MS): not the track picked, picked once more.
+    var EMB_NUDGE_MS = 2500, EMB_NUDGE_GAP_MS = 1000, EMB_CHECK_MS = 4000, _embNudge = null, _embQuiet = 0;
+    function selectText(index) {
+        try { avplay.setSelectTrack('TEXT', index); }
+        catch (e) { try { avplay.setSelectTrack('TEXT', '' + index); } catch (e2) {} }
+    }
+    function textNow() {   // the text track the TV reports playing, or null
+        try { var l = avplay.getCurrentStreamInfo() || []; for (var i = 0; i < l.length; i++) { if (('' + l[i].type).toUpperCase() === 'TEXT') { return '' + l[i].index; } } } catch (e) {}
+        return null;
+    }
     function nudgeEmbedded() {
         var n = _embNudge; _embNudge = null;
         if (!n || _subOn || _embSub !== n.index) { return; }   // (another choice meanwhile)
         var other = getTextTracks().filter(function (t) { return t.index !== n.index; })[0];
-        if (other) { try { avplay.setSelectTrack('TEXT', other.index); } catch (e1) {} }
+        _embQuiet = Date.now() + EMB_NUDGE_GAP_MS + 500;
+        if (other) { selectText(other.index); }
         else { try { avplay.setSilentSubtitle(true); } catch (e2) {} }
-        try { avplay.setSilentSubtitle(false); } catch (e3) {}
-        try { avplay.setSelectTrack('TEXT', n.index); }
-        catch (e4) { try { avplay.setSelectTrack('TEXT', '' + n.index); } catch (e5) {} }
+        setTimeout(function () {
+            if (_subOn || _embSub !== n.index || !S.active) { return; }
+            try { avplay.setSilentSubtitle(false); } catch (e3) {}
+            selectText(n.index);
+            setTimeout(function () {
+                if (_subOn || _embSub !== n.index || !S.active) { return; }
+                var now = textNow();
+                if (now !== null && now !== '' + n.index) { U.log('player', 'Built-in subtitle: the TV played track ' + now + ', not ' + n.index + ': picked again'); selectText(n.index); }
+            }, EMB_CHECK_MS);
+        }, EMB_NUDGE_GAP_MS);
     }
+    // An audio switch: the 2017 TV goes back to its first text track meanwhile (the one picked
+    // still ticked; a pause and play brings it back): picked once more, the same way, a moment on.
+    P.subsAfterAudio = function () { if (_embSub != null && !_subOn) { _embNudge = { index: _embSub, at: Date.now() + EMB_NUDGE_MS }; } };
     // Stream info's "Subtitles" line.
     function subtitleSummary() {
         return _subOn ? (_subLabel + (_subDelay ? '  (' + fmtDelay(_subDelay) + ')' : '')) : (_embSub != null ? (_embLang || U.t('on')) + '  ' + U.t('(built-in)') : U.t('Off'));
@@ -684,7 +708,12 @@
         return own && own.lang ? own.lang : l;
     }
 
-    function wantEmbedded(w) { _embWant = w; if (_ticked) { applyEmbeddedWant(); } }
+    // (applied once playback runs and the TV lists its tracks; at once when there can be none to
+    // wait for: no TV player, a YouTube video, a file whose details list no subtitle track)
+    function noBuiltIn() { return !P.useAV || !!(S.ctx && S.ctx.yt) || !!(S.mi && S.mi.container && !(S.mi.subs || []).length); }
+    function wantEmbedded(w) { _embWant = w; if (_ticked || noBuiltIn()) { applyEmbeddedWant(); } }
+    // The file's details in (or not to be had): a pick that waited for them, now.
+    P.subsMiIn = function () { if (_embWant && _ticked) { try { applyEmbeddedWant(); } catch (e) {} } };
     function applyEmbeddedWant() {
         var w = _embWant; _embWant = null;
         if (!w || _subOn) { return; }   // an addon track was chosen meanwhile
@@ -703,12 +732,19 @@
             pick = tracks.find(function (t) { return t.index === w.index && (!key || langKey(textLang(t)) === key); }) || null;
         }
         if (!pick && key) { pick = best(function (t) { return langMatches(key, textLang(t)); }); }
+        // (no language from the TV, the file's details still being read: picked once they're in,
+        // subsMiIn, so your language built into the file isn't passed over)
+        if (!pick && P.miPending && P.miPending() && tracks.length && tracks.every(function (t) { return P.langUnstated(trackLang(t)); })) { _embWant = w; return; }
+        if (!pick && w.early) { return; }   // (only a built-in one, early: the rest once the files are in)
+        // (your default language not built in: a subtitle file in it, in the list's order)
+        var file = !pick && key && w.auto ? _subTracks.find(function (t) { return langMatches(key, t.lang); }) : null;
+        if (file) { loadTrack(file); return; }
         if (!pick && w.nth != null && S.ctx && S.ctx._relayCc) { pick = tracks[w.nth] || null; }   // (a live channel's closed captions: in the order asked for)
-        if (!pick && w.lang2) {   // nothing in the default language anywhere: the second choice, a track to download first
+        if (!pick && w.lang2) {   // nothing in the default language anywhere: the second choice, the same way
             var key2 = langKey(w.lang2);
-            var dl = _subTracks.find(function (t) { return langMatches(key2, t.lang); });
-            if (dl) { loadTrack(dl); return; }
             pick = best(function (t) { return langMatches(key2, textLang(t)); });
+            var dl = pick ? null : _subTracks.find(function (t) { return langMatches(key2, t.lang); });
+            if (dl) { loadTrack(dl); return; }
         }
         if (pick) { selectEmbeddedSub(pick); _embNudge = { index: pick.index, at: Date.now() + EMB_NUDGE_MS }; }
     }
@@ -744,7 +780,7 @@
         };
     }
     function showEmbeddedText(text, duration) {
-        if (_embSub == null || _subOn) { return; }
+        if (_embSub == null || _subOn || Date.now() < _embQuiet) { return; }   // (the other track's, while nudging)
         text = skipper()('' + (text || ''));
         if (!text) { return; }
         if (_embDelay > 0) {

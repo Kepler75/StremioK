@@ -432,6 +432,7 @@ I18N.add("he", {
     "Emby {v} is too old: 4.7 or newer is needed.": "Emby {v} ישן מדי: נדרשת גרסה 4.7 ומעלה.",
     "Emerald": "אזמרגד",
     "Endcards / credits": "מסכי סיום / כתוביות סיום",
+    "Ends {time}": "מסתיים ב-{time}",
     "English": "אנגלית",
     "Enter a Stremio addon manifest URL on its own page": "הזנת כתובת URL של מניפסט תוסף Stremio בדף נפרד",
     "Enter a URL": "יש להזין URL",

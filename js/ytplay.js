@@ -114,10 +114,10 @@ var YTPlay = (function () {
     // (Settings › Content › Addons › Local-network links from internet addons).
     // keep: an MKV's subtitle tracks to keep, by their place among its subtitle tracks; the others
     // are blanked (the service's mkvBlanker); none: the file as it is.
-    function fileOpen(url, h, lan, keep) {
+    function fileOpen(url, h, lan, keep, audio) {
         if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
         return ensureService().then(entryAuth).then(function (a) {
-            return U.getJSON(PROXY + '/live/file?u=' + encodeURIComponent(url) + headerQuery(h) + (lan ? '&lan=1' : '') + (keep ? '&blank=1&keep=' + keep.join(',') : '') + a.q, 5000, 65536, null, a.h);
+            return U.getJSON(PROXY + '/live/file?u=' + encodeURIComponent(url) + headerQuery(h) + (lan ? '&lan=1' : '') + (keep ? '&blank=1&keep=' + keep.join(',') + (audio && audio.length ? '&audio=' + audio.join(',') : '') : '') + a.q, 5000, 65536, null, a.h);
         });
     }
     // What's in a source's file, from its header (the service's /live/mi: its container, codecs,

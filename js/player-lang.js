@@ -34,7 +34,7 @@
         fre: ['fre', 'fra', 'fr', 'french', 'français', 'francais'],
         ger: ['ger', 'deu', 'de', 'german', 'deutsch'],
         ita: ['ita', 'it', 'italian', 'italiano'],
-        por: ['por', 'pob', 'pom', 'pt', 'portuguese', 'português', 'portugues'],
+        por: ['por', 'pob', 'pom', 'pt', 'po', 'portuguese', 'português', 'portugues'],   // ("po": the 2017 TV's)
         dut: ['dut', 'nld', 'nl', 'dutch', 'nederlands'],
         rus: ['rus', 'ru', 'russian'],
         ara: ['ara', 'ar', 'arabic'],
@@ -221,7 +221,9 @@
         var list = P.S.mi && P.S.mi[kind];
         if (!list || !tracks || !list.length || !tracks.length) { return null; }
         var bl = kind === 'subs' && P.S.ctx && P.S.ctx._relay && P.S.ctx._blank;   // (the others blanked by the service: the kept ones, in order)
-        if (bl) { list = list.filter(function (t, i) { return bl.indexOf(i) !== -1; }); }
+        if (bl) { list = bl.map(function (i) { return list[i]; }).filter(Boolean); }   // (in the order the service put them in)
+        var ao = kind === 'audio' && P.S.ctx && P.S.ctx._relay && P.S.ctx._blank && P.S.ctx._audioOrder;   // (the audio reordered by the service too: yours first)
+        if (ao && ao.length) { var all = list; list = ao.map(function (i) { return all[i]; }).filter(Boolean).concat(all.filter(function (t, i) { return ao.indexOf(i) === -1; })); }
         var got = byPosition(list, tracks);
         if (!got && list.length > tracks.length) {
             got = byPosition(list.filter(function (t) { return t.text !== false; }), tracks) || inOrder(list, tracks) || firstOnes(list, tracks);

@@ -3,6 +3,16 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.4.3 — 2026-11-17
+- **Through StremioK's service, your languages come first:** your preferred audio and subtitle
+  tracks listed first, no need to 'safely switch'.
+- **Subtitles in your language: the file's own first,** then an addon's (in your addon order), a
+  USB drive's, a YouTube caption; then your second choice the same way. A built-in one comes on
+  as soon as the video plays.
+- **When it ends:** under the time at the top right of the player, *Ends 21:47* (not on live
+  channels).
+- **Fixed: built-in subtitles back in English** after the audio switched, on 2017 TVs.
+
 ## 2.4.2 — 2026-11-16
 - **Built-in audio and subtitle tracks named from the file** more often: also when the TV lists
   fewer tracks than the file. The subtitle list says each language in full, and of your

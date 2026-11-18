@@ -582,3 +582,4 @@ html, body {
 .home-info-pic.hidden { display: none; }
 #osd-clock { position: fixed; top: 40px; right: 60px; font-size: 34px; font-weight: bold; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,0.9); }   /* (the time of day, top right, while the bar shows) */
 #osd-clock:empty { display: none; }
+#osd-clock .osd-ends { font-size: 22px; font-weight: normal; text-align: right; opacity: 0.85; margin-top: 2px; }   /* (when what plays ends, under the time) */

@@ -325,7 +325,12 @@ var PlayerParts = {};
     function renderOSD() {
         U.byId('osd-title').textContent = S.ctx ? S.ctx.name : '';
         var ck = U.byId('osd-clock');   // (the time of day, top right while the bar is on screen)
-        if (ck) { ck.textContent = clock(Date.now() / 1000); }
+        if (ck) {
+            ck.textContent = clock(Date.now() / 1000);
+            // (under it, when what plays has a length: when it ends, at this pace — later while paused)
+            var left = !S.isLive && S.dur > 0 ? S.dur - S.cur : 0;
+            if (left > 30) { ck.appendChild(U.el('div', 'osd-ends', U.t('Ends {time}', { time: clock(Date.now() / 1000 + left) }))); }
+        }
         renderTags();
         renderChapters();
         if (S.isLive) {
@@ -461,11 +466,13 @@ var PlayerParts = {};
         var known = _miSeen.get(job.key);
         if (known) { fileInfoIn(ctx, known); return; }
         var look = _miLook = U.cancelToken();
+        // (meanwhile a built-in subtitle pick waits for it when the TV states no language: P.miPending)
+        function over() { if (_miLook === look) { _miLook = null; } if (P.subsMiIn && S.ctx === ctx && S.active) { P.subsMiIn(); } }
         job.ask(look).then(function (mi) {
-            if (look.cancelled || !mi || typeof mi !== 'object' || !mi.container) { return; }
-            _miSeen.set(job.key, mi);
-            if (S.ctx === ctx && S.active) { fileInfoIn(ctx, mi); }
-        }, function (e) { if (!look.cancelled) { U.log('player', 'The file\'s details couldn\'t be read: ' + ((e && e.message) || 'unknown')); } });
+            if (look.cancelled) { return; }
+            if (mi && typeof mi === 'object' && mi.container) { _miSeen.set(job.key, mi); if (S.ctx === ctx && S.active) { S.mi = mi; fileInfoIn(ctx, mi); } }
+            over();
+        }, function (e) { if (!look.cancelled) { U.log('player', 'The file\'s details couldn\'t be read: ' + ((e && e.message) || 'unknown')); over(); } });
     }
     // The answer in: S.mi, and the source's details corrected by it (Stremio.withFileInfo): what
     // the player shows (its tags, Stream info) and what Formats learns from it are the file's.
@@ -482,6 +489,7 @@ var PlayerParts = {};
         var what = P.fileSummary(S.mi);
         return what ? U.t('This TV didn’t play this file: {what}', { what: what }) : why;
     }
+    P.miPending = function () { return !!_miLook && !_miLook.cancelled && !S.mi; };
     P.fileInfoFor = function (ctx) { var j = fileInfoAsk(ctx); return j ? _miSeen.get(j.key) || null : null; };
 
     function play(ctx, onExit) {
@@ -1313,8 +1321,15 @@ var PlayerParts = {};
     function blankKeep(ctx, mi) {
         var cfg = P.getSubCfg(), mine = P.recallSub ? P.recallSub(ctx.id) : null;
         var keys = [mine && mine.lang, cfg.lang, cfg.lang2].filter(function (l) { return l && l !== 'off' && l !== 'none'; }).map(P.langKey);
-        var keep = [];
-        (mi.subs || []).forEach(function (t, i) { if (keep.length < BLANK_KEEP && keys.some(function (k) { return P.langMatches(k, t.lang || ''); })) { keep.push(i); } });
+        // (in the order wanted: the service puts them first in that order, so the TV's first text
+        // track is yours. A language's: plain, then SDH, then forced, then pictures)
+        var keep = [], subs = mi.subs || [];
+        var rank = function (t) { return t.text === false ? 3 : t.forced ? 2 : t.hi ? 1 : 0; };
+        keys.forEach(function (k) {
+            subs.map(function (t, i) { return i; }).filter(function (i) { return keep.indexOf(i) === -1 && P.langMatches(k, subs[i].lang || ''); })
+                .sort(function (a, b) { return rank(subs[a]) - rank(subs[b]) || a - b; })
+                .forEach(function (i) { if (keep.length < BLANK_KEEP) { keep.push(i); } });
+        });
         return keep;
     }
     function blankFits(ctx, mi) {
@@ -1326,7 +1341,18 @@ var PlayerParts = {};
         if (blankKeep(ctx, mi).length >= mi.subs.length) { return false; }   // (every one kept: nothing to leave out)
         return typeof YTPlay !== 'undefined' && !!YTPlay.fileOpen && YTPlay.installMode() !== 'browser';
     }
-    function setBlank(ctx, mi) { ctx._blank = blankKeep(ctx, mi); ctx._blankOf = mi.subs.length; }
+    // The audio tracks in the order wanted (a choice made for the title, your language, your second
+    // choice; commentaries last): the service puts them so, the first is the one the TV starts on.
+    function audioOrder(ctx, mi) {
+        var cfg = P.getAudioCfg ? P.getAudioCfg() : {}, mine = P.recallAudio ? P.recallAudio(ctx.id) : null, aud = mi.audio || [];
+        var keys = [mine && mine.lang, cfg.lang, cfg.lang2].filter(function (l) { return l && l !== 'default' && l !== 'none'; }).map(P.langKey);
+        var out = [];
+        keys.forEach(function (k) {
+            aud.forEach(function (t, i) { if (out.indexOf(i) === -1 && !t.commentary && P.langMatches(k, t.lang || '')) { out.push(i); } });
+        });
+        return out;
+    }
+    function setBlank(ctx, mi) { ctx._blank = blankKeep(ctx, mi); ctx._blankOf = mi.subs.length; ctx._audioOrder = audioOrder(ctx, mi); }
     // Always / More than 5: an MKV's tracks read before it starts (when not known yet); then(): on.
     function blankBefore(ctx, then) {
         var mode = P.playerCfg().blank;
@@ -1660,7 +1686,7 @@ var PlayerParts = {};
             if (S.ctx !== ctx || !S.active) { return; }
             if (useAV) { startLive(ctx, settle); } else { startHTML5(ctx._relay && ctx._relayFor === ctx.url ? ctx._relay : ctx.url); }
         }
-        YTPlay.fileOpen(ctx.url, U.sanitizeHeaders(ctx._headers), lan, ctx._blank || null).then(function (r) {
+        YTPlay.fileOpen(ctx.url, U.sanitizeHeaders(ctx._headers), lan, ctx._blank || null, ctx._blank ? ctx._audioOrder : null).then(function (r) {
             if (S.ctx === ctx && S.active && relayed(ctx, r, null, false)) {
                 U.log('player', ctx._blank ? 'Through StremioK\'s service: ' + ctx._blankOf + ' subtitle tracks, ' + ctx._blank.length + ' kept, the others left out (jumps stay clean; ' + where(ctx.url) + ')' : 'Through StremioK\'s service, with the source\'s headers (' + where(ctx.url) + ')');
             }

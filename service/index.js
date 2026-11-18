@@ -3325,7 +3325,7 @@ function plugControl(res, query, text, leaving) {
 // headers and its byte range (seeking works), the answer streamed back as it comes, nothing kept.
 // Shares the relays' count (LIVE_MAX); dropped after LIVE_FILM_IDLE_MS unused. Redirects: the
 // downloads' host rule (never the TV itself), and into the home network only when allowed (lan).
-function liveFileSession(u, who, lan, keep) {
+function liveFileSession(u, who, lan, keep, audio) {
     var ids = Object.keys(_live);
     if (ids.length >= LIVE_MAX) {
         ids.sort(function (x, y) { return _live[x].last - _live[y].last; });
@@ -3333,7 +3333,7 @@ function liveFileSession(u, who, lan, keep) {
         delete _live[ids[0]];
     }
     var s = { id: crypto.randomBytes(16).toString('hex'), file: u, ua: who.ua, ref: who.ref, cookie: who.cookie || '', origin: who.origin || '', accept: who.accept || '', lang: who.lang || '',
-        lan: !!lan, film: true, links: {}, last: Date.now(), keep: keep || null };
+        lan: !!lan, film: true, links: {}, last: Date.now(), keep: keep || null, audio: audio || [] };
     _live[s.id] = s;
     return s;
 }
@@ -3381,17 +3381,44 @@ function blankPlan(s, cb) {
             o = d + z;
         }
     }
+    // The track list: the others' entries made Void, and the kept subtitle tracks put in the
+    // order asked for (keep: your languages first), right after the video and audio, so the TV's
+    // first text track is the one wanted (the 2017 TV goes back to its first one now and then).
+    // The same entries in another order: the list is as long as it was, nothing after it moves.
     function tracks(b, abs) {   // abs: where b[0] is in the file
-        var subs = 0;
+        var subs = 0, auds = 0, parts = [], odd = false;
         children(b, 0, b.length, function (id, st, d, z) {
-            if (id !== 0xAE) { return; }
+            var piece = { st: st, end: d + z, sub: -1 };
+            parts.push(piece);
+            if (id !== 0xAE) { if (id !== EBML_VOID) { odd = true; } return; }   // (a CRC or anything else: not reordered)
             var no = 0, type = 0;
             children(b, d, d + z, function (cid, cst, cd, cz) { if (cid === 0xD7) { no = ebmlUint(b, cd, cz); } else if (cid === 0x83) { type = ebmlUint(b, cd, cz); } });
+            if (type === 2) { piece.aud = auds++; return; }
             if (type !== 17 || !no) { return; }
-            if (!keep[subs]) { plan.blank[no] = 1; plan.patches.push(abs + st); plan.blanked++; }
+            piece.sub = subs;
+            if (!keep[subs]) { plan.blank[no] = 1; piece.blank = true; plan.blanked++; }
             subs++;
         });
         plan.subs = subs;
+        var whole = parts.length && parts[0].st === 0 && parts[parts.length - 1].end === b.length;
+        if (odd || !whole) {   // (as it is, only the others' IDs made Void)
+            parts.forEach(function (p) { if (p.blank) { plan.patches.push(abs + p.st); } });
+            return;
+        }
+        // (video first as it was; the audio tracks in the order asked for (your language first: no
+        // switch to make), the rest after; the kept subtitle tracks; the others)
+        var order = parts.filter(function (p) { return p.sub < 0 && p.aud === undefined; });
+        s.audio.forEach(function (k) { parts.forEach(function (p) { if (p.aud === k && order.indexOf(p) === -1) { order.push(p); } }); });
+        parts.forEach(function (p) { if (p.aud !== undefined && order.indexOf(p) === -1) { order.push(p); } });
+        (s.keep || []).forEach(function (k) { parts.forEach(function (p) { if (p.sub === k && !p.blank && order.indexOf(p) === -1) { order.push(p); } }); });
+        parts.forEach(function (p) { if (order.indexOf(p) === -1) { order.push(p); } });
+        var out = allocBuffer(b.length), at = 0;
+        order.forEach(function (p) {
+            b.copy(out, at, p.st, p.end);
+            if (p.blank) { out[at] = EBML_VOID; }
+            at += p.end - p.st;
+        });
+        if (Buffer.compare(out, b) !== 0) { plan.rewrite = { at: abs, bytes: out }; }
     }
     function cues(b, abs) {
         children(b, 0, b.length, function (id, st, d, z) {
@@ -3446,7 +3473,7 @@ function blankPlan(s, cb) {
     function finish() {
         if (plan.firstCluster < 0) { done(null, null); return; }
         if (!seek.gotTracks && seek.tracks >= 0) { var t = seek.tracks; seek.tracks = -1; element(plan.segData + t, function () { finish(); }); return; }
-        if (!seek.gotTracks || !plan.blanked) { done(null, null); return; }
+        if (!seek.gotTracks || (!plan.blanked && !plan.rewrite)) { done(null, null); return; }
         if (!seek.gotCues && seek.cues >= 0) { var c = seek.cues; seek.cues = -1; element(plan.segData + c, function () { finish(); }); return; }
         var ends = [seek.cues >= 0 ? plan.segData + seek.cues : Infinity];
         if (seek.after !== undefined) { ends.push(plan.segData + seek.after); }
@@ -3476,10 +3503,15 @@ function mkvBlanker(plan, start) {
     else if (start >= plan.clustersEnd || plan.clusters.indexOf(start) === -1) { mode = 'skip'; skipTo = Infinity; afterSkip = ''; }
     else { mode = 'seg'; }
     var out = [];
+    var rw = plan.rewrite || null;
     function emit(n) {
         if (n <= 0) { return; }
         var piece = pend.slice(0, n);
         while (pi < plan.patches.length && plan.patches[pi] < base + n) { piece[plan.patches[pi] - base] = EBML_VOID; pi++; }
+        if (rw && base < rw.at + rw.bytes.length && base + n > rw.at) {   // (the track list, reordered)
+            var from = Math.max(base, rw.at), to = Math.min(base + n, rw.at + rw.bytes.length);
+            rw.bytes.copy(piece, from - base, from - rw.at, to - rw.at);
+        }
         out.push(piece);
         pend = pend.slice(n); base += n;
     }
@@ -3696,7 +3728,8 @@ function liveControl(req, res, path, query, leaving) {
         var fu = q.u || '';
         if (!/^https?:\/\/[^\s]+$/i.test(fu) || fu.length > 2000) { send(res, 400, 'text/plain', 'bad link'); return; }
         var keep = q.blank === '1' ? String(q.keep || '').split(',').filter(function (k) { return /^\d{1,3}$/.test(k); }).map(Number).slice(0, 16) : null;
-        var fsn = liveFileSession(fu, liveWho(q), q.lan === '1', keep);
+        var aorder = q.blank === '1' ? String(q.audio || '').split(',').filter(function (k) { return /^\d{1,3}$/.test(k); }).map(Number).slice(0, 16) : [];
+        var fsn = liveFileSession(fu, liveWho(q), q.lan === '1', keep, aorder);
         send(res, 200, 'application/json', JSON.stringify({ url: liveBase(fsn) + 'f' }));
         return;
     }

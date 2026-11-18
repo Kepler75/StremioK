@@ -432,6 +432,7 @@ I18N.add("ja", {
     "Emby {v} is too old: 4.7 or newer is needed.": "Emby {v} は古すぎます。4.7 以降が必要です。",
     "Emerald": "エメラルド",
     "Endcards / credits": "終了画面 / クレジット",
+    "Ends {time}": "{time} に終了",
     "English": "英語",
     "Enter a Stremio addon manifest URL on its own page": "Stremio アドオンのマニフェスト URL を専用ページで入力",
     "Enter a URL": "URL を入力してください",

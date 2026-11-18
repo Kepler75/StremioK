@@ -225,6 +225,7 @@
             U.log('player', 'Audio switch to track ' + index + (force ? ' (again)' : '') + '. The TV lists: ' + rawAudio() + '. Playing: ' + playingRaw());
             if (!setAudioTrack(index)) { hold(index, message, false, 'refused'); return; }
             _held = null;
+            if (P.subsAfterAudio) { P.subsAfterAudio(); }   // (the 2017 TV drops back to its first text track on an audio switch)
             setTimeout(function () {   // (what the TV says it plays once it's had time: a switch it took without following shows here)
                 if (S.active && _audioIdx === index && Date.now() - asked < 10000) { U.log('player', 'Audio switch to track ' + index + ': the TV now plays ' + playingRaw()); }
             }, SWITCH_CHECK_MS);

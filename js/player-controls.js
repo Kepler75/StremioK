@@ -910,9 +910,11 @@
         if (mi.duration > 0) { parts.push(U.fmtTime(mi.duration)); }
         lines.push([U.t('In the file'), parts.filter(Boolean).join('  ·  ')]);
         if (v && v.dv) { lines.push([U.t('Dolby Vision'), dvNote(v.dv)]); }
-        if (mi.audio && mi.audio.length) { lines.push([U.t('Audio tracks'), trackList(mi.audio)]); }
+        var auds = mi.audio || [], ao = S.ctx && S.ctx._relay && S.ctx._blank && S.ctx._audioOrder;
+        if (ao && ao.length) { auds = ao.map(function (i) { return auds[i]; }).filter(Boolean).concat(auds.filter(function (t, i) { return ao.indexOf(i) === -1; })); }   // (as the service put them: yours first)
+        if (auds.length) { lines.push([U.t('Audio tracks'), trackList(auds)]); }
         var subs = mi.subs || [], bl = S.ctx && S.ctx._relay && S.ctx._blank;
-        if (bl) { subs = subs.filter(function (t, i) { return bl.indexOf(i) !== -1; }); }   // (the others left out: "Plays" says how many)
+        if (bl) { subs = bl.map(function (i) { return subs[i]; }).filter(Boolean); }   // (the others left out: "Plays" says how many; in the order the service put them in)
         if (subs.length) { lines.push([U.t('Subtitle tracks'), trackList(subs)]); }
     }
     // How it reaches the player (no link): straight from its server, or through StremioK's service.

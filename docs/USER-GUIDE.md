@@ -485,7 +485,7 @@ without a key.
 - *Reload*: opened again (a live channel at the live edge, a video where it is).
 - *Sleep timer*: Off, 30, 60 or 90 minutes, then playback stops (the menu shows what's left).
 
-The time of day shows at the top right of the screen, while the progress bar is on screen.
+With the progress bar, the time of day shows at the top right, and when it ends (*Ends 21:47*).
 
 ### Keys while it plays
 
@@ -565,8 +565,8 @@ HDR10 · Atmos · 5.1 · MKV`).
 
 - Tracks are grouped by language ("en", "eng" and "English" are one), with regional tags such
   as `es-419` kept. Within a language: your addon order, each addon's best match first.
-- Your **default language** (Settings › Playback › Subtitles) turns one on by itself, from
-  wherever it is. When nothing is in it, your **second choice** is looked for the same way.
+- Your **default language** (Settings › Playback › Subtitles) turns one on by itself: the
+  file's own first, then an addon's. Nothing in it: your **second choice**, the same way.
 - **Green** (or *Subtitles* in the DOWN menu) picks a language, then a track. A slow one says so
   ("Loading subtitles… 8 s"): there's no need to pick it again. Your choice for a
   title, its timing included, is remembered (the last 50 titles). With *Only my languages* on

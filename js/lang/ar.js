@@ -432,6 +432,7 @@ I18N.add("ar", {
     "Emby {v} is too old: 4.7 or newer is needed.": "إصدار Emby {v} قديم جدًا: يلزم 4.7 أو أحدث.",
     "Emerald": "زمردي",
     "Endcards / credits": "البطاقات الختامية / الشارة",
+    "Ends {time}": "ينتهي {time}",
     "English": "الإنجليزية",
     "Enter a Stremio addon manifest URL on its own page": "أدخل URL ملف manifest لإضافة Stremio في صفحتها الخاصة",
     "Enter a URL": "أدخل URL",
