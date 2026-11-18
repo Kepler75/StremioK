@@ -81,6 +81,11 @@ var YTPlay = (function () {
             return U.getJSON(PROXY + '/bak/read?drive=' + encodeURIComponent(drive) + a.q, 15000, 3 * 1048576, null, a.h);
         });
     }
+    // An image's link, downloaded by the service (a profile picture): its bytes (Uint8Array).
+    function imageBytes(url) {
+        if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
+        return ensureService().then(entryAuth).then(function (a) { return U.getText(PROXY + '/img?u=' + encodeURIComponent(url) + a.q, 25000, 8388608, null, true, a.h, null, true); });
+    }
     function entryOpen(what) {
         return entryAuth().then(function (a) { return U.getJSON(PROXY + '/entry/open?what=' + encodeURIComponent(what || 'link') + a.q, 8000, undefined, null, a.h); });
     }
@@ -364,6 +369,6 @@ var YTPlay = (function () {
         return MODE === 'tizenbrew' ? U.t('TizenBrew module') : MODE === 'wgt' ? U.t('Sideloaded app (.wgt)') : U.t('Browser (development)');
     }
 
-    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, fileOpen: fileOpen, mediaInfo: mediaInfo, pluginNet: pluginNet, hlsMaster: hlsMaster, aiomAddons: aiomAddons, stalkerList: stalkerList, stalkerVod: stalkerVod, drmLicense: drmLicense, stalkerPlayUrl: stalkerPlayUrl, stalkerGenres: stalkerGenres, stalkerLink: stalkerLink, xtvodAsk: xtvodAsk, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, entryGive: entryGive, bakWrite: bakWrite, bakRead: bakRead, entrySeen: entrySeen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
+    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, fileOpen: fileOpen, mediaInfo: mediaInfo, pluginNet: pluginNet, hlsMaster: hlsMaster, aiomAddons: aiomAddons, stalkerList: stalkerList, stalkerVod: stalkerVod, drmLicense: drmLicense, stalkerPlayUrl: stalkerPlayUrl, stalkerGenres: stalkerGenres, stalkerLink: stalkerLink, xtvodAsk: xtvodAsk, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, imageBytes: imageBytes, entryGive: entryGive, bakWrite: bakWrite, bakRead: bakRead, entrySeen: entrySeen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
         installLabel: installLabel, unavailableMessage: unavailableMessage, isRunning: isRunning, port: PORT };
 })();

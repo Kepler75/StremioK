@@ -2386,6 +2386,7 @@ function handle(req, res) {
         if (/^\/smb\//.test(path)) { smbControl(req, res, path, parts[1], leaving); return; }   // (a Windows / NAS share: see smbControl)
         if (/^\/dlna\//.test(path)) { dlnaControl(req, res, path, parts[1], leaving); return; }   // (a DLNA media server: see dlnaControl)   // (a network folder's file, for the player: its ticket)   // (a network folder: see davControl)
         if (path === '/aiom/addons') { aiomControl(req, res, parts[1], leaving); return; }
+        if (path === '/img') { imgControl(req, res, parts[1], leaving); return; }   // (an image's link, for a profile picture: see imgControl)
         if (path === '/xtvod/list' || path === '/xtvod/find') { xtvControl(req, res, path, parts[1]); return; }   // (an Xtream account's films and series: see xtvControl)
         if (path === '/stalker/list' || path === '/stalker/link' || path === '/stalker/genres' || path === '/stalker/vod' || path === '/stalker/play') { stalkerControl(req, res, path, parts[1], leaving); return; }   // (a Stalker portal: see stalkerControl)   // (AIOManager's addons: see aiomControl)   // (a live channel's sound repacked: see liveControl)   // (the phone's one-time page: see below)
         if (path === '/fsfile') {   // a USB file over HTTP, with Range: the player reads a big one from here (see fsfile in the header)
@@ -6331,6 +6332,7 @@ function epgControl(req, res, path, query) {
 // minute. The port is open only while one is: ENTRY_CONNECTIONS at a time, each given
 // ENTRY_VISIT_MS (ENTRY_QUIET_MS of silence). It's plain HTTP: the page says so.
 var ENTRY_PORT = PORT + 10, ENTRY_MS = 5 * 60 * 1000, ENTRY_IDLE_MS = 30000, ENTRY_MAX = 8192;
+var PICTURE_PX = 240, PICTURE_MAX = 262144;   // (a profile picture from the phone: made that small there, sent as a JPEG data: link)
 // A configuration file: pasted on the import's page (CONFIG_MAX, sent %-encoded: 3 times that), or
 // given by the TV to the export's page (GIVE_MAX, POSTed to /entry/give), shown to copy or download.
 var CONFIG_MAX = 1572864, GIVE_MAX = 1572864;   // (1.5 MB: a file with your history too; the page reads it as JSON, 2 MB at most)
@@ -6338,7 +6340,7 @@ var ENTRY_OPEN_MAX = 2, ENTRY_OPENS = 12, ENTRY_CONNECTIONS = 8, ENTRY_VISIT_MS 
 var ENTRY_TITLES = { link: 'Play a link on StremioK', addon: 'Add an addon to StremioK', playlist: 'Add an IPTV playlist to StremioK', config: 'Import a configuration file into StremioK', give: 'Your StremioK configuration', givelog: 'Your StremioK logs',
     search: 'Search on StremioK', youtube: 'Add a YouTube catalog to StremioK', aiom: 'Your AIOManager address for StremioK', aiomkey: 'Your AIOManager API key for StremioK',
     server: 'Your streaming server’s address for StremioK', mac: 'Your Stalker portal’s MAC address for StremioK', webdav: 'Your network folder’s address for StremioK',
-    jellyfin: 'Your media server’s address for StremioK', plugins: 'Add a Nuvio plugin repository to StremioK' };
+    jellyfin: 'Your media server’s address for StremioK', plugins: 'Add a Nuvio plugin repository to StremioK', picture: 'A profile picture for StremioK' };
 var ENTRY_TEXT = { search: 'Words to search for', youtube: 'A channel, a playlist link, or words to search YouTube for', aiomkey: 'Your account API key', mac: 'Its MAC address (00:1A:79:…)' };   // (plain text, not a link)
 var _entries = Object.create(null), _entryServer = null, _entrySockets = [], _entryOpened = [];
 function lanAddress() {
@@ -6357,6 +6359,34 @@ function lanAddress() {
 // folder, or, where it can't read it (TizenBrew has nowhere private to keep one; on Tizen 6
 // the service's folder isn't the app's), an X-StremioK header: a web page can't send one
 // without a pre-check naming where it comes from, and that's refused.
+// ---- An image's link, for a profile picture (/img?u=) ----
+// StremioK only (its token or header). The image downloaded (the downloads' host rule, redirects
+// followed: liveGet), IMG_MAX at most, and passed on only if it is one (JPEG, PNG, GIF, WebP,
+// BMP: by its first bytes); the app makes it small and keeps that, never the link.
+var IMG_MAX = 8 * 1048576;
+function imgType(b) {
+    if (!b || b.length < 12) { return ''; }
+    if (b[0] === 0xFF && b[1] === 0xD8) { return 'image/jpeg'; }
+    if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) { return 'image/png'; }
+    if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) { return 'image/gif'; }
+    if (b.toString('binary', 0, 4) === 'RIFF' && b.toString('binary', 8, 12) === 'WEBP') { return 'image/webp'; }
+    if (b[0] === 0x42 && b[1] === 0x4D) { return 'image/bmp'; }
+    return '';
+}
+function imgControl(req, res, query, leaving) {
+    if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
+    var m = /(?:^|&)u=([^&]*)/.exec(query || ''), u = '';
+    try { u = m ? decodeURIComponent(m[1]) : ''; } catch (e) { u = ''; }
+    if (!/^https?:\/\/[^\s]+$/i.test(u) || u.length > 2000) { send(res, 400, 'text/plain', 'bad link'); return; }
+    var stop = liveGet(u, { ua: '' }, IMG_MAX, function (err, body) {
+        if (err) { send(res, err.status || 502, 'text/plain', 'failed: ' + err.message); return; }
+        var type = imgType(body);
+        if (!type) { send(res, 415, 'text/plain', 'not an image'); return; }
+        res.writeHead(200, { 'Content-Type': type, 'Content-Length': body.length, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+        res.end(body);
+    });
+    if (leaving && stop) { leaving.push(stop); }
+}
 function entryAllowed(req, query) {
     return hasToken(query) || !!(req.headers && req.headers['x-stremiok']);
 }
@@ -6450,7 +6480,19 @@ function entryPage(req, res) {
             return;
         }
         if (m[2]) { send(res, 404, 'text/plain', 'Not here'); return; }
-        var config = e.what === 'config', max = config ? CONFIG_MAX * 3 : ENTRY_MAX;   // (a pasted file: its lines kept, %-encoded as sent)
+        var config = e.what === 'config', max = config ? CONFIG_MAX * 3 : e.what === 'picture' ? PICTURE_MAX : ENTRY_MAX;   // (a pasted file: its lines kept, %-encoded as sent)
+        if (req.method === 'GET' && e.what === 'picture') {   // (a photo from the phone, made small here, on the phone: or an image's link)
+            send(res, 200, 'text/html; charset=utf-8', entryHtml(title, '<form method="post" id="fm"><p>A photo from this phone</p><input id="pick" type="file" accept="image/*">' +
+                '<img id="pv" alt="" style="display:none;width:120px;height:120px;border-radius:50%;margin:8px 0;object-fit:cover">' +
+                '<p>Or an image\'s link</p><input id="ln" type="url" autocomplete="off" placeholder="https://…/picture.jpg">' +
+                '<input type="hidden" name="text" id="t"><button type="submit">Send to the TV</button></form>' +
+                '<p>A photo is cut to a square and made small (' + PICTURE_PX + ' × ' + PICTURE_PX + ') on this phone before it goes. It goes straight to your TV over your home network, <b>unencrypted</b>. This page stops working once it has been sent.</p>' +
+                '<script>var t=document.getElementById("t");document.getElementById("pick").onchange=function(){var f=this.files&&this.files[0];if(!f){return;}var r=new FileReader();' +
+                'r.onload=function(){var i=new Image();i.onload=function(){var s=Math.min(i.naturalWidth,i.naturalHeight),c=document.createElement("canvas");c.width=c.height=' + PICTURE_PX + ';' +
+                'c.getContext("2d").drawImage(i,(i.naturalWidth-s)/2,(i.naturalHeight-s)/2,s,s,0,0,' + PICTURE_PX + ',' + PICTURE_PX + ');t.value=c.toDataURL("image/jpeg",0.85);var p=document.getElementById("pv");p.src=t.value;p.style.display="block";};i.src=r.result;};r.readAsDataURL(f);};' +
+                'document.getElementById("fm").onsubmit=function(){if(!t.value){t.value=document.getElementById("ln").value.trim();}if(!t.value){return false;}};</script>'));
+            return;
+        }
         if (req.method === 'GET' && config) {   // (its link, as before; or the file itself, chosen from the phone's files or pasted)
             send(res, 200, 'text/html; charset=utf-8', entryHtml(title, '<form method="post"><p>A link to the file</p><input name="link" type="url" autocomplete="off" placeholder="https://…">' +
                 '<p>Or the file itself (an export\'s stremiok.txt)</p><input id="pick" type="file" accept=".txt,.cfg,.conf,text/plain">' +

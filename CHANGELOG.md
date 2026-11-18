@@ -3,6 +3,10 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.4.4 — 2026-11-18
+- **Profile pictures** (Settings › Profiles › a profile › *Picture*): a photo from your phone or
+  an image link, made small and kept with the profile, in place of its initial (#25).
+
 ## 2.4.3 — 2026-11-17
 - **Through StremioK's service, your languages come first:** your preferred audio and subtitle
   tracks listed first, no need to 'safely switch'.

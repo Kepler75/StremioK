@@ -489,6 +489,50 @@
     // this one (addons, settings, media server sign-ins; not its history or accounts) or empty.
     // Ask who's watching when StremioK opens (two or more).
     var PROFILE_COLOR_NAMES = { indigo: U.t('Indigo'), teal: U.t('Teal'), orange: U.t('Orange'), pink: U.t('Pink'), green: U.t('Green'), red: U.t('Red'), purple: U.t('Purple'), amber: U.t('Amber') };
+    // A profile's picture: from the phone (a photo it made small, or an image's link) or typed (a
+    // link); a link downloaded by the service (YTPlay.imageBytes). Made PROFILE_PIC_PX square here
+    // (centred, cut to fit) and kept as a small JPEG (Profiles.setPic), never the link.
+    var PROFILE_PIC_PX = 240;
+    function picSource(bytes) {
+        try { return URL.createObjectURL(new Blob([bytes])); } catch (e) {}
+        var s = ''; for (var i = 0; i < bytes.length; i++) { s += String.fromCharCode(bytes[i]); }
+        return 'data:image/jpeg;base64,' + btoa(s);
+    }
+    function shrinkPicture(src) {
+        return new Promise(function (resolve, reject) {
+            var img = new Image();
+            img.onload = function () {
+                try {
+                    var w = img.naturalWidth, h = img.naturalHeight, side = Math.min(w, h), c = document.createElement('canvas');
+                    if (!side) { reject(new Error('empty')); return; }
+                    c.width = c.height = PROFILE_PIC_PX;
+                    c.getContext('2d').drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, PROFILE_PIC_PX, PROFILE_PIC_PX);
+                    var out = c.toDataURL('image/jpeg', 0.85);
+                    if (out.length > 110000) { out = c.toDataURL('image/jpeg', 0.6); }
+                    resolve(out);
+                } catch (e) { reject(e); }
+                if (/^blob:/.test(src)) { try { URL.revokeObjectURL(src); } catch (e2) {} }
+            };
+            img.onerror = function () { reject(new Error('not an image')); };
+            img.src = src;
+        });
+    }
+    function profilePicture(p) {
+        V.phoneEntry({ title: U.t('A picture for “{name}”', { name: p.name }), what: 'picture', typeTitle: U.t('An image’s link'), placeholder: 'https://…/picture.jpg',
+            hint: U.t('From your phone: one of its photos, or an image’s link. Typed here: an image’s link.'),
+            validate: function (v) { v = ('' + v).trim(); return /^data:image\/jpeg;base64,/.test(v) || /^https?:\/\/\S+$/i.test(v) ? null : U.t('Not a picture, nor an image’s link'); },
+            onText: function (v) {
+                v = ('' + v).trim();
+                U.toast(U.t('Getting the picture…'), 20000);
+                var got = /^data:/.test(v) ? Promise.resolve(v) : YTPlay.imageBytes(v).then(picSource);
+                got.then(shrinkPicture).then(function (pic) {
+                    profileEnsure();
+                    if (!Profiles.setPic(p.id || Profiles.active().id, pic)) { throw new Error('not kept'); }
+                    U.toast(U.t('Picture set'));
+                    renderSettings();
+                }).then(null, function (e) { U.log('profiles', 'A profile picture couldn\'t be used: ' + ((e && e.message) || 'unknown')); U.toast(U.t('Couldn’t use that picture'), 4000); });
+            } });
+    }
     var PROFILE_STORAGE_MAX = 4194304;   // (bytes of the settings storage used: no new profile past this, the 2017 TV keeps about 5 MB)
     function storageUsed() {
         var n = 0;
@@ -508,7 +552,8 @@
             r.__onselect = function () {
                 var opts = [];
                 if (!mine) { opts.push(['switch', U.t('Switch to it')]); }
-                opts.push(['rename', U.t('Rename')], ['color', U.t('Color')]);
+                opts.push(['rename', U.t('Rename')], ['color', U.t('Color')], ['picture', U.t('Picture')]);
+                if (p.pic) { opts.push(['nopic', U.t('Remove picture')]); }
                 if (!mine && list.length > 1) { opts.push(['delete', U.t('Delete')]); }
                 pickList(p.name, opts, null, function (v) {
                     _focusChild = 'pf:' + p.id;
@@ -516,7 +561,9 @@
                     else if (v === 'rename') { profileName(U.t('Rename “{name}”', { name: p.name }), p.name, function (name) { profileEnsure(); Profiles.rename(p.id || Profiles.active().id, name); renderSettings(); }); }
                     else if (v === 'color') {
                         pickList(U.t('Color'), Profiles.COLORS.map(function (c) { return [c, PROFILE_COLOR_NAMES[c] || c, null, V.PROFILE_COLORS[c]]; }), p.color, function (c) { profileEnsure(); Profiles.recolor(p.id || Profiles.active().id, c); renderSettings(); });
-                    } else if (v === 'delete') {
+                    } else if (v === 'picture') { profilePicture(p); }
+                    else if (v === 'nopic') { Profiles.setPic(p.id, ''); U.toast(U.t('Picture removed')); renderSettings(); }
+                    else if (v === 'delete') {
                         confirm(U.t('Delete “{name}”? Its addons, settings, progress, watched marks and sign-ins go with it; the rest of the TV’s doesn’t.', { name: p.name }), U.t('Delete'), function () {
                             Profiles.remove(p.id, U.bigStore && U.bigStore.removeExact);
                             U.toast(U.t('“{name}” deleted', { name: p.name }));

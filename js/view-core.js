@@ -209,7 +209,12 @@ var ViewParts = {};
     // A profile's round badge: its color, the first character of its name.
     function profileBadge(p, cls) {
         var b = U.el('span', 'pf-badge' + (cls ? ' ' + cls : ''));
-        b.style.background = PROFILE_COLORS[p.color] || PROFILE_COLORS.indigo;
+        b.style.backgroundColor = PROFILE_COLORS[p.color] || PROFILE_COLORS.indigo;
+        if (p.pic) {   // (its picture: Settings › Profiles › Picture; filling the badge, its middle in view)
+            b.className += ' pf-pic';
+            b.style.backgroundImage = 'url("' + p.pic + '")'; b.style.backgroundSize = 'cover'; b.style.backgroundPosition = 'center center'; b.style.backgroundRepeat = 'no-repeat';
+            return b;
+        }
         var m = /^[\uD800-\uDBFF][\uDC00-\uDFFF]|^[\s\S]/.exec(('' + (p.name || '?')).trim() || '?');
         b.textContent = (m ? m[0] : '?').toUpperCase();
         return b;

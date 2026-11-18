@@ -340,7 +340,7 @@ See the user guide's [Profiles](USER-GUIDE.md#profiles).
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| Each profile | *Switch to it*, *Rename*, *Color*, *Delete* | Delete takes what it kept; not the one in use. |
-| *+ Add a profile* | a copy, empty, a Stremio account, a Nuvio account's profile | Up to 5. Nuvio: kept in step (where you stopped, watched marks, Library). |
+| Each profile | *Switch to it*, *Rename*, *Color*, *Picture*, *Delete* | Picture: from your phone. Delete: not the one in use. |
+| *+ Add a profile* | a copy, empty, a Stremio account, a Nuvio account's profile | Up to 5. Nuvio: kept in step, Library too. |
 | *Import profiles from Nuvio* | its profiles, ticked | Once: addons, watched marks, recent progress. |
 | *When StremioK opens* | **Ask who's watching**, the last profile used, always one | |

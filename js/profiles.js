@@ -78,7 +78,17 @@ var Profiles = (function () {
         if (m) { return m[1]; }
         return isTv(physical) ? null : '';
     }
-    function list() { return _data ? _data.list.map(function (p) { return { id: p.id, name: p.name, color: p.color, slot: p.slot, at: p.at }; }) : []; }
+    function list() { return _data ? _data.list.map(function (p) { return { id: p.id, name: p.name, color: p.color, slot: p.slot, at: p.at, pic: picOf(p) }; }) : []; }
+    // A profile's picture (Settings › Profiles › Picture): a small JPEG as a data: link (made
+    // PIC_PX square by the app or the phone), PIC_MAX characters at most; '' none.
+    var PIC_MAX = 120000;
+    function picOf(p) { return p && typeof p.pic === 'string' && p.pic.length <= PIC_MAX && /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(p.pic) ? p.pic : ''; }
+    function setPic(id, pic) {
+        var p = find(id);
+        if (!p) { return false; }
+        if (pic) { if (!picOf({ pic: pic })) { return false; } p.pic = pic; } else { delete p.pic; }
+        return save();
+    }
 
     // ---- changing the list (Settings › Profiles, the picker) ----
     function save() { try { window.localStorage.setItem(KEY, JSON.stringify(_data)); return true; } catch (e) { return false; } }
@@ -170,12 +180,12 @@ var Profiles = (function () {
         key: key, keyFor: keyFor, isTv: isTv, slotOf: slotOf,
         slot: function () { return _slot; },
         list: list,
-        active: function () { var a = active(); return a ? { id: a.id, name: a.name, color: a.color, slot: a.slot } : null; },
+        active: function () { var a = active(); return a ? { id: a.id, name: a.name, color: a.color, slot: a.slot, pic: picOf(a) } : null; },
         count: function () { return _data ? _data.list.length : 1; },
         justSwitched: justSwitched,
         ask: function () { return !!(_data && _data.list.length > 1 && _data.ask !== false); },
         askSetting: function () { return !_data || _data.ask !== false; },
-        ensure: function (firstName) { ensure(firstName); save(); }, add: add, rename: rename, recolor: recolor, setAsk: setAsk, startChoice: startChoice, setStart: setStart, setActive: setActive, remove: remove, copyInto: copyInto, keysOf: keysOf, COPY: COPY,
+        ensure: function (firstName) { ensure(firstName); save(); }, add: add, rename: rename, recolor: recolor, setPic: setPic, setAsk: setAsk, startChoice: startChoice, setStart: setStart, setActive: setActive, remove: remove, copyInto: copyInto, keysOf: keysOf, COPY: COPY,
         __data: function () { return _data; }, __reload: function () { _data = read(); _slot = (active() || { slot: '' }).slot; }
     };
 })();
