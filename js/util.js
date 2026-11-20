@@ -1211,7 +1211,7 @@ var U = (function () {
         if (!_parkedItems.length) { return; }
         var wait = _lastMove + IDLE_WAIT_MS - Date.now();
         if (wait > 0) { scheduleIdle(wait); return; }
-        if (isHidden() || _imageActive > 0 || _imageQueue.length || (typeof Player !== 'undefined' && Player.isActive && Player.isActive())) { scheduleIdle(IDLE_BUSY_MS); return; }
+        if (isHidden() || _imageActive > 0 || _imageQueue.length || (typeof Player !== 'undefined' && (Player.inUse || Player.isActive) && (Player.inUse || Player.isActive)())) { scheduleIdle(IDLE_BUSY_MS); return; }
         var f = _lastCard && onPage(_lastCard) ? _lastCard.getBoundingClientRect() : { left: 0, top: 0 }, best = null, bestD = Infinity;
         _parkedItems.forEach(function (it) {
             var r = it.img.getBoundingClientRect();

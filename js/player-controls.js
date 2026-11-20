@@ -62,6 +62,7 @@
         resetYtLinks();
         endScrub();
         hideSkip();
+        closeChannels(true);
         S.subMenuEl.className = 'hidden';
         S.barEl.className = 'hidden';
     }
@@ -75,6 +76,7 @@
         S.barEl.className = 'hidden'; _barOpen = false;
         if (_barTimer) { clearTimeout(_barTimer); _barTimer = null; }
         hideSkip();
+        closeChannels(true);
     }
 
     // ---------- skip prompt ----------
@@ -324,6 +326,7 @@
         // symbols (⏵ ⏸ ⏮ ⏭ ⤶) don't render on Tizen 3.0's fonts.
         var b = [{ label: isPaused() ? U.t('▶ Play') : U.t('‖ Pause'), run: togglePlay }];
         if (!S.isLive) { b.push({ label: U.t('↺ Restart'), run: function () { seekTo(0); closeBar(); } }); }
+        if (canChannels()) { b.push({ label: U.t('≡ Channels'), run: function () { closeBar(); openChannels(); } }); }
         if (chapters().length) { b.push({ label: U.t('≡ Chapters'), run: function () { closeBar(); openMenu(chaptersMenu()); } }); }
         var hl = sponsorHighlight();
         if (hl !== null && !S.isLive) { b.push({ label: U.t('◆ Highlight'), run: function () { closeBar(); seekTo(hl); } }); }
@@ -1030,6 +1033,91 @@
         if (action === 'STOP') { closeMenu(); return; }
     }
 
+    // ---------- the channel list (a live IPTV channel: LEFT, or ≡ Channels on the bar) ----------
+    // Your favorites, then each group in its order (IPTV.zapGroups), opened on the playing
+    // channel's: ←/→ the group, ↑/↓ the channel (what's on now and next, from its guide), OK
+    // tunes it (that group is the row CH+ / CH− go through from then on), BACK closes it.
+    // Only CHL_ROWS rows are drawn at a time (a group can hold thousands).
+    var CHL_ROWS = 9, _chl = null, _chlHooked = false;   // _chl: { el, groups, g, idx, top }
+    function canChannels() { return !!(S.ctx && S.ctx.zapList && typeof IPTV !== 'undefined' && IPTV.zapGroups && IPTV.channel && IPTV.channel(S.ctx.id)); }
+    function chlEl() {
+        var el = U.byId('channel-list');
+        if (!el) { el = U.el('div', 'hidden'); el.id = 'channel-list'; var host = S.subMenuEl && S.subMenuEl.parentNode; (host || document.body).appendChild(el); }
+        return el;
+    }
+    function chlAt(list) {
+        var id = S.ctx && S.ctx.id;
+        for (var i = 0; i < list.length; i++) { if (list[i].id === id) { return i; } }
+        return 0;
+    }
+    function openChannels() {
+        var z = canChannels() ? IPTV.zapGroups(S.ctx.id) : null;
+        if (!z) { return; }
+        if (_barOpen) { closeBar(); }
+        _chl = { el: chlEl(), groups: z.groups, g: z.at, idx: chlAt(z.groups[z.at].list), top: 0 };
+        if (!_chlHooked && typeof EPG !== 'undefined' && EPG.onChange) {
+            _chlHooked = true;
+            EPG.onChange(function () { if (_chl && S.active) { renderChannels(); } });
+        }
+        renderChannels();
+        showOSD(true);
+    }
+    function closeChannels(quiet) {
+        if (!_chl) { return; }
+        _chl.el.className = 'hidden'; U.clear(_chl.el);
+        _chl = null;
+        if (!quiet) { showOSD(false); }
+    }
+    function renderChannels() {
+        var d = _chl, grp = d.groups[d.g], list = grp.list, n = list.length;
+        if (d.idx >= n) { d.idx = Math.max(0, n - 1); }
+        if (d.idx < d.top) { d.top = d.idx; } else if (d.idx >= d.top + CHL_ROWS) { d.top = d.idx - CHL_ROWS + 1; }
+        d.top = Math.max(0, Math.min(d.top, n - CHL_ROWS));
+        var el = d.el, playing = S.ctx && S.ctx.id;
+        U.clear(el);
+        var head = U.el('div', 'chl-head');
+        head.appendChild(U.el('div', 'chl-group', (d.groups.length > 1 ? '◀  ' : '') + grp.name + (d.groups.length > 1 ? '  ▶' : '')));
+        head.appendChild(U.el('div', 'chl-count', (d.idx + 1) + ' / ' + n + (d.groups.length > 1 ? '   ·   ' + U.t('group {n} of {max}', { n: d.g + 1, max: d.groups.length }) : '')));
+        el.appendChild(head);
+        var shown = list.slice(d.top, d.top + CHL_ROWS);
+        if (typeof EPG !== 'undefined' && EPG.want) { EPG.want(shown.map(function (m) { return m.id; })); }
+        var rows = U.el('div', 'chl-rows');
+        shown.forEach(function (m, k) {
+            var i = d.top + k, row = U.el('div', 'chl-row' + (i === d.idx ? ' sel' : '') + (m.id === playing ? ' on' : ''));
+            row.appendChild(U.el('div', 'chl-num', '' + (i + 1)));
+            var logo = m.logo || (typeof EPG !== 'undefined' && EPG.logo ? EPG.logo(m.id) : '');
+            if (logo) { var img = U.el('img', 'chl-logo'); img.onerror = function () { if (this.parentNode) { this.parentNode.removeChild(this); } }; img.src = logo; row.appendChild(img); }
+            var info = U.el('div', 'chl-info');
+            info.appendChild(U.el('div', 'chl-name', (m.id === playing ? '●  ' : '') + (m.name || '')));
+            var ep = typeof EPG !== 'undefined' && EPG.now ? EPG.now(m.id) : null;
+            if (ep && ep.now) { info.appendChild(U.el('div', 'chl-now', EPG.hhmm(ep.now.start) + '   ' + ep.now.title)); }
+            if (ep && ep.next) { info.appendChild(U.el('div', 'chl-next', U.t('Next:') + '  ' + EPG.hhmm(ep.next.start) + '   ' + ep.next.title)); }
+            row.appendChild(info);
+            rows.appendChild(row);
+        });
+        el.appendChild(rows);
+        el.appendChild(U.el('div', 'chl-hint', U.t('←/→ group   ↑/↓ channel   OK: watch   RETURN: close')));
+        el.className = '';
+    }
+    function channelsKey(action) {
+        var d = _chl, list = d.groups[d.g].list;
+        if (action === 'UP' || action === 'DOWN') { d.idx = wrap(d.idx + (action === 'UP' ? -1 : 1), list.length); renderChannels(); return; }
+        if (action === 'LEFT' || action === 'RIGHT') {
+            if (d.groups.length < 2) { return; }
+            d.g = wrap(d.g + (action === 'LEFT' ? -1 : 1), d.groups.length);
+            d.idx = chlAt(d.groups[d.g].list); d.top = 0;
+            renderChannels(); return;
+        }
+        if (action === 'OK') {
+            var pick = d.idx, z = S.ctx && S.ctx.zapList, ctx = S.ctx;
+            closeChannels();
+            var keys = z ? z(list, pick) : null;
+            if (keys && S.ctx === ctx) { ctx.zap = keys.zap; ctx.zapTo = keys.zapTo; }   // (the one playing picked: CH+ / CH− through this list now)
+            return;
+        }
+        if (action === 'BACK') { closeChannels(); }
+    }
+
     // Number keys: on a live channel, its number in the row (one or two digits, a second and a
     // half for the second); anything else, the subtitles (1 / 2 / 3 timing earlier / as the file
     // / later, 4 / 5 / 6 Lower / Bottom / Raised, 7 / 8 / 9 Medium / Large / Extra Large).
@@ -1079,6 +1167,7 @@
         // Route directional/OK/BACK to the active overlay (menu > cast > bar > skip prompt: the
         // menu over Cast & more is a title's, opened from it).
         if (_menuOpen) { menuKey(action); return true; }
+        if (_chl) { channelsKey(action); return true; }
         if (_cast) { castKey(action); return true; }
         if (_barOpen) { barKey(action); return true; }
         if ((_yl || _card) && ytLinksKey(action)) { return true; }   // (UP chooses one; BACK hides the end screen)
@@ -1094,10 +1183,10 @@
         switch (action) {
             case 'OK': togglePlay(); return true;
             case 'RIGHT': scrub(seekStep()); return true;
-            case 'LEFT': scrub(-seekStep()); return true;
+            case 'LEFT': if (S.isLive && canChannels()) { openChannels(); return true; } scrub(-seekStep()); return true;
             case 'UP': openBar(); return true;
             case 'DOWN': openMenu(); return true;
-            case 'BACK': exit(); return true;
+            case 'BACK': if (P.toBehind && P.toBehind()) { return true; } exit(); return true;
         }
         return true;
     }
@@ -1108,5 +1197,6 @@
     P.rootMenu = rootMenu;
     P.closeControls = closeControls; P.showSkip = showSkip; P.skipTick = skipTick; P.renderScrub = renderScrub; P.topMenu = topMenu;
     P.closeMenu = closeMenu; P.pushMenu = pushMenu; P.popMenu = popMenu; P.replaceTop = replaceTop; P.applyAspect = applyAspect;
+    P.openChannels = openChannels; P.closeChannels = closeChannels; P.channelsShown = function () { return !!_chl; };
     P.handleKey = handleKey; P.ytLinksTick = ytLinksTick; P.phoneLink = phoneLink;
 })(PlayerParts);

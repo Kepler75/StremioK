@@ -297,6 +297,63 @@ html, body {
 #player-bar { position: absolute; left: 0; right: 0; bottom: 250px; z-index: 22; text-align: center; white-space: nowrap; }   /* (up to ten buttons: one line, compact) */
 #player-bar .pb-btn { display: inline-block; margin: 0 6px; padding: 14px 22px; font-size: 24px; border-radius: 40px; background: rgba(22,27,38,0.95); border: 4px solid transparent; color: #e6e9ef; }
 #player-bar .pb-btn.sel { background: #818cf8; color: #0e1117; border-color: #fff; }
+/* live TV behind the menus (Settings › Content › IPTV): Home seen through, dimmed */
+body.live-behind, body.live-behind #app { background: transparent !important; }
+body.live-behind #screen-home { background: rgba(8,12,20,0.58) !important; }
+body.live-behind .home-bg { display: none !important; }
+#live-behind { position: absolute; right: 40px; bottom: 28px; z-index: 40; padding: 10px 20px; border-radius: 30px; background: rgba(14,17,23,0.86); border: 2px solid rgba(255,255,255,0.14); font-size: 19px; color: #cbd2df; white-space: nowrap; }
+#live-behind .lb-live { color: #f87171; font-weight: bold; margin-right: 18px; }
+/* the IPTV tab's channel browser (js/view-iptv.js): groups | channels | the focused one */
+.iptvb { position: absolute; top: 0; left: 36px; right: 36px; bottom: 24px; display: flex; }
+.iptvb-groups { width: 330px; flex: none; margin-right: 18px; }
+.iptvb-chans { flex: 1; min-width: 0; margin-right: 18px; }
+.iptvb-info { width: 520px; flex: none; box-sizing: border-box; padding: 22px 24px; border-radius: 14px; background: rgba(22,27,38,0.92); overflow: hidden; }
+.iptvb-group { display: flex; align-items: center; height: 58px; box-sizing: border-box; padding: 0 16px; margin-bottom: 6px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 3px solid transparent; font-size: 21px; color: #cfd5e2; }
+.iptvb-group.on { background: rgba(129,140,248,0.22); color: #fff; }
+.iptvb-group.focused { background: #818cf8; color: #0e1117; border-color: #fff; }
+.iptvb-gname { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: bold; }
+.iptvb-gcount { flex: none; margin-left: 10px; font-size: 17px; opacity: 0.75; }
+.iptvb-head { height: 40px; font-size: 20px; color: #9aa3b2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.iptvb-ch { display: flex; align-items: center; height: 74px; box-sizing: border-box; padding: 0 14px; margin-bottom: 6px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 3px solid transparent; }
+.iptvb-ch.playing { border-color: rgba(52,211,153,0.6); }
+.iptvb-ch.focused { background: #818cf8; color: #0e1117; border-color: #fff; }
+.iptvb-num { flex: 0 0 56px; font-size: 18px; font-weight: bold; color: #8b93a5; }
+.iptvb-ch.focused .iptvb-num, .iptvb-ch.focused .iptvb-now { color: #1e2433; }
+.iptvb-logo { flex: 0 0 64px; width: 64px; height: 48px; margin-right: 14px; border-radius: 8px; background: rgba(255,255,255,0.08); text-align: center; line-height: 48px; overflow: hidden; }
+.iptvb-logo img { max-width: 60px; max-height: 44px; vertical-align: middle; }
+.iptvb-mono { font-size: 19px; font-weight: bold; color: #cfd5e2; }
+.iptvb-txt { flex: 1; min-width: 0; }
+.iptvb-name { font-size: 22px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.iptvb-now { font-size: 17px; color: #b8bfcc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.iptvb-bar { height: 4px; margin-top: 5px; border-radius: 2px; background: rgba(255,255,255,0.14); }
+.iptvb-fill { height: 4px; border-radius: 2px; background: #818cf8; }
+.iptvb-ch.focused .iptvb-fill { background: #0e1117; }
+.iptvb-more { height: 22px; text-align: center; font-size: 16px; color: #8b93a5; }
+.iptvb-iname { font-size: 30px; font-weight: bold; color: #fff; margin-bottom: 4px; }
+.iptvb-igroup { font-size: 17px; color: #9aa3b2; margin-bottom: 18px; }
+.iptvb-ilabel { font-size: 17px; color: #818cf8; font-weight: bold; margin-top: 14px; }
+.iptvb-ititle { font-size: 24px; font-weight: bold; color: #e6e9ef; margin-top: 4px; }
+.iptvb-idesc { font-size: 18px; line-height: 26px; color: #cfd3dc; margin-top: 8px; max-height: 182px; overflow: hidden; }
+.iptvb-inext { font-size: 20px; color: #cfd3dc; margin-top: 4px; }
+.iptvb-inone { font-size: 19px; color: #9aa3b2; margin-top: 12px; }
+.iptvb-ihint { position: absolute; bottom: 20px; font-size: 16px; color: #8b93a5; }
+.iptvb-info { position: relative; }
+body.live-behind .iptvb-info, body.live-behind .iptvb-group:not(.focused):not(.on), body.live-behind .iptvb-ch:not(.focused) { background-color: rgba(14,17,23,0.82); }   /* (over live TV behind the menus: readable, the focused one as it is) */
+/* the channel list in the player (a live IPTV channel: LEFT) */
+#channel-list { position: absolute; left: 0; top: 0; bottom: 0; width: 640px; z-index: 26; box-sizing: border-box; padding: 40px 28px 28px 40px; background: rgba(14,17,23,0.92); border-right: 2px solid rgba(255,255,255,0.12); }
+#channel-list .chl-head { margin-bottom: 16px; }
+#channel-list .chl-group { font-size: 30px; font-weight: bold; color: #e6e9ef; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#channel-list .chl-count { font-size: 18px; color: #9aa3b2; margin-top: 4px; }
+#channel-list .chl-row { display: flex; align-items: center; padding: 8px 12px; margin-bottom: 6px; border-radius: 10px; border: 3px solid transparent; }
+#channel-list .chl-row.on { background: rgba(129,140,248,0.14); }
+#channel-list .chl-row.sel { background: rgba(129,140,248,0.30); border-color: #818cf8; }
+#channel-list .chl-num { flex: 0 0 52px; margin-right: 12px; font-size: 18px; color: #8b93a5; text-align: right; }
+#channel-list .chl-logo { flex: 0 0 60px; width: 60px; height: 38px; margin-right: 12px; object-fit: contain; }
+#channel-list .chl-info { flex: 1; min-width: 0; }
+#channel-list .chl-name { font-size: 22px; font-weight: bold; color: #e6e9ef; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#channel-list .chl-now { font-size: 17px; color: #cbd2df; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+#channel-list .chl-next { font-size: 15px; color: #8b93a5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#channel-list .chl-hint { position: absolute; left: 40px; right: 28px; bottom: 24px; font-size: 16px; color: #9aa3b2; }
 /* Cast & crew over the video (quick bar): a strip of photos, moved to keep the selected one in view */
 #cast-strip { position: absolute; left: 0; right: 0; bottom: 230px; z-index: 23; padding: 18px 60px 22px 60px; background: rgba(0,0,0,0.55); overflow: hidden; }   /* see-through, like the subtitles' default box; dark whatever the Appearance background */
 #cast-strip .cs-head { display: flex; align-items: baseline; margin-bottom: 14px; }
@@ -353,13 +410,12 @@ html, body {
 .header .hchip.pf-chip { padding: 4px; }
 .modal-box { width: 820px; background: #161b26; border: 2px solid #2a3346; border-radius: 16px; padding: 44px 48px; text-align: center; }
 .modal-msg { font-size: 30px; line-height: 1.4; color: #e6e9ef; margin-bottom: 36px; }
-.modal-row { display: flex; justify-content: center; }
-.modal-btn { min-width: 200px; text-align: center; }
+.modal-row { display: flex; justify-content: center; flex-wrap: wrap; }   /* (more buttons than fit: a second line, none squeezed) */
+.modal-btn { min-width: 200px; text-align: center; flex-shrink: 0; }
 /* Watching's, an addon's and a playlist's menus: as wide as their buttons (each sized to its words, on one
    line), within the screen; the name above wraps rather than widening it */
 .actions-box { width: auto; min-width: 560px; max-width: 1760px; }
-.actions-box .modal-btn { min-width: 0; white-space: nowrap; padding: 14px 24px; margin-right: 12px; }
-.actions-box .modal-btn:last-child { margin-right: 0; }
+.actions-box .modal-btn { min-width: 0; white-space: nowrap; padding: 14px 24px; margin: 0 6px 12px; flex-shrink: 0; }
 /* Settings › IPTV: ▲ ▼ and the playlist (name, link, channels / downloaded, problem) */
 .playlist-row { align-items: stretch; margin-bottom: 10px; }
 .playlist-row .feed-btn { display: flex; align-items: center; justify-content: center; }
@@ -377,6 +433,8 @@ html, body {
 .pick-box { width: 720px; text-align: left; }
 .pick-box .modal-msg { text-align: left; margin-bottom: 20px; }
 .pick-list { max-height: 620px; overflow: hidden; }
+.pick-box .pick-top { margin-bottom: 16px; }   /* (its buttons above the list) */
+.pick-box .pick-under { margin-top: 16px; }   /* (Cancel under it) */
 .pick-item { padding: 14px 20px; margin-bottom: 8px; border-radius: 8px; background: #0e1117; border: 4px solid transparent; font-size: 24px; }
 .pick-item.sel { background: #2a3346; }
 .pick-item.focusable.focused { background: #818cf8; color: #0e1117; border-color: #fff; }
@@ -572,6 +630,7 @@ html, body {
 .guide-track { position: relative; flex: 1; overflow: hidden; background: #0e1219; }
 .guide-prog { position: absolute; top: 0; bottom: 0; padding: 0 10px; font-size: 18px; line-height: 56px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #161b26; border: 3px solid #0e1117; border-radius: 6px; color: #c7cbd4; }
 .guide-prog.now { background: #222b3d; color: #fff; }
+.guide-prog.catchup { color: #c7cdfa; }   /* (shown already, in its channel's catch-up: OK plays it) */
 .guide-prog.guide-wait { color: #8b93a5; font-style: italic; }   /* (a row whose programs are still being read) */
 .guide-prog.focusable.focused { background: #818cf8; color: #0e1117; border-color: #fff; }
 .guide-nowline { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #f87171; }

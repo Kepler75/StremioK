@@ -54,11 +54,13 @@ var YTPlay = (function () {
     // -> { url, token } (polled like an entry: { seen }; closed with entryClose). POSTed: the token,
     // or the guide ticket (the page's POST carries an Origin the header alone doesn't pass).
     // kind: 'logs' for Settings › Diagnostics › Logs › Send to your phone (its own page and file name).
+    // kind 'groups': a list to tick on the phone (text: JSON { title, items: [{ k, name, n, on }] });
+    // polled with entryPoll, which gives the keys ticked, by commas ('-': none).
     function entryGive(text, kind) {
         if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
         return ensureService().then(entryAuth).then(function (a) {
             return (a.q ? Promise.resolve(a.q) : ticketOf(a)).then(function (cred) {
-                var q = (cred ? cred.replace(/^&/, '') : '') + (kind === 'logs' ? (cred ? '&' : '') + 'kind=logs' : '');
+                var q = (cred ? cred.replace(/^&/, '') : '') + (kind === 'logs' || kind === 'groups' || kind === 'guide' ? (cred ? '&' : '') + 'kind=' + kind : '');
                 return U.postJSON(PROXY + '/entry/give' + (q ? '?' + q : ''), text, 10000, 65536, a.h);
             });
         });
@@ -204,10 +206,47 @@ var YTPlay = (function () {
             return PROXY + '/stalker/play?portal=' + encodeURIComponent(portal) + '&mac=' + encodeURIComponent(mac) + '&cmd=' + encodeURIComponent(cmd) + (ep >= 0 ? '&ep=' + ep : '') + (cred || '');
         });
     }
+    // A Stalker channel's recording (ch: its id; start, stop: seconds): the service's link that finds
+    // the program in the portal's guide and asks for its recording when it's played.
+    function stalkerArchiveUrl(portal, mac, ch, start, stop) {
+        if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
+        return ensureService().then(entryAuth).then(function (a) { return a.q ? a.q : ticketOf(a); }).then(function (cred) {
+            return PROXY + '/stalker/archive?portal=' + encodeURIComponent(portal) + '&mac=' + encodeURIComponent(mac) + '&ch=' + encodeURIComponent(ch) + '&start=' + Math.floor(start) + '&stop=' + Math.ceil(stop) + (cred || '');
+        });
+    }
     // An Xtream account's films or series, kept by the service (see service/index.js, xtvControl;
     // user= and pass=: names Diagnostics masks):
     // path 'list' (the newest; more: &q= for a search, &skip=) or 'find' (a title's copies: &tmdb=
     // &name= &year=) -> { state, at, error, items: [{ id, name, year, tmdb, cat, ext, pic, rating }] }.
+    // An IPTV playlist read by the service (see service/index.js, iptvControl; user= and pass=:
+    // names Diagnostics masks). src: { u } (an M3U's link) or { base, user, pass, fmt } (an Xtream
+    // account's live channels). iptvRead -> { state, at, total, stale, partial, error, refused,
+    // groups (full): [{ k, name, n }] }, asked until it's read (POLL_MS apart, READ_MS at most);
+    // iptvText -> the playlist's text with only those groups (keys; none: all), max bytes;
+    // iptvForget: the service's copies of it deleted.
+    var IPTV_POLL_MS = 1500, IPTV_READ_MS = 15 * 60000;
+    function iptvQuery(src) {
+        return src.u ? 'u=' + encodeURIComponent(src.u) : 'base=' + encodeURIComponent(src.base) + '&user=' + encodeURIComponent(src.user) + '&pass=' + encodeURIComponent(src.pass) + '&fmt=' + (src.fmt === 'hls' ? 'hls' : 'ts');
+    }
+    function iptvAsk(path, src, more, ms, max, text) {
+        if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
+        return ensureService().then(entryAuth).then(function (a) {
+            var u = PROXY + path + '?' + iptvQuery(src) + (more || '') + a.q;
+            return text ? U.getText(u, ms, max, null, false, a.h) : U.getJSON(u, ms, max, null, a.h);
+        });
+    }
+    function iptvRead(src, force, full) {
+        var t0 = Date.now(), more = full ? '&full=1' : '';
+        function step(r) {
+            if (!r || r.state !== 'loading' || Date.now() - t0 > IPTV_READ_MS) { return r; }
+            return new Promise(function (ok) { setTimeout(ok, IPTV_POLL_MS); }).then(function () { return iptvAsk('/iptv/read', src, more, 20000, 4194304); }).then(step);
+        }
+        return iptvAsk('/iptv/read', src, more + (force ? '&force=1' : ''), 20000, 4194304).then(step);
+    }
+    function iptvText(src, keys, max) {
+        return iptvAsk('/iptv/m3u', src, '&groups=' + encodeURIComponent((keys || []).join(',')) + '&max=' + (max || 0), 180000, (max || 0) + 1048576, true);
+    }
+    function iptvForget(src) { return iptvAsk('/iptv/forget', src, '', 10000, 4096).then(null, function () {}); }
     function xtvodAsk(path, acc, type, more) {
         if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
         return ensureService().then(entryAuth).then(function (a) {
@@ -271,8 +310,8 @@ var YTPlay = (function () {
     function epgLoad(u, k, force) {
         return epgAsk('/epg/load', 'u=' + encodeURIComponent(u) + '&k=' + k + (force ? '&force=1' : ''), 65536);
     }
-    function epgGet(u, keys, from, to, max) {
-        return epgAsk('/epg/get', 'u=' + encodeURIComponent(u) + '&ids=' + encodeURIComponent(keys.join('|')) + '&from=' + from + '&to=' + to + (max ? '&max=' + max : ''), 4194304);
+    function epgGet(u, keys, from, to, max, match) {   // (match: which guide channel answered each key, _ids; Diagnostics › TV guide matches)
+        return epgAsk('/epg/get', 'u=' + encodeURIComponent(u) + '&ids=' + encodeURIComponent(keys.join('|')) + '&from=' + from + '&to=' + to + (max ? '&max=' + max : '') + (match ? '&match=1' : ''), 4194304);
     }
     // Whether YouTube gives the video out to the service (it refuses some uploads to the player
     // the service asks as): false when it says no; true when it does, or no answer came (the
@@ -369,6 +408,6 @@ var YTPlay = (function () {
         return MODE === 'tizenbrew' ? U.t('TizenBrew module') : MODE === 'wgt' ? U.t('Sideloaded app (.wgt)') : U.t('Browser (development)');
     }
 
-    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, fileOpen: fileOpen, mediaInfo: mediaInfo, pluginNet: pluginNet, hlsMaster: hlsMaster, aiomAddons: aiomAddons, stalkerList: stalkerList, stalkerVod: stalkerVod, drmLicense: drmLicense, stalkerPlayUrl: stalkerPlayUrl, stalkerGenres: stalkerGenres, stalkerLink: stalkerLink, xtvodAsk: xtvodAsk, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, imageBytes: imageBytes, entryGive: entryGive, bakWrite: bakWrite, bakRead: bakRead, entrySeen: entrySeen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
+    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, fileOpen: fileOpen, mediaInfo: mediaInfo, pluginNet: pluginNet, hlsMaster: hlsMaster, aiomAddons: aiomAddons, stalkerList: stalkerList, stalkerVod: stalkerVod, drmLicense: drmLicense, stalkerPlayUrl: stalkerPlayUrl, stalkerArchiveUrl: stalkerArchiveUrl, stalkerGenres: stalkerGenres, stalkerLink: stalkerLink, xtvodAsk: xtvodAsk, iptvRead: iptvRead, iptvText: iptvText, iptvForget: iptvForget, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, imageBytes: imageBytes, entryGive: entryGive, bakWrite: bakWrite, bakRead: bakRead, entrySeen: entrySeen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
         installLabel: installLabel, unavailableMessage: unavailableMessage, isRunning: isRunning, port: PORT };
 })();

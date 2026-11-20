@@ -23,7 +23,7 @@ var IPTV = (function () {
     function playlistMax() { return sizeMb() * 1024 * 1024; }
     function maxChannels() { return sizeMb() * CHANNELS_PER_MB; }
     var _status = {};    // playlist id -> { url, count, groups, error, uncached, title, fetchedAt, stale }
-    var NAME_MAX = 60;
+    var NAME_MAX = 60, GROUPS_MAX = 3000;
 
     function cleanUrl(u) { return ('' + (u || '')).trim(); }
 
@@ -37,7 +37,12 @@ var IPTV = (function () {
                 if (p.off === true) { o.off = true; }
                 if (typeof p.guide === 'string' && U.parseUrl(p.guide)) { o.guide = p.guide; }   // (its TV guide, yours: see EPG.guideUrl)
                 if (macOf(p.mac)) { o.mac = macOf(p.mac); }   // (a Stalker portal: see addStalker)
-                if (o.mac && Array.isArray(p.genres) && p.genres.length) { o.genres = p.genres; }   // (only those read: see setStalkerGroups)
+                if (Array.isArray(p.genres)) {   // (only those groups read: see setPlaylistGroups)
+                    var gs = p.genres.map(String).filter(function (g) { return /^[\w.-]{1,40}$/.test(g); }).slice(0, GROUPS_MAX);
+                    if (gs.length) { o.genres = gs; }
+                }
+                if (p.noVod === true) { o.noVod = true; }   // (an Xtream account's Live TV only: see setLiveOnly)
+                if (typeof p.cuTz === 'number' && p.cuTz >= -720 && p.cuTz <= 840) { o.cuTz = Math.round(p.cuTz); }   // (its catch-up time: see setCatchupTz)
                 return o;
             });
     }
@@ -225,12 +230,55 @@ var IPTV = (function () {
             return r.genres;
         });
     }
-    function setStalkerGroups(id, ids) {
+    function setStalkerGroups(id, ids) {   // (any playlist's, since 2.4.5: see setPlaylistGroups)
         var list = getPlaylists(), i = find(list, id);
         if (i < 0) { return false; }
-        if (ids && ids.length) { list[i].genres = ids; } else { delete list[i].genres; }
+        if (ids && ids.length) { list[i].genres = ids.map(String).slice(0, GROUPS_MAX); } else { delete list[i].genres; }
         savePlaylists(list);
         return true;
+    }
+
+    // ---- Playlists read by StremioK's service (2.4.5, after ediziks' fork: #29) ----
+    // An M3U playlist's link or an Xtream account's live channels (from its player_api.php) read by
+    // the service, up to 250 MB, and kept there; the TV gets only the Channel groups picked, as an
+    // M3U it reads as before (the same channels: see service/index.js, iptvControl). Not in a
+    // desktop browser, nor for a Stalker portal (read by the service its own way); if the service
+    // can't, the TV reads it itself as before. A group's key: an M3U's, its name's hash; an Xtream
+    // account's, its category's number.
+    function serviceSrc(p) {
+        if (!p || isStalker(p) || typeof YTPlay === 'undefined' || !YTPlay.iptvRead || (YTPlay.installMode && YTPlay.installMode() === 'browser')) { return null; }
+        if (isXtream(p.url)) {
+            var x = xtreamParts(p.url);
+            return x && x.user && x.pass ? { base: x.base, user: x.user, pass: x.pass, fmt: xtreamFormat(p.id) === 'hls' ? 'hls' : 'ts' } : null;
+        }
+        return /^https?:\/\//i.test(p.url) ? { u: p.url } : null;
+    }
+    function canGroup(p) { return !!p && (isStalker(p) || !!serviceSrc(p)); }
+    // Its groups: [{ id, title, n }] (n: its channels; a Stalker portal's: unknown), read now.
+    function playlistGroups(id) {
+        var list = getPlaylists(), i = find(list, id), p = i < 0 ? null : list[i];
+        if (p && isStalker(p)) { return stalkerGroups(id); }
+        var src = serviceSrc(p);
+        if (!src) { return Promise.reject(new Error(U.t('Channel groups are read by StremioK’s service (not in a desktop browser)'))); }
+        return YTPlay.iptvRead(src, false, true).then(function (r) {
+            if (!r || r.state !== 'ready' || !Array.isArray(r.groups)) { throw new Error(U.t('Couldn’t read the playlist’s groups: {why}', { why: (r && r.error) || U.t('no answer') })); }
+            return r.groups.map(function (g) { return { id: g.k, title: ('' + (g.name || '')).trim() || U.t('Without a group'), n: +g.n || 0 }; });
+        });
+    }
+    // An Xtream account's Live TV only: its Movies and Series left out (js/xtvod.js), and its
+    // get.php's film and episode lines.
+    function liveOnly(id) { var list = getPlaylists(), i = find(list, id); return i !== -1 && !!list[i].noVod; }
+    function setLiveOnly(id, on) {
+        var list = getPlaylists(), i = find(list, id);
+        if (i < 0 || !isXtream(list[i].url)) { return false; }
+        if (on) { list[i].noVod = true; } else { delete list[i].noVod; }
+        savePlaylists(list);
+        return true;
+    }
+    // The service's copies of a playlist (its login in them): deleted when it goes or its link changes.
+    function forgetSaved(p) {
+        var src = serviceSrc(p);
+        if (src && YTPlay.iptvForget) { YTPlay.iptvForget(src); }
     }
     // Checked through the service (its channels read): { ok, count }, { refused, why },
     // { unreachable, why } or { noService } (a desktop browser).
@@ -259,7 +307,16 @@ var IPTV = (function () {
         if (!url) { return false; }
         var list = getPlaylists(), changed = false;
         for (var i = 0; i < list.length; i++) {
-            if (list[i].id === id) { changed = list[i].url !== url; list[i].url = url; break; }
+            if (list[i].id !== id) { continue; }
+            changed = list[i].url !== url;
+            if (changed) {
+                forgetSaved(list[i]);
+                // Another Xtream server or account: its categories (by number) aren't this one's
+                var a = isXtream(list[i].url) ? xtreamParts(list[i].url) : null, b = isXtream(url) ? xtreamParts(url) : null;
+                if (a && (!b || a.base !== b.base || a.user !== b.user)) { delete list[i].genres; }
+            }
+            list[i].url = url;
+            break;
         }
         if (!changed) { return false; }
         U.bigStore.remove(CACHE_PREFIX + id);
@@ -268,7 +325,8 @@ var IPTV = (function () {
     }
 
     function removePlaylist(id) {
-        var list = getPlaylists().filter(function (p) { return p.id !== id; });
+        var all = getPlaylists(), list = all.filter(function (p) { return p.id !== id; });
+        all.forEach(function (p) { if (p.id === id) { forgetSaved(p); } });
         U.bigStore.remove(CACHE_PREFIX + id);
         delete _status[id];
         savePlaylists(list);
@@ -404,7 +462,7 @@ var IPTV = (function () {
     // parseM3UAsync). max: channels kept; any beyond are only counted (dropped). guides: the TV
     // guides it names (url-tvg / x-tvg-url / tvg-url, several split by commas).
     function m3uReader(max) {
-        var r = { channels: [], dropped: 0, title: '', guides: [] }, cur = null, seen = {}, pre = null;   // (pre: #KODIPROP lines before a channel's #EXTINF)
+        var r = { channels: [], dropped: 0, title: '', guides: [] }, cur = null, seen = {}, pre = null, cuHead = null, tz = null;   // (pre: #KODIPROP lines before a channel's #EXTINF; cuHead: the playlist's catch-up for every channel, tz: its server's time, see catchupOf)
         function add(c) {
             var base = 'iptv:' + idOf(c.tvgId || c.name);
             var id = base, n = 2;
@@ -417,6 +475,11 @@ var IPTV = (function () {
             if (s.indexOf('#EXTM3U') === 0 && !r.guides.length) {
                 r.guides = attr(s, /(?:^|\s)(?:url-tvg|x-tvg-url|tvg-url)="([^"]{1,4000})"/i).split(',').map(function (u) { return u.trim(); })
                     .filter(function (u) { return /^https?:\/\//i.test(u); }).slice(0, 5);
+            }
+            if (s.indexOf('#EXTM3U') === 0) {   // (its catch-up for every channel; its server's time from UTC, minutes: an Xtream account's, see the service's m3uXtream)
+                cuHead = cuOf(s, null);
+                var tzm = attr(s, /(?:^|\s)x-tz-offset="(-?\d{1,3})"/i);
+                if (tzm !== '') { tz = +tzm; }
             }
             if (!r.title && s.indexOf('#EXTM3U') === 0) {   // the playlist's own name, if it has one
                 r.title = attr(s, /(?:^|\s)(?:x-playlist-name|playlist-name|x-tvg-name)="([^"]{1,200})"/i).trim().slice(0, NAME_MAX);
@@ -437,6 +500,8 @@ var IPTV = (function () {
                     sport: /^sports?$/i.test(kind),   // (StremioK's own mark: the Sports tab)
                     url: ''
                 };
+                var cu = cuOf(s, cuHead);
+                if (cu) { if (tz !== null) { cu.tz = tz; } cur.cu = cu; }
                 if (pre) { if (pre.drm) { cur.drm = pre.drm; } if (!cur.ua && pre.ua) { cur.ua = pre.ua; } if (!cur.ref && pre.ref) { cur.ref = pre.ref; } if (!cur.cookie && pre.cookie) { cur.cookie = pre.cookie; } pre = null; }
                 if (/^guide$/i.test(kind)) {   // (StremioK's own mark: a channel watched elsewhere, kept for its TV guide alone; a link after it is ignored)
                     if (max && r.channels.length >= max) { r.dropped++; cur = null; return; }
@@ -485,6 +550,99 @@ var IPTV = (function () {
         };
         return r;
     }
+    // ---- Catch-up (2.4.6, #29: Xtream's as in ediziks' fork, and the M3U attributes players read) ----
+    // A channel's catch-up from its #EXTINF (or the playlist's #EXTM3U, for every channel): catchup
+    // (or catchup-type) "xc" (an Xtream server's timeshift links), "default" (catchup-source in the
+    // link's place), "append" (added to the link), "shift" (?utc=…&lutc=…), "flussonic"
+    // (-hls / -ts, "fs"); catchup-days (or timeshift, tvg-rec) how far back, CU_DAYS when it says
+    // none. -> { m, d, s } or null. CU_MAX_DAYS at most.
+    var CU_DAYS = 3, CU_MAX_DAYS = 31, CU_MODES = { xc: 'xc', 'default': 'default', append: 'append', shift: 'shift', timeshift: 'shift', flussonic: 'flussonic', 'flussonic-hls': 'flussonic', 'flussonic-ts': 'flussonic-ts', fs: 'flussonic', stalker: 'stalker' };
+    function cuOf(line, base) {
+        var m = attr(line, /(?:^|\s)catchup(?:-type)?="([^"]*)"/i).toLowerCase().trim(), days = attr(line, /(?:^|\s)(?:catchup-days|timeshift|tvg-rec)="([^"]*)"/i), src = attr(line, /(?:^|\s)catchup-source="([^"]{1,2000})"/i);
+        if (!m && !days && !src) { return base ? { m: base.m, d: base.d, s: base.s } : null; }
+        var mode = CU_MODES[m] || (src ? 'default' : base ? base.m : '');
+        var d = parseInt(days, 10);
+        if (!mode || m === 'disabled' || m === 'false' || d === 0) { return null; }
+        return { m: mode, d: Math.min(CU_MAX_DAYS, d > 0 ? d : (base && base.d) || CU_DAYS), s: src || (base && base.s) || '' };
+    }
+    // A merged channel's: its first copy that has it.
+    function catchupOf(c) {
+        if (!c) { return null; }
+        if (c.cu) { return { c: c, cu: c.cu }; }
+        var hit = null;
+        (c._copies || []).some(function (x) { if (x.c.cu) { hit = { c: x.c, cu: x.c.cu }; return true; } return false; });
+        return hit;
+    }
+    function catchupDays(id) { var h = _cache && catchupOf(_cache.byId[id]); return h ? h.cu.d : 0; }
+    // An Xtream account's catch-up time (Settings: OK on it, Catch-up time): its server's own, as it
+    // said (null), or yours, minutes from UTC (cuTz).
+    function catchupTz(id) { var list = getPlaylists(), i = find(list, id); return i !== -1 && typeof list[i].cuTz === 'number' ? list[i].cuTz : null; }
+    function setCatchupTz(id, mins) {
+        var list = getPlaylists(), i = find(list, id);
+        if (i < 0) { return false; }
+        if (mins === null || mins === undefined || !isFinite(+mins)) { delete list[i].cuTz; } else { list[i].cuTz = Math.max(-720, Math.min(840, Math.round(+mins))); }
+        savePlaylists(list, true);
+        return true;
+    }
+    function hasCatchup(id) { return !!_cache && _cache.channels.some(function (c) { return c._playlistId === id && !!catchupOf(c); }); }
+    function two(n) { return (n < 10 ? '0' : '') + n; }
+    // A program's catch-up link: from start to stop (seconds), within the channel's days and begun
+    // already (what's on now: from its start). -> the source to play ({ url, _vod, _catchup, ... })
+    // or null.
+    var XC_LIVE = /^(https?:\/\/[^\/?#]+(?:\/[^?#]*?)?)\/live\/([^\/?#]+)\/([^\/?#]+)\/(\d+)(?:\.([a-z0-9]{2,4}))?(?:[?#]|$)/i;
+    function catchupStream(id, start, stop) {
+        var c = _cache && _cache.byId[id], h = catchupOf(c);
+        if (!h || !(start > 0) || !(stop > start)) { return null; }
+        var now = Math.floor(Date.now() / 1000), ch = h.c, cu = h.cu;
+        if (start >= now || start < now - cu.d * 86400) { return null; }
+        if (cu.m === 'stalker') { return stalkerCatchup(ch, cu, Math.floor(start), Math.ceil(stop)); }
+        var url = catchupUrl(ch, cu, Math.floor(start), Math.ceil(stop), now);
+        if (!url) { return null; }
+        var st = { url: url, name: ch.name, title: 'IPTV · ' + ch.group + ' · ' + U.t('catch-up'), _vod: true, _catchup: true };
+        var hd = U.sanitizeHeaders({ ua: ch.ua, ref: ch.ref, cookie: ch.cookie });
+        if (hd) { st._headers = hd; }
+        return st;
+    }
+    // A Stalker portal channel's recording: its link from the service, asked when it's played
+    // (st._later resolves the source with it: see ViewParts.playCatchup).
+    function stalkerCatchup(ch, cu, start, stop) {
+        var list = getPlaylists(), pl = list[find(list, ch._playlistId)];
+        if (!pl || !isStalker(pl) || !/^[\w-]{1,40}$/.test(cu.s || '') || typeof YTPlay === 'undefined' || !YTPlay.stalkerArchiveUrl) { return null; }
+        var st = { url: '', name: ch.name, title: 'IPTV · ' + ch.group + ' · ' + U.t('catch-up'), _vod: true, _catchup: true };
+        var hd = U.sanitizeHeaders({ ua: STB_UA, ref: ch.ref, cookie: ch.cookie });
+        if (hd) { st._headers = hd; }
+        st._later = function () { return YTPlay.stalkerArchiveUrl(pl.url, pl.mac, cu.s, start, stop).then(function (u) { st.url = u; return st; }); };
+        return st;
+    }
+    function catchupUrl(ch, cu, start, stop, now) {
+        var dur = stop - start, u = ch.url;
+        function fill(t) {
+            var d = new Date(start * 1000);
+            return t.replace(/\$?\{(utc|start|timestamp|utcend|end|lutc|now|duration|offset)(?::(\d+))?\}/g, function (all, k, div) {
+                var v = k === 'utc' || k === 'start' ? start : k === 'utcend' || k === 'end' ? stop : k === 'lutc' || k === 'now' || k === 'timestamp' ? now : k === 'duration' ? dur : now - start;
+                return String(div ? Math.floor(v / +div) : v);
+            }).replace(/\{(Y|m|d|H|M|S)\}/g, function (all, k) {
+                return k === 'Y' ? d.getUTCFullYear() : two(k === 'm' ? d.getUTCMonth() + 1 : k === 'd' ? d.getUTCDate() : k === 'H' ? d.getUTCHours() : k === 'M' ? d.getUTCMinutes() : d.getUTCSeconds());
+            });
+        }
+        if (cu.m === 'xc') {
+            var x = XC_LIVE.exec(u);
+            if (!x) { return ''; }
+            var tz = catchupTz(ch._playlistId), off = tz !== null ? tz : (typeof cu.tz === 'number' ? cu.tz : 0), t = new Date((start + off * 60) * 1000);
+            var stamp = t.getUTCFullYear() + '-' + two(t.getUTCMonth() + 1) + '-' + two(t.getUTCDate()) + ':' + two(t.getUTCHours()) + '-' + two(t.getUTCMinutes());
+            return x[1] + '/timeshift/' + x[2] + '/' + x[3] + '/' + Math.max(1, Math.ceil(dur / 60)) + '/' + stamp + '/' + x[4] + '.' + (/^m3u8$/i.test(x[5] || '') ? 'm3u8' : 'ts');
+        }
+        if (cu.m === 'shift') { return u + (u.indexOf('?') === -1 ? '?' : '&') + 'utc=' + start + '&lutc=' + now; }
+        if (cu.m === 'flussonic' || cu.m === 'flussonic-ts') {
+            if (cu.m === 'flussonic' && /\.m3u8(?:[?#]|$)/i.test(u)) { return u.replace(/\/([^\/?#]*)\.m3u8/i, function (all, n) { return '/' + (n || 'index') + '-' + start + '-' + dur + '.m3u8'; }); }
+            return /\/mpegts(?:[?#]|$)/i.test(u) ? u.replace(/\/mpegts/i, '/timeshift_abs-' + start + '.ts') : u.replace(/\/[^\/?#]*\.ts(?=[?#]|$)/i, '/timeshift_abs-' + start + '.ts');
+        }
+        if (cu.m === 'append') { return u + fill(cu.s || '?utc={utc}&lutc={lutc}'); }
+        if (!cu.s) { return ''; }   // (default: its catch-up-source in the link's place)
+        var f = fill(cu.s);
+        return /^https?:\/\//i.test(f) ? f : u + f;
+    }
+
     function parseM3U(text) {
         var r = m3uReader(0), lines = ('' + text).split(/\r?\n/);
         for (var i = 0; i < lines.length; i++) { r.line(lines[i]); }
@@ -514,9 +672,14 @@ var IPTV = (function () {
     // Guide tab; by channel id (its playlist and tvg-id / name), FAV_MAX at most.
     var FAV_KEY = 'stremiok.iptv.favs', FAV_MAX = 300, FAV_CAT = 'iptv_favs';
     function favs() { var f = U.store.get(FAV_KEY, []) || []; return Array.isArray(f) ? f.filter(function (x) { return typeof x === 'string'; }) : []; }
-    function isFavorite(id) { return favs().indexOf(id) !== -1; }
+    function copyIds(id) {   // (a merged channel: its copies' ids, any of them a favorite)
+        var c = _cache && _cache.byId[id];
+        return c && c._copies ? c._copies.map(function (x) { return x.c.id; }).concat([c.id]) : [id];
+    }
+    function isFavorite(id) { var f = favs(); return copyIds(id).some(function (x) { return f.indexOf(x) !== -1; }); }
     function setFavorite(id, on) {
-        var f = favs().filter(function (x) { return x !== id; });
+        var drop = copyIds(id);
+        var f = favs().filter(function (x) { return drop.indexOf(x) === -1; });
         if (on) { f.unshift(id); }
         U.store.set(FAV_KEY, f.slice(0, FAV_MAX));
         if (_cache) { favCatalog(_cache); }
@@ -535,11 +698,13 @@ var IPTV = (function () {
         var groups = [], byGroup = {}, byId = {};
         channels.forEach(function (c) {
             byId[c.id] = c;
+            if (c._copies) { c._copies.forEach(function (x) { if (!byId[x.c.id]) { byId[x.c.id] = c; } }); }   // (a merged channel: by each copy's id too, favorites and the guide)
             if (c.guideOnly) { return; }   // (its TV guide alone: the Guide tab, no row)
             var key = c.type + '|' + c.group;
             if (!byGroup[key]) { byGroup[key] = []; groups.push({ type: c.type, name: c.group }); }
             byGroup[key].push(c);
         });
+        groups = groupOrder(groups);
         var catalogs = groups.map(function (g) {
             var prefix = g.type === 'radio' ? 'iptv_radio_' : g.type === 'sport' ? 'iptv_sport_' : 'iptv_';
             return { type: g.type, id: prefix + idOf(g.name, g.type + '|' + g.name), name: g.name,
@@ -582,6 +747,7 @@ var IPTV = (function () {
 
         function finish(text, at) {
             st.fetchedAt = at || 0;
+            readNote(text);
             return parseM3UAsync(text, maxChannels(), function (n) { progress(playlist.id, n); }).then(function (r) {
                 if (r.dropped) { st.dropped = r.dropped; }   // (kept to what the TV can hold; the rest dropped, and said so)
                 st.title = r.title || '';
@@ -589,9 +755,14 @@ var IPTV = (function () {
                 _sources = null;
                 // An Xtream account's films and episodes: its Movies and Series (js/xtvod.js), not channels
                 var channels = r.channels;
-                if (isXtream(playlist.url) && typeof XtVod !== 'undefined' && XtVod.hidesVodLines && XtVod.hidesVodLines(playlist.id)) {
+                if (isXtream(playlist.url) && (playlist.noVod || (typeof XtVod !== 'undefined' && XtVod.hidesVodLines && XtVod.hidesVodLines(playlist.id)))) {
                     channels = channels.filter(function (c) { return !XTREAM_VOD.test(c.url); });
                     st.vodLines = r.channels.length - channels.length;
+                }
+                if (!st.picked && playlist.genres && !isStalker(playlist) && !isXtream(playlist.url)) {   // (read by the TV itself: its groups picked out here)
+                    var want = {}, plain = { 'Live TV': 1, 'Sports': 1, 'Live Radio': 1, 'TV guide': 1 };
+                    playlist.genres.forEach(function (k) { want[k] = 1; });
+                    channels = channels.filter(function (c) { return want[hash(c.group)] || (want[hash('')] && plain[c.group]); });
                 }
                 return counted(tagChannels(channels, playlist.id));
             });
@@ -605,6 +776,29 @@ var IPTV = (function () {
                 st.error = U.t('No channels parsed (is the URL returning the .m3u file?)');
             }
             return channels;
+        }
+
+        // The service's note at the end of what it gave (see service/index.js, m3uServe): stopped
+        // short of what the TV holds (st.svcCut: the groups' channels, and how many it kept).
+        function readNote(text) {
+            var i = text.lastIndexOf('#STREMIOK-READ:'), o = null;
+            if (i === -1) { return; }
+            try { o = JSON.parse(text.slice(i + 15).split('\n')[0]); } catch (e) { o = null; }
+            if (!o) { return; }
+            st.picked = true;   // (the groups picked out already)
+            if (o.cut) { st.svcCut = { total: +o.total || 0, kept: +o.kept || 0 }; }   // (more than the TV holds: Settings says how many, and what to do)
+            if (o.partial) { U.log('iptv', 'Playlist “' + label(playlist) + '”: only its first part was read (it is over 250 MB, or took over 12 minutes)'); }
+        }
+        var svc = serviceSrc(playlist);
+        function serviceText() {
+            return YTPlay.iptvRead(svc, force).then(function (r) {
+                if (!r || r.state !== 'ready') { throw new Error((r && r.error) || U.t('no answer')); }
+                if (r.stale) { st.stale = true; st.error = r.error ? U.t('Couldn’t read it again: {why}', { why: r.error }) : ''; }
+                return YTPlay.iptvText(svc, playlist.genres || [], playlistMax());
+            }).then(null, function (e) {   // (the TV reads it itself, as before)
+                U.log('iptv', 'Playlist “' + label(playlist) + '”: not read by StremioK’s service (' + U.problem(e) + '); reading it here');
+                return U.getText(playlist.url, 15000 * sizeMb() / 20, playlistMax());
+            });
         }
 
         var saved = force ? Promise.resolve(null) : readPersist(playlist.id);
@@ -630,7 +824,7 @@ var IPTV = (function () {
             });
         }
         function fetchIt() {
-            return (isStalker(playlist) ? stalkerText() : U.getText(playlist.url, 15000 * sizeMb() / 20, playlistMax())).then(function (text) {
+            return (isStalker(playlist) ? stalkerText() : svc ? serviceText() : U.getText(playlist.url, 15000 * sizeMb() / 20, playlistMax())).then(function (text) {
                 var at = Date.now();
                 return writePersist(playlist.id, src, text, at).then(function (ok) {
                     st.uncached = !ok;
@@ -696,12 +890,130 @@ var IPTV = (function () {
                     if (!seen[k]) { seen[k] = 1; channels.push(c); }
                 });
             });
-            _cache = build(channels);
+            _cache = build(tidy(channels));
             if (typeof EPG !== 'undefined' && EPG.start) { setTimeout(EPG.start, 0); }   // (their TV guides: see js/epg.js)
             return _cache;
         });
         _pending = { rev: rev, p: pr };
         return pr;
+    }
+
+    // ---- Tidying (Settings › Content › IPTV, each off until you set it; ported in spirit from
+    // ediziks' fork, #29, with the countries and words yours rather than built in) ----
+    // { merge: 'all' one tile for a channel listed more than once (the same name, the quality words
+    // left out, in the same country), each copy a source, the best first; 'best' one tile that plays
+    // the best copy at once, the next ones if it doesn't start (its stream's _fallbacks); 'off'; countries: your countries,
+    // their groups first, in your order; hide: words, a channel whose name or group has one left
+    // out }. A line with no letter or digit (a playlist's "-----" divider) is always left out.
+    var TIDY_KEY = 'stremiok.iptv.tidy', TIDY_WORDS_MAX = 40, TIDY_COUNTRIES_MAX = 12;
+    var HIDE_SUGGESTED = ['xxx', 'adult', 'porn', 'porno', 'erotic', 'erotik', '18+', 'nsfw', 'playboy', 'brazzers', 'hustler', 'dorcel', 'redlight'];
+    function listOf(v, max, up) {
+        var out = [], seen = {};
+        (Array.isArray(v) ? v : String(v || '').split(/[,;\n]+/)).forEach(function (w) {
+            w = String(w || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+            if (up) { w = w.toUpperCase(); }
+            var k = w.toLowerCase();
+            if (w && !seen[k] && out.length < max) { seen[k] = 1; out.push(w); }
+        });
+        return out;
+    }
+    function tidyCfg() {
+        var t = U.store.get(TIDY_KEY, null) || {};
+        return { merge: t.merge === 'best' ? 'best' : (t.merge === 'all' || t.merge === true) ? 'all' : 'off', countries: listOf(t.countries, TIDY_COUNTRIES_MAX, true), hide: listOf(t.hide, TIDY_WORDS_MAX) };
+    }
+    function setTidy(patch) {   // (the channels made again from what's read: reset, then load)
+        var t = tidyCfg();
+        if (patch.merge !== undefined) { t.merge = patch.merge === 'best' ? 'best' : (patch.merge === 'all' || patch.merge === true) ? 'all' : 'off'; }
+        if (patch.countries !== undefined) { t.countries = listOf(patch.countries, TIDY_COUNTRIES_MAX, true); }
+        if (patch.hide !== undefined) { t.hide = listOf(patch.hide, TIDY_WORDS_MAX); }
+        if (t.merge === 'off' && !t.countries.length && !t.hide.length) { U.store.remove(TIDY_KEY); } else { U.store.set(TIDY_KEY, t); }
+        reset();
+        return tidyCfg();
+    }
+    // A country named at the start of a group or channel name ("UK | News", "[DE] Sport", "TR: …"):
+    // its usual code (COUNTRY_WORDS: the names and codes playlists use), or any two letters before
+    // a separator; '' when none.
+    var COUNTRY_WORDS = { UK: 'UK', GB: 'UK', ENG: 'UK', BRITISH: 'UK', ENGLAND: 'UK', US: 'US', USA: 'US', AMERICA: 'US', TR: 'TR', TUR: 'TR', TURK: 'TR', TURKIYE: 'TR', TURKEY: 'TR',
+        NL: 'NL', NED: 'NL', NLD: 'NL', DUTCH: 'NL', NEDERLAND: 'NL', HOLLAND: 'NL', DE: 'DE', GER: 'DE', GERMANY: 'DE', DEUTSCH: 'DE', DEUTSCHLAND: 'DE',
+        FR: 'FR', FRA: 'FR', FRANCE: 'FR', FRENCH: 'FR', ES: 'ES', ESP: 'ES', SPAIN: 'ES', SPANISH: 'ES', ESPANA: 'ES', IT: 'IT', ITA: 'IT', ITALY: 'IT', ITALIA: 'IT', ITALIAN: 'IT',
+        PT: 'PT', POR: 'PT', PORTUGAL: 'PT', BR: 'BR', BRA: 'BR', BRAZIL: 'BR', BRASIL: 'BR', AR: 'AR', ARG: 'AR', ARGENTINA: 'AR', MX: 'MX', MEX: 'MX', MEXICO: 'MX',
+        CA: 'CA', CAN: 'CA', CANADA: 'CA', AU: 'AU', AUS: 'AU', AUSTRALIA: 'AU', IN: 'IN', IND: 'IN', INDIA: 'IN', PL: 'PL', POL: 'PL', POLAND: 'PL', RU: 'RU', RUS: 'RU', RUSSIA: 'RU',
+        GR: 'GR', GRE: 'GR', GREECE: 'GR', BE: 'BE', BEL: 'BE', BELGIUM: 'BE', AT: 'AT', AUT: 'AT', AUSTRIA: 'AT', CH: 'CH', SUI: 'CH', SWISS: 'CH', SWITZERLAND: 'CH',
+        ARAB: 'ARAB', ARABIC: 'ARAB', LATINO: 'LATINO', LATIN: 'LATINO' };
+    var NOT_COUNTRY = { TV: 1, HD: 1, SD: 1, FHD: 1, UHD: 1, '4K': 1, '8K': 1, IP: 1, FX: 1, VIP: 1, RAW: 1, PPV: 1, VOD: 1, NEW: 1, ALL: 1 };
+    function countryCode(w) { w = String(w || '').toUpperCase(); return COUNTRY_WORDS[w] || w; }
+    function countryOf(text) {
+        var t = String(text || '').replace(/^[\s\[({|┃│#*=\-]+/, ''), m = /^([A-Za-z]{2,12})([\s]*[:|\-┃│\/\])]|$)/.exec(t);
+        if (!m) { return ''; }
+        var w = m[1].toUpperCase();
+        if (COUNTRY_WORDS[w]) { return COUNTRY_WORDS[w]; }
+        return w.length === 2 && !NOT_COUNTRY[w] && m[2] ? w : '';
+    }
+    var DECOR = /[\s\-=_*#|~.+<>•·─═━┃│★☆●◆■▲►»«✦()\[\]{}:\/\\'"!?,;]+/g;
+    function isDivider(name) {   // (nothing but decoration, or a heading between runs of it: "#### UK ####", "=== Sports ===")
+        var n = String(name || '').trim();
+        return !n.replace(DECOR, '') || /^[#=*~_\-─═━]{2,}.*[#=*~_\-─═━]{2,}$/.test(n);
+    }
+    function hideTest(words) {
+        if (!words.length) { return null; }
+        var esc = words.map(function (w) { return w.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); });
+        var re = new RegExp('(?:^|[^a-z0-9])(?:' + esc.join('|') + ')(?=$|[^a-z0-9])', 'i');
+        return function (c) { return re.test(' ' + (c.name || '') + ' ' + (c.group || '') + ' '); };
+    }
+    // The quality a copy's name says (its source's order: best first, a backup last) and its name
+    // without it, for matching copies: the country prefix, quality words and punctuation left out.
+    var QUALITY_WORDS = /\b(?:4k\s*uhd|uhd\s*4k|full\s*hd|uhd|4k|8k|fhd|hevc|h\.?265|x265|h\.?264|x264|2160p?|1080[pi]?|720p?|576p?|480p?|360p?|50\s*fps|60\s*fps|hd|sd|lq|hq|backup|yedek)\b/ig;
+    function quality(name) {
+        var s = String(name || ''), score = 100, badge = '';
+        if (/\b(?:8k|4k|uhd|2160p?)\b/i.test(s)) { score = 400; badge = '4K'; }
+        else if (/\b(?:fhd|1080[pi]?|full\s*hd)\b/i.test(s)) { score = 300; badge = 'FHD'; }
+        else if (/\b(?:hd|720p?)\b/i.test(s)) { score = 200; badge = 'HD'; }
+        else if (/\b(?:sd|576p?|480p?|360p?|lq)\b/i.test(s)) { score = 50; badge = 'SD'; }
+        if (/\b(?:hevc|h\.?265|x265)\b/i.test(s)) { score += 25; badge = (badge ? badge + ' ' : '') + 'HEVC'; }
+        if (/\b(?:50|60)\s*fps\b/i.test(s)) { score += 30; }
+        if (/\b(?:backup|yedek)\b/i.test(s)) { score -= 150; badge = (badge ? badge + ' ' : '') + U.t('backup'); }
+        return { score: score, badge: badge };
+    }
+    var QUALITY_ONE = new RegExp(QUALITY_WORDS.source, 'i');
+    function plainName(name) {
+        var s = String(name || '').replace(/^[\s\[({|┃│#*=\-]*[A-Za-z]{2,12}[\s]*[:|\-┃│\/\])][\s\-|:]*/, function (all) { return countryOf(all) ? '' : all; });
+        s = s.replace(/[\[(]([^\])]{1,12})[\])]/g, function (all, inner) { return countryOf(inner + ':') || QUALITY_ONE.test(inner) ? ' ' : all; });   // ("[UK]", "(HD)")
+        return s.replace(QUALITY_WORDS, ' ').replace(DECOR, ' ').replace(/\s+/g, ' ').trim();
+    }
+    function tidy(channels) {
+        var cfg = tidyCfg(), hidden = hideTest(cfg.hide);
+        var out = channels.filter(function (c) { return c.guideOnly || (!isDivider(c.name) && !(hidden && hidden(c))); });
+        if (cfg.merge === 'off') { return out; }
+        var byKey = {}, merged = [];
+        out.forEach(function (c) {
+            var plain = plainName(c.name);
+            if (c.guideOnly || plain.length < 2) { merged.push(c); return; }
+            var k = c.type + '|' + (countryOf(c.group) || countryOf(c.name)) + '|' + plain.toLowerCase();
+            var m = byKey[k];
+            if (!m) { m = byKey[k] = { first: c, copies: [], name: plain }; merged.push(m); }
+            m.copies.push(c);
+        });
+        return merged.map(function (m) {
+            if (!m.copies) { return m; }
+            if (m.copies.length === 1) { return m.first; }
+            var copies = m.copies.map(function (c, i) { var q = quality(c.name); return { c: c, i: i, score: q.score, badge: q.badge }; })
+                .sort(function (a, b) { return b.score - a.score || a.i - b.i; });
+            var one = {}, k;
+            for (k in m.first) { if (Object.prototype.hasOwnProperty.call(m.first, k)) { one[k] = m.first[k]; } }
+            one.name = m.name;
+            one._copies = copies.map(function (x) { return { c: x.c, badge: x.badge }; });
+            if (cfg.merge === 'best') { one._best = true; }
+            if (!one.logo) { copies.some(function (x) { if (x.c.logo) { one.logo = x.c.logo; return true; } return false; }); }
+            if (!one.tvgId) { copies.some(function (x) { if (x.c.tvgId) { one.tvgId = x.c.tvgId; return true; } return false; }); }
+            return one;
+        });
+    }
+    // Countries first: the groups in your countries, in your order, then the rest as they were.
+    function groupOrder(groups) {
+        var want = tidyCfg().countries.map(countryCode);
+        if (!want.length) { return groups; }
+        return groups.map(function (g, i) { var at = want.indexOf(countryOf(g.name)); return { g: g, i: i, r: at === -1 ? want.length : at }; })
+            .sort(function (a, b) { return a.r - b.r || a.i - b.i; }).map(function (x) { return x.g; });
     }
 
     function sameKey(c) {
@@ -751,7 +1063,7 @@ var IPTV = (function () {
             if (!cat) { return []; }
             var q = (extra && extra.search) ? ('' + extra.search).toLowerCase() : '';
             var out = [];
-            var list = cat._favs ? favs().map(function (id) { return d.byId[id]; }).filter(Boolean) : (d.byGroup[cat.type + '|' + cat._group] || []);
+            var list = cat._favs ? favs().map(function (id) { return d.byId[id]; }).filter(function (c, i, all) { return !!c && all.indexOf(c) === i; }) : (d.byGroup[cat.type + '|' + cat._group] || []);   // (a merged channel once)
             list.forEach(function (c) {
                 if (q && c.name.toLowerCase().indexOf(q) === -1) { return; }
                 out.push(toMeta(c));
@@ -760,6 +1072,24 @@ var IPTV = (function () {
             if (extra && extra.skip != null) { var sk = parseInt(extra.skip, 10) || 0; return out.slice(sk, sk + 100); }
             return out;
         });
+    }
+
+    // The player's channel list (LEFT on a live channel): your favorites, then each group in its
+    // order, radio with radio, TV and sports together; `at` the playing channel's group.
+    // -> { groups: [{ name, list: [meta] }], at } or null (no channels read).
+    function zapGroups(id) {
+        if (!_cache) { return null; }
+        var me = _cache.byId[id], radio = !!(me && me.type === 'radio'), out = [], at = 0;
+        var favList = favs().map(function (f) { return _cache.byId[f]; }).filter(function (c, i, l) { return c && !c.guideOnly && (c.type === 'radio') === radio && l.indexOf(c) === i; });
+        if (favList.length) { out.push({ name: U.t('★ Favorites'), list: favList.map(toMeta), fav: true }); }
+        _cache.groups.forEach(function (g) {
+            if ((g.type === 'radio') !== radio) { return; }
+            var list = _cache.byGroup[g.type + '|' + g.name] || [];
+            if (!list.length) { return; }
+            if (me && list.indexOf(me) !== -1) { at = out.length; }
+            out.push({ name: g.name, list: list.map(toMeta) });
+        });
+        return out.length ? { groups: out, at: at } : null;
     }
 
     function meta(id) {
@@ -798,6 +1128,23 @@ var IPTV = (function () {
         return load().then(function (d) {
             var c = d.byId[id];
             if (!c || c.guideOnly) { return []; }
+            if (c._copies) {   // (merged: each copy's, the best first, its quality said)
+                return Promise.all(c._copies.map(function (x) {
+                    return copyStreams(x.c).then(function (l) {
+                        return l.map(function (st) { if (x.badge) { st.title = (st.title || '') + ' · ' + x.badge; } return st; });
+                    }, function () { return []; });
+                })).then(function (lists) {
+                    var all = [].concat.apply([], lists);
+                    if (!c._best || all.length < 2) { return all; }
+                    all[0]._fallbacks = all.slice(1);   // (the best alone, played at once; the rest if it doesn't start: see the player's nextSourceOnFail)
+                    return [all[0]];
+                });
+            }
+            return copyStreams(c);
+        });
+    }
+    function copyStreams(c) {
+        return Promise.resolve().then(function () {
             if (c._yt) {
                 return [{ url: c.url, _yt: true, ytPage: c.url, name: c.name, title: 'YouTube · ' + c.group }];
             }
@@ -860,11 +1207,13 @@ var IPTV = (function () {
         removePlaylist: removePlaylist, renamePlaylist: renamePlaylist, setPlaylistOff: setPlaylistOff,
         movePlaylist: movePlaylist, setPlaylistGuide: setPlaylistGuide, label: labelOf,
         macOf: macOf, stbUa: STB_UA, stalkerPortal: stalkerPortal, stalkerCheck: stalkerCheck, addStalker: addStalker, isStalker: isStalker, stalkerAll: stalkerAll, setStalkerAll: setStalkerAll, stalkerGroups: stalkerGroups, setStalkerGroups: setStalkerGroups,
+        canGroup: canGroup, playlistGroups: playlistGroups, setPlaylistGroups: setStalkerGroups, liveOnly: liveOnly, setLiveOnly: setLiveOnly,
         xtreamParts: xtreamParts, xtreamUrl: xtreamUrl, xtreamCheck: xtreamCheck, addXtream: addXtream, xtreamFormat: xtreamFormat, setXtreamFormat: setXtreamFormat,
-        isFavorite: isFavorite, setFavorite: setFavorite, refreshEvery: refreshEvery, setRefreshEvery: setRefreshEvery, readAt: readAt,
+        catchupStream: catchupStream, catchupDays: catchupDays, hasCatchup: hasCatchup, catchupTz: catchupTz, setCatchupTz: setCatchupTz,
+        isFavorite: isFavorite, setFavorite: setFavorite, tidyCfg: tidyCfg, setTidy: setTidy, HIDE_SUGGESTED: HIDE_SUGGESTED, countryOf: countryOf, plainName: plainName, refreshEvery: refreshEvery, setRefreshEvery: setRefreshEvery, readAt: readAt,
         sizeMb: sizeMb, setSizeMb: setSizeMb, maxChannels: maxChannels, SIZES: SIZES,
         channels: function () { return _cache ? _cache.channels : []; }, channel: function (id) { return _cache ? _cache.byId[id] || null : null; }, isEnabled: isEnabled, reset: reset, status: status,
-        load: load, reload: reload, catalog: catalog, meta: meta, streams: streams, synthAddon: synthAddon, isReady: isReady,
+        load: load, reload: reload, catalog: catalog, meta: meta, zapGroups: zapGroups, streams: streams, synthAddon: synthAddon, isReady: isReady,
         onProgress: onProgress
     };
 })();

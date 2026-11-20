@@ -10,38 +10,85 @@ var EPG = (function () {
     // A channel's key, as the service makes it: "i:" and its tvg-id (iptv-org's feed after an @
     // left out: "ElTrece.ar@SD" is a guide's "ElTrece.ar"), or "n:" and its name without
     // capitals, accents, spaces, "TV" or HD / FHD / 4K tags ("El Trece HD": "n:eltrece"). A
-    // country at the end (".ar", or a name's " ARG" / " MX": COUNTRY) is kept apart, after a dot
-    // ("FOX SPORTS 2 ARG": "n:foxsports2.ar"); a guide's channel answers with it and without
-    // (keysAll), so "A24" finds a guide's "A24.ar", and "ESPN 2 MX" doesn't find "Espn2.ar".
+    // country is taken out and kept apart (2.4.6, after ediziks' fork, #29): a tvg-id's ".ar", a
+    // name's " ARG" / " MX" at the end or "TR:" / "|UK|" / "DE -" at the start (COUNTRY), so
+    // "TR: TRT 1 HD" is "trt1" in "tr". A guide's channel answers with its key in its country
+    // (".tr", or ".~" when its guide names none) and without one (guideKeys); a channel asks with
+    // its own country and ".~" when it knows its country, else without one (keysOf). So a Turkish
+    // "FOX" never gets an American "FOX.us"'s guide, and a key two countries' channels share
+    // answers neither (the service marks it unclear) rather than the first one listed.
     var ACCENTS = { 'á': 'a', 'à': 'a', 'â': 'a', 'ä': 'a', 'ã': 'a', 'å': 'a', 'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
         'ó': 'o', 'ò': 'o', 'ô': 'o', 'ö': 'o', 'õ': 'o', 'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ñ': 'n', 'ç': 'c' };
-    var COUNTRY = { ar: 'ar', arg: 'ar', mx: 'mx', mex: 'mx', us: 'us', usa: 'us', uk: 'uk', gb: 'uk', es: 'es', br: 'br', cl: 'cl', co: 'co', pe: 'pe',
-        uy: 'uy', py: 'py', ve: 've', ec: 'ec', bo: 'bo', ca: 'ca', fr: 'fr', de: 'de', it: 'it', pt: 'pt' };
+    var COUNTRY = { ar: 'ar', arg: 'ar', mx: 'mx', mex: 'mx', us: 'us', usa: 'us', uk: 'uk', gb: 'uk', gbr: 'uk', eng: 'uk', es: 'es', esp: 'es', br: 'br', cl: 'cl', co: 'co', pe: 'pe',
+        uy: 'uy', py: 'py', ve: 've', ec: 'ec', bo: 'bo', ca: 'ca', fr: 'fr', fra: 'fr', de: 'de', ger: 'de', deu: 'de', it: 'it', ita: 'it', pt: 'pt', por: 'pt',
+        tr: 'tr', tur: 'tr', nl: 'nl', ned: 'nl', nld: 'nl', be: 'be', bel: 'be', pl: 'pl', pol: 'pl', at: 'at', aut: 'at', ch: 'ch', se: 'se', swe: 'se',
+        no: 'no', dk: 'dk', fi: 'fi', gr: 'gr', gre: 'gr', ro: 'ro', hu: 'hu', cz: 'cz', sk: 'sk', ru: 'ru', rus: 'ru', ua: 'ua', 'in': 'in', au: 'au', aus: 'au',
+        ie: 'ie', irl: 'ie', al: 'al', rs: 'rs', hr: 'hr', ba: 'ba', bg: 'bg', si: 'si', il: 'il', ae: 'ae', sa: 'sa', eg: 'eg', ma: 'ma', za: 'za', nz: 'nz', ir: 'ir', irn: 'ir', pk: 'pk', pak: 'pk', bd: 'bd', cn: 'cn', chn: 'cn', 'do': 'do', afg: 'af', sw: 'se', jp: 'jp', kr: 'kr', ph: 'ph', th: 'th', vn: 'vn', my: 'my',
+        id: 'id', lk: 'lk', np: 'np', qa: 'qa', kw: 'kw', iq: 'iq', jo: 'jo', lb: 'lb', sy: 'sy', ps: 'ps', om: 'om', bh: 'bh', ye: 'ye', tn: 'tn', dz: 'dz', ly: 'ly',
+        ng: 'ng', gh: 'gh', ke: 'ke', mk: 'mk', me: 'me', xk: 'xk', lt: 'lt', lv: 'lv', ee: 'ee', is: 'is', lu: 'lu', cy: 'cy', mt: 'mt', cr: 'cr', gt: 'gt', hn: 'hn',
+        sv: 'sv', ni: 'ni', pa: 'pa', pr: 'pr', jm: 'jm', tt: 'tt', cu: 'cu' };
+    var SUFFIX_SKIP = { 'in': 1, at: 1, no: 1, be: 1, ba: 1, ma: 1, sa: 1, si: 1, por: 1, aus: 1, 'do': 1, is: 1, me: 1, my: 1, id: 1, pa: 1, pr: 1, sv: 1, ni: 1, om: 1, cu: 1, ke: 1, ye: 1, ps: 1, tt: 1, gt: 1, cr: 1, lb: 1, jo: 1, np: 1, sw: 1 };   // (words a name may end with: "Plug In"; only as a prefix, "IN: …")
+    var NOT_CC = { hd: 1, sd: 1, tv: 1, fm: 1, hq: 1 };   // (a tvg-id's ".hd" isn't a country)
+    var PREFIX = /^[\s|\[(│┃]*([a-z]{2,3})(?:\s*[:|\])│┃]+|\s+-+)\s*/;   // ("TR:", "|UK|", "[DE]", "NL -"; not "AL-Jazeera")
     function parts(kind, s) {
         var t = ('' + (s || '')).toLowerCase().replace(/[áàâäãåéèêëíìîïóòôöõúùûüñç]/g, function (c) { return ACCENTS[c]; }).trim(), cc = '', m;
         if (kind === 'i') { t = t.replace(/@.*$/, ''); }
-        if ((m = /\.([a-z]{2})$/.exec(t))) { cc = m[1]; t = t.slice(0, -3); }
-        else if (kind === 'n' && (m = /[\s_-]+([a-z]{2,3})$/.exec(t)) && COUNTRY[m[1]] && t.length > m[0].length) { cc = COUNTRY[m[1]]; t = t.slice(0, -m[0].length); }
+        if (kind === 'n' && (m = PREFIX.exec(t)) && COUNTRY[m[1]] && t.length > m[0].length) { cc = COUNTRY[m[1]]; t = t.slice(m[0].length); }
+        if ((m = /\.([a-z]{2})$/.exec(t)) && !NOT_CC[m[1]]) { cc = cc || COUNTRY[m[1]] || m[1]; t = t.slice(0, -3); }
+        else if (kind === 'n' && (m = /[\s_-]+([a-z]{2,3})$/.exec(t)) && COUNTRY[m[1]] && !SUFFIX_SKIP[m[1]] && t.length > m[0].length) { cc = cc || COUNTRY[m[1]]; t = t.slice(0, -m[0].length); }
         if (kind === 'n') { t = t.replace(/\[[^\]]*\]|\([^)]*\)/g, ' ').replace(/\b(hd|fhd|uhd|sd|hq|4k|8k|hevc|h265|1080p?|720p?|tv)\b/g, ' '); }
         t = t.replace(/[^a-z0-9]+/g, '');
         if (kind === 'n' && t.length > 4) { t = t.replace(/tv$/, ''); }   // ("CronicaTV")
         return { base: t.slice(0, 60), cc: cc };
     }
     function key(kind, s) { var p = parts(kind, s); return p.base ? kind + ':' + p.base + (p.cc ? '.' + p.cc : '') : ''; }
-    function keysAll(kind, s) { var p = parts(kind, s); return !p.base ? [] : p.cc ? [kind + ':' + p.base + '.' + p.cc, kind + ':' + p.base] : [kind + ':' + p.base]; }
+    // A guide's channel's keys (its id and display names), as the service makes them: each one
+    // without a country and in the channel's (its id's, else a name's; ".~" when neither says).
+    // Guides' and providers' other name forms (TV guide names: loose, see looseNames): a guide's
+    // name in gatotv's form also as a playlist names it, a country in its brackets the channel's
+    // (the same as service/index.js's epgNameForms); a provider's tag before a channel's name left
+    // out (untagged). PLACE: country names, as groups and guides write them; '' a region.
+    var PLACE = { argentina: 'ar', colombia: 'co', bolivia: 'bo', paraguay: 'py', chile: 'cl', uruguay: 'uy', peru: 'pe', mexico: 'mx', espana: 'es', spain: 'es', brasil: 'br', brazil: 'br',
+        venezuela: 've', ecuador: 'ec', usa: 'us', eeuu: 'us', 'estados unidos': 'us', 'united states': 'us', 'united kingdom': 'uk', england: 'uk', turkey: 'tr', turkiye: 'tr', germany: 'de',
+        deutschland: 'de', france: 'fr', italy: 'it', italia: 'it', portugal: 'pt', canada: 'ca', 'costa rica': 'cr', guatemala: 'gt', honduras: 'hn', 'el salvador': 'sv', nicaragua: 'ni',
+        panama: 'pa', 'puerto rico': 'pr', 'republica dominicana': 'do', cuba: 'cu', latinoamerica: '', latam: '', internacional: '', international: '' };
+    function place(s) {
+        var k = ('' + (s || '')).toLowerCase().replace(/[áàâäãåéèêëíìîïóòôöõúùûüñç]/g, function (c) { return ACCENTS[c]; }).replace(/[^a-z ]+/g, '').replace(/\s+/g, ' ').trim();
+        return Object.prototype.hasOwnProperty.call(PLACE, k) ? PLACE[k] : null;
+    }
+    function nameForms(n) {
+        var out = ['' + (n || '')], cc = '', m = /^(.*\S)\s*\(([^()]+)\)\s*$/.exec(out[0]);
+        if (m) { var pl = place(m[2]); if (pl === null) { out.push(m[2].split(/\s+-\s+/)[0]); } else { cc = pl; } }
+        out.slice().forEach(function (x) { var c = /^\s*canal\s+(.*[A-Za-zÀ-ɏ].*)$/i.exec(x); if (c) { out.push(c[1]); } });
+        return { forms: out, cc: cc };
+    }
+    var LOOSE_KEY = 'stremiok.iptv.guidenames';
+    function looseNames() { return U.store.get(LOOSE_KEY, '') === 'loose'; }
+    function setLooseNames(on) { if (on) { U.store.set(LOOSE_KEY, 'loose'); } else { U.store.remove(LOOSE_KEY); } _tags = null; reset(); }
+    function guideKeys(id, names, loose) {
+        var all = [], where = '';
+        (names || []).forEach(function (n) { if (!loose) { all.push(n); return; } var f = nameForms(n); if (f.cc && !where) { where = f.cc; } f.forms.forEach(function (x) { all.push(x); }); });
+        var ip = parts('i', id), np = all.map(function (n) { return parts('n', n); }), cc = where || ip.cc, out = [];
+        np.forEach(function (p) { if (!cc && p.cc) { cc = p.cc; } });
+        function add(kind, p) { if (p.base) { out.push(kind + ':' + p.base, kind + ':' + p.base + '.' + (cc || '~')); } }
+        add('i', ip);
+        np.forEach(function (p) { add('n', p); });
+        return { keys: out, cc: cc };
+    }
     function hash(s) {
         var h = 0x811c9dc5;
         for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0; }
         return h;
     }
-    // The keys as a bitset, base64url: 16 bits a key (1,024 to 131,072 in all); a key's hash
-    // picks its bit.
+    // The keys as a bitset, base64url: 16 bits a key (1,024 to 1,048,576 in all); a key sets two
+    // bits, its hash's and its "~"-hash's, so a big playlist's set still lets few of a guide's
+    // other channels through (one bit a key in 131,072 let half of them in).
     var B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
     function bitsFor(keys) {
         var n = 1024, bytes = [], i;
-        while (n < keys.length * 16 && n < 131072) { n *= 2; }
+        while (n < keys.length * 16 && n < 1048576) { n *= 2; }
         for (i = 0; i < n / 8; i++) { bytes.push(0); }
-        keys.forEach(function (k) { if (k) { var b = hash(k) % n; bytes[b >> 3] |= 1 << (b & 7); } });
+        keys.forEach(function (k) { if (k) { [hash(k) % n, hash('~' + k) % n].forEach(function (b) { bytes[b >> 3] |= 1 << (b & 7); }); } });
         var out = '';
         for (i = 0; i < bytes.length; i += 3) {
             var v = (bytes[i] << 16) | ((bytes[i + 1] || 0) << 8) | (bytes[i + 2] || 0);
@@ -49,7 +96,69 @@ var EPG = (function () {
         }
         return out;
     }
-    function keysOf(c) { return [c.tvgId ? key('i', c.tvgId) : '', key('n', c.name)].filter(Boolean); }
+    // A channel's copies (a merged channel's: IPTV's Merge duplicate channels), else itself.
+    function membersOf(c) { return c && c._copies ? c._copies.map(function (x) { return x.c; }) : [c]; }
+    // Its country: a copy's tvg-id's (".tr"), else a copy's name's ("TR: …", "… MX"), else its
+    // group's ("UK | News": IPTV.countryOf; or a country's name, "→ ARGENTINA ←": PLACE). A region or language isn't one (REGION: "AR" Arabic,
+    // "AM" Americas, "AS" Asia, "AF" Africa, "KU" Kurdish).
+    var REGION = { ar: 1, am: 1, as: 1, af: 1, eu: 1, ww: 1, ku: 1, arab: 1, latino: 1 };
+    function countryOf(c) {
+        var ms = membersOf(c), i, cc = '';
+        for (i = 0; i < ms.length && !cc; i++) { if (ms[i].tvgId) { cc = parts('i', ms[i].tvgId).cc; } }
+        var loose = looseNames();
+        for (i = 0; i < ms.length && !cc; i++) { var un = loose ? untagged(ms[i], ms[i].name) : { name: ms[i].name, cc: '' }; cc = un.cc || parts('n', un.name).cc; }
+        var g = !cc && typeof IPTV !== 'undefined' && IPTV.countryOf ? ('' + IPTV.countryOf(c.group)).toLowerCase() : '';
+        if (g && !REGION[g]) { cc = COUNTRY[g] || (/^[a-z]{2}$/.test(g) ? g : ''); }
+        if (!cc && c && c.group) { var pl = place(('' + c.group).replace(/[^A-Za-zÀ-ɏ ]+/g, ' ')); if (pl) { cc = pl; } }   // ("→ ARGENTINA ←", "MEXICO")
+        return cc;
+    }
+    // A provider's own tag before a channel's name, which no guide has (2.4.4.7): one before a ":" or
+    // "|" ("ENT| Pasiones", "EN: TLNovelas", "LA_HD_MEX:Tlnovelas", "USA**:UNIVISION"; a country in
+    // it, MEX or USA, kept as the channel's), or a first word most of its group's channels start
+    // with ("ENT GLITZ", "ENT HGTV" in a group of ENT ones: TAG_MIN of them, over half). -> { name,
+    // cc }; a plain "TR: …" is left to parts.
+    var TAG_MIN = 5, _tags = null, _tagsOf = null;
+    function groupTags() {
+        var list = typeof IPTV !== 'undefined' && IPTV.channels ? IPTV.channels() : [];
+        if (_tagsOf === list && _tags) { return _tags; }
+        var count = {}, first = {};
+        list.forEach(function (c) {
+            var g = c.group || '', w = /^([A-Za-z]{2,5})\s+\S/.exec(c.name || '');
+            count[g] = (count[g] || 0) + 1;
+            if (w) { var k = g + '\u0001' + w[1].toUpperCase(); first[k] = (first[k] || 0) + 1; }
+        });
+        _tags = {};
+        Object.keys(first).forEach(function (k) { var g = k.split('\u0001')[0]; if (first[k] >= TAG_MIN && first[k] * 2 > count[g]) { _tags[k] = 1; } });
+        _tagsOf = list;
+        return _tags;
+    }
+    // (and what a provider adds at the end, which no guide has: "HD" stuck on, "TelefeHD"; a "DASH"
+    // or "Latin America" after the name)
+    function untail(n) {
+        return n.replace(/(?:\s*[\[(][^\])]*[\])])+\s*$/, '').replace(/\s+(?:dash|latin\s*america|latinoam[eé]rica|latam)\s*$/i, '').replace(/^(.*[a-z0-9])(?:FHD|UHD|HD|SD|4K)$/, '$1');
+    }
+    function untagged(c, name) {
+        var n = '' + (name || ''), m = /^\s*([A-Za-z0-9_*]{2,12})\s*[|:]\s*(.{2,})$/.exec(n), cc = '';
+        if (m && !COUNTRY[m[1].toLowerCase()]) {
+            m[1].toLowerCase().split(/[_*]+/).forEach(function (t) { if (!cc && COUNTRY[t] && t !== 'la' && t !== 'en') { cc = COUNTRY[t]; } });
+            return { name: untail(m[2]), cc: cc };
+        }
+        var w = /^([A-Za-z]{2,5})\s+(\S.*)$/.exec(n);
+        if (w && groupTags()[(c.group || '') + '\u0001' + w[1].toUpperCase()] && !COUNTRY[w[1].toLowerCase()]) { return { name: untail(w[2]), cc: '' }; }
+        var pm = PREFIX.exec(n.toLowerCase());   // ("ARG: EL TRECE DASH": its country left to parts, its end taken off)
+        return { name: pm ? n.slice(0, pm[0].length) + untail(n.slice(pm[0].length)) : untail(n), cc: '' };
+    }
+    // Its keys in a guide: every copy's tvg-id and name, then its name as shown; in its country,
+    // then in a guide that names none (".~"); without a country only when it has none.
+    function keysOf(c) {
+        var bases = [], seen = {}, cc = countryOf(c), loose = looseNames();
+        function add(kind, s) { var p = parts(kind, s), b = p.base && kind + ':' + p.base; if (b && !seen[b]) { seen[b] = 1; bases.push(b); } }
+        membersOf(c).forEach(function (m) { if (m.tvgId) { add('i', m.tvgId); } if (loose) { add('n', untagged(m, m.name).name); } add('n', m.name); });
+        if (loose) { add('n', untagged(c, c.name).name); }
+        add('n', c.name);
+        if (!cc) { return bases; }
+        return bases.map(function (b) { return b + '.' + cc; }).concat(bases.map(function (b) { return b + '.~'; }));
+    }
 
     // A playlist's guide: yours (p.guide), else the first the playlist names (url-tvg), else an
     // Xtream get.php link's xmltv.php (the same login; also in place of a guide the playlist
@@ -72,6 +181,48 @@ var EPG = (function () {
         return g || xt;
     }
 
+    // Extra TV guides (Settings › Content › IPTV › TV guide, none until you add them): XMLTV links read by the
+    // service after each playlist's own guide, for the channels it gives no programs (see
+    // service/index.js, epgSources), EXTRAS_MAX at most. EXTRA_CATALOG: epgshare01's free guides
+    // by country (updated daily), offered to pick from, never added on their own.
+    var EXTRAS_KEY = 'stremiok.iptv.extraguides', EXTRAS_MAX = 6, EXTRA_BASE = 'https://epgshare01.online/epgshare01/epg_ripper_';
+    var EXTRA_CATALOG = { ae: ['AE1'], al: ['AL1'], ar: ['AR1'], at: ['AT1'], au: ['AU1'], ba: ['BA1'], bb: ['BB1'], be: ['BE2'], bg: ['BG1'], br: ['BR1', 'BR2'], ca: ['CA2'], ch: ['CH1'],
+        cl: ['CL1'], co: ['CO1'], cr: ['CR1'], cy: ['CY1'], cz: ['CZ1'], de: ['DE1'], dk: ['DK1'], 'do': ['DO1'], ec: ['EC1'], eg: ['EG1'], es: ['ES1'], fi: ['FI1'], fr: ['FR1'], gr: ['GR1'],
+        hk: ['HK1'], hr: ['HR1'], hu: ['HU1'], id: ['ID1'], ie: ['IE1'], il: ['IL1'], 'in': ['IN1', 'IN2', 'IN4'], it: ['IT1'], jm: ['JM1'], jp: ['JP1', 'JP2'], ke: ['KE1'], kr: ['KR1'], kz: ['KZ1'],
+        lt: ['LT1'], lu: ['LU1'], lv: ['LV1'], mn: ['MN1'], mt: ['MT1'], mx: ['MX1'], my: ['MY1'], ng: ['NG1'], nl: ['NL1'], no: ['NO1'], nz: ['NZ1'], pa: ['PA1'], pe: ['PE1'], ph: ['PH1', 'PH2'],
+        pk: ['PK1'], pl: ['PL1'], pt: ['PT1'], ro: ['RO1', 'RO2'], rs: ['RS1'], sa: ['SA1', 'SA2'], se: ['SE1'], sg: ['SG1'], sk: ['SK1'], sv: ['SV1'], th: ['TH1'], tr: ['TR1', 'TR3'], ua: ['UA1'],
+        uk: ['UK1'], us: ['US2', 'US_SPORTS1', 'US_LOCALS1'], uy: ['UY1'], vn: ['VN1'], za: ['ZA1'] };
+    function extraUrl(file) { return EXTRA_BASE + file + '.xml.gz'; }
+    function extraGuides() {
+        var l = U.store.get(EXTRAS_KEY, []) || [];
+        return (Array.isArray(l) ? l : []).filter(function (u) { return typeof u === 'string' && /^https?:\/\/[^\s|#]+$/i.test(u); }).slice(0, EXTRAS_MAX);
+    }
+    function setExtraGuides(list) {
+        var seen = {}, out = (list || []).map(function (u) { return ('' + u).trim(); }).filter(function (u) { if (!/^https?:\/\/[^\s|#]+$/i.test(u) || seen[u]) { return false; } seen[u] = 1; return true; }).slice(0, EXTRAS_MAX);
+        if (out.length) { U.store.set(EXTRAS_KEY, out); } else { U.store.remove(EXTRAS_KEY); }
+        reset();
+        return out;
+    }
+    // epgshare01's guides to pick from: [{ url, file, cc, n (your channels from that country) }],
+    // the countries you have channels from first (most first), then the rest.
+    function extraCatalog() {
+        var n = {}, out = [];
+        (typeof IPTV !== 'undefined' && IPTV.channels ? IPTV.channels() : []).forEach(function (c) { var cc = countryOf(c); if (cc) { n[cc] = (n[cc] || 0) + 1; } });
+        Object.keys(EXTRA_CATALOG).forEach(function (cc) { EXTRA_CATALOG[cc].forEach(function (f) { out.push({ url: extraUrl(f), file: f, cc: cc, n: n[cc] || 0 }); }); });
+        return out.sort(function (a, b) { return b.n - a.n || (a.cc < b.cc ? -1 : a.cc > b.cc ? 1 : 0); });
+    }
+    // A guide's link with the extra ones after "#extra=" (never sent: a link's part after # stays
+    // here), or the first extra one's when the playlist has no guide of its own; and "names=loose"
+    // when TV guide names is set so (the service reads guides' other name forms then).
+    function withExtras(url, extras, loose) {
+        if (!url && extras.length) { url = extras[0]; extras = extras.slice(1); }
+        if (!url) { return ''; }
+        var frag = [];
+        if (extras.length) { frag.push('extra=' + encodeURIComponent(extras.join('|'))); }
+        if (loose) { frag.push('names=loose'); }
+        return url + (frag.length ? '#' + frag.join('&') : '');
+    }
+
     function available() { return typeof YTPlay !== 'undefined' && !!YTPlay.epgLoad && YTPlay.installMode() !== 'browser'; }
 
     // ---- the guides: asked to read, then waited for ----
@@ -87,7 +238,7 @@ var EPG = (function () {
         _byList = {};
         IPTV.getPlaylists().forEach(function (p) {
             if (p.off) { return; }
-            var st = IPTV.status(p.id), url = guideUrl(p, st && st.guides);
+            var st = IPTV.status(p.id), url = withExtras(guideUrl(p, st && st.guides), extraGuides(), looseNames());
             _byList[p.id] = url;
             if (url && !byGuide[url]) { byGuide[url] = []; }
             if (url && (again === true || again === p.id)) { force[url] = true; }
@@ -286,6 +437,60 @@ var EPG = (function () {
         });
     }
 
+    // Diagnostics › TV guide matches: for every channel, the guide's channel it got and what's on
+    // it now, or why none. Promise of { rows: [{ c, state, guide, gid, now }], guides: [{ host,
+    // state, channels, partial }] }; state: 'ok', 'empty' (in the guide, nothing on now), 'unclear'
+    // (its name is two countries' channels'), 'none' (not in its guide), 'noguide' (its playlist
+    // has none read), 'failed' (not answered). Never a guide's link (an Xtream one has the login).
+    function matchReport() {
+        if (!available() || typeof IPTV === 'undefined' || !IPTV.channels) { return Promise.resolve({ rows: [], guides: [] }); }
+        var rows = [], byGuide = {}, jobs = [], t = nowSec();
+        function host(url) { var u = U.parseUrl(url); return u ? u.host : '?'; }
+        function source(url, gid) {   // (an extra guide's channel, "x2:…": that guide's host or epgshare01 file)
+            var m = /^x(\d+):/.exec(gid || ''), e = /[#&]extra=([^&]*)/.exec(url);
+            if (!m || !e) { return host(url.split('#')[0]); }
+            var x = '';
+            try { x = decodeURIComponent(e[1]).split('|')[+m[1] - 1] || ''; } catch (e2) {}
+            var f = /epg_ripper_([A-Z0-9_]+)\.xml/.exec(x);
+            return f ? 'epgshare01 ' + f[1] : host(x);
+        }
+        IPTV.channels().forEach(function (c) {
+            if (c.guideOnly) { return; }
+            var url = guideOf(c);
+            if (!url) { rows.push({ c: c, state: 'noguide' }); return; }
+            (byGuide[url] = byGuide[url] || []).push(c);
+        });
+        Object.keys(byGuide).forEach(function (url) {
+            var list = byGuide[url];
+            for (var i = 0; i < list.length; i += BATCH) {
+                jobs.push((function (chans) {
+                    var keys = [];
+                    chans.forEach(function (c) { keys.push.apply(keys, keysOf(c)); });
+                    return YTPlay.epgGet(url, keys, t - 60, t + 60, 1, true).then(function (r) {
+                        var ids = (r && r._ids) || {}, amb = {}, cut = {};
+                        ((r && r._amb) || []).forEach(function (k) { amb[k] = 1; });
+                        ((r && r._cut) || []).forEach(function (k) { cut[k] = 1; });
+                        chans.forEach(function (c) {
+                            var ks = keysOf(c), hit = '';
+                            for (var j = 0; j < ks.length && !hit; j++) { if (ids[ks[j]]) { hit = ks[j]; } }
+                            var row = { c: c, guide: host(url), state: 'none' };
+                            if (hit) {
+                                var l = Array.isArray(r[hit]) ? r[hit] : [];
+                                row.state = l.length ? 'ok' : 'empty'; row.gid = ('' + ids[hit]).replace(/^x\d+:/, ''); row.guide = source(url, ids[hit]); row.now = l.length ? '' + (l[0][2] || '') : '';
+                            } else if (ks.some(function (k) { return amb[k]; })) { row.state = 'unclear'; }
+                            else if (!r || r._unread || ks.some(function (k) { return cut[k]; })) { row.state = 'failed'; }
+                            rows.push(row);
+                        });
+                    }, function () { chans.forEach(function (c) { rows.push({ c: c, guide: host(url), state: 'failed' }); }); });
+                })(list.slice(i, i + BATCH)));
+            }
+        });
+        return Promise.all(jobs).then(function () {
+            var guides = Object.keys(_guides).map(function (url) { var g = _guides[url]; return { host: host(url.split('#')[0]) + (/[#&]extra=/.test(url) ? ' + ' + U.t('extra guides') : ''), state: g.state, channels: g.channels || 0, partial: !!g.partial }; });
+            return { rows: rows, guides: guides };
+        });
+    }
+
     // 20:30, or with the day when it isn't today (Tue 01:00).
     function two(n) { return (n < 10 ? '0' : '') + n; }
     function hhmm(sec) { var d = new Date(sec * 1000); return two(d.getHours()) + ':' + two(d.getMinutes()); }
@@ -313,7 +518,8 @@ var EPG = (function () {
 
     return {
         generation: function () { return _gen; },   // (changes when the guides do: what was read before isn't theirs)
-        key: key, keysAll: keysAll, bitsFor: bitsFor, guideUrl: guideUrl, available: available, start: start, reset: reset, status: status,
+        looseNames: looseNames, setLooseNames: setLooseNames, matchReport: matchReport, extraGuides: extraGuides, setExtraGuides: setExtraGuides, extraCatalog: extraCatalog, withExtras: withExtras, EXTRAS_MAX: EXTRAS_MAX,
+        key: key, guideKeys: guideKeys, keysOf: keysOf, countryOf: countryOf, bitsFor: bitsFor, guideUrl: guideUrl, available: available, start: start, reset: reset, status: status,
         want: want, now: now, schedule: schedule, hasGuide: hasGuide, logo: logo, hasAny: hasAny, guided: guided, range: range, onChange: onChange, hhmm: hhmm, dayTime: dayTime
     };
 })();

@@ -10,6 +10,7 @@ var App = (function () {
 
     function showScreen(name) {
         if (name !== _current) { U.crumb(name); }
+        if (name !== 'home' && Player.isBehind && Player.isBehind()) { Player.exit(); }   // (live TV behind the menus: Home's only)
         ['home', 'discover', 'detail', 'search', 'settings', 'addaddon'].forEach(function (n) {
             var el = screenEl(n);
             if (el) { el.className = 'screen' + (n === name ? '' : ' hidden'); }
@@ -184,6 +185,7 @@ var App = (function () {
             _lastBackAt = nowb;
         }
         if (action === 'GUIDE') { guideKey(); return true; }
+        if (Player.isBehind && Player.isBehind() && Player.behindKey(action)) { return true; }   // (▶ ■ CH+/−: live TV behind the menus)
         if (Player.isActive()) { return Player.handleKey(action); }   // (a held OK too: the player's Cast & more has a menu behind it)
         if (Views.moveKey && Views.moveKey(action)) { return true; }   // (a Continue Watching card being moved)
         switch (action) {
@@ -259,6 +261,22 @@ var App = (function () {
         if (typeof Profiles !== 'undefined' && Profiles.ask() && !fromTile && !switched && Views.profilePicker) { Views.profilePicker(started); return; }
         started();
     }
+    // Settings › Home › Start on › Last IPTV channel / Last Guide channel: the channel last watched
+    // played at launch (its group the row CH+ / CH− go through; BACK: the IPTV tab, or the Guide
+    // on it), once the playlists are read; not if it's gone from them, nor from a home bar tile.
+    function lastChannel() {
+        if (typeof Stremio === 'undefined' || typeof IPTV === 'undefined' || (Stremio.getPrefs().startTab !== 'lastch' && Stremio.getPrefs().startTab !== 'lastguide') || (typeof HubPreview !== 'undefined' && HubPreview.fromTile && HubPreview.fromTile())) { return; }
+        var last = U.store.get('stremiok.iptv.last', null);
+        if (!last || typeof last.id !== 'string' || !/^iptv:/.test(last.id)) { return; }
+        Stremio.iptvLoad().then(function () {
+            var c = IPTV.channel(last.id);
+            if (!c || Player.inUse() || _current !== 'home' || Views.isModalOpen()) { return; }
+            var z = IPTV.zapGroups ? IPTV.zapGroups(c.id) : null, list = z ? z.groups[z.at].list : [], at = -1;
+            list.forEach(function (m, i) { if (m.id === c.id) { at = i; } });
+            var row = at !== -1 ? { list: list.map(function (m) { return { meta: m }; }), idx: at } : null;
+            openLive(c.type || 'tv', c.id, { id: c.id, type: c.type || 'tv', name: c.name, poster: c.logo || '' }, row, { playBest: true });
+        }, function () {});
+    }
     function started() {
         // The TV's database filled with old versions of what was saved: tidied up, once started
         setTimeout(function () { if (U.bigStore && U.bigStore.tidyIfNeeded) { U.bigStore.tidyIfNeeded(); } }, 30000);
@@ -267,6 +285,7 @@ var App = (function () {
         showScreen('home');
         Views.renderHome();
         U.mark('firstScreen');
+        lastChannel();
         if (typeof LocalMedia !== 'undefined') { LocalMedia.watch(); }   // (a USB drive plugged in? the Local tab; nothing read from it)
         document.addEventListener('visibilitychange', function () { U.sessionState(document.hidden ? 'hidden' : 'running'); }, false);
         // The TV keeps the app running in the background for days: when it comes back
@@ -370,7 +389,7 @@ var App = (function () {
     return {
         start: start, back: back,
         openDetail: openDetail, openLive: openLive, openPerson: openPerson, openDiscover: openDiscover, returnFromLive: returnFromLive, goHome: goHome,
-        openSettings: openSettings, openSearch: openSearch, openEntry: openEntry
+        openSettings: openSettings, openSearch: openSearch, openEntry: openEntry, current: function () { return _current; }
     };
 })();
 

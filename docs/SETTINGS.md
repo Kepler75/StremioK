@@ -15,12 +15,12 @@ In a list you order, ▲ / ▼ move an item one place and ⇈ / ⇊ move it to t
   [Streaming apps](#streaming-apps), [USB drive](#usb-drive), [Media servers](#media-servers),
   [Import configuration file](#import-configuration-file), [Export configuration](#export-configuration)
 - [Playback](#playback): [Audio](#audio), [Subtitles](#subtitles), [Skipping](#skipping),
-  [Seeking & buffering](#seeking--buffering), [Source ranking](#source-ranking),
+  [Seeking & buffering](#seeking--buffering), [Live TV](#live-tv), [Source ranking](#source-ranking),
   [Formats](#formats), [Private viewing](#private-viewing)
 - [Appearance](#appearance)
 - [Home](#home)
 - [Diagnostics](#diagnostics): [Logs](#logs), [Storage](#storage),
-  [Installed apps](#installed-apps)
+  [Installed apps](#installed-apps), [TV guide matches](#tv-guide-matches)
 - [Profiles](#profiles)
 
 ## Content
@@ -36,7 +36,7 @@ Adding, ordering and managing addons: the user guide's
 | *Import addons from your Stremio account* | | Lists your Stremio account's addons to tick and import. |
 | *Import addons from Nuvio* | | The same for a Nuvio profile's addons (badged N). |
 | *AIOManager* | | Its own page: see [AIOManager](#aiomanager). |
-| Each addon | *Refresh*, *Turn off* / *Turn on*, *Remove*, *Share*, *Configure*, ⇈ ▲ ▼ ⇊ | Reloads, switches off (kept, not asked) or on, removes, shows a QR code of its link (with your tokens: your devices only) or setup page, or moves it. Higher addons describe titles first. |
+| Each addon | ⇈ ▲ ▼ ⇊ ↻; OK: *Turn off* / *Turn on*, *Remove*, *Share*, *Configure* | ↻ reloads it; switches off (kept, not asked) or on, removes, shows its link's QR code (with your tokens: your devices only) or setup page. Higher addons describe titles first. |
 | *Wait for addons* | **Normal** (12 s; sources 15, search 25), 20, 30, 45, 60 seconds | How long StremioK waits for an addon. Longer helps one that sleeps when unused. |
 | *Local-network links from internet addons* | **Blocked**, Allowed | Blocked, internet addons can't point links into your home network; your own network's addons and your playlists still can. See [Privacy](PRIVACY.md#your-home-network). |
 
@@ -80,16 +80,21 @@ sources that are only torrents; Stremio's can also convert a video the TV can't 
 
 Your M3U playlists: *Add playlist*, *Add Xtream account* (server, username, password; OK on
 it for *Format*: **MPEG-TS** or HLS), *Add Stalker portal* (its address and MAC address), ▲ / ▼ to order
-them, and OK on one for *Rename*, *Turn off* /
-*Turn on*, *Edit link*, *Guide link* (empty: the playlist's own TV guide), *Reload*, *Remove*.
-Each says whether its guide was read. See [IPTV and radio](USER-GUIDE.md#iptv-and-radio).
+them, ↻ to download one again, and OK on one for *Rename*, *Turn off* /
+*Turn on*, *Edit link*, *Guide link* (empty: its own), *Channel groups*, *Remove*; Xtream:
+*Live TV only*, *Catch-up time*. Each says whether its guide was read. See [IPTV and radio](USER-GUIDE.md#iptv-and-radio).
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Auto-refresh* | **Off**, Every hour, Every 3 hours, Every 6 hours, Every 12 hours | Everything read again, as *Reload* does. |
-| *Largest playlist* | **20 MB**, 40, 60, 100 MB | It keeps 1,500 channels per MB. Above 20 MB an older TV may run out of memory. |
-| *Stalker channels* | **First 100 pages**, Whole portal | How much of a portal is read (100 pages: about 1,400). *Whole portal*: minutes each *Reload*; a portal may block such a MAC. *Channel groups*: only those. |
-| *Stalker films and series* | **Kept 10 minutes**, Kept 5 minutes, Off | How long a portal's row, category or search is kept before it's asked again. |
+| *Auto-refresh* | **Off**, Every hour, Every 3 hours, Every 6 hours, Every 12 hours | Everything read again, as ↻ does. |
+| *Largest playlist on the TV* | **20 MB**, 40, 60, 100 MB | What the TV holds: 1,500 channels per MB; above 20 MB an older TV may run short. The service reads up to 250 MB, sending what fits (*Channel groups*: only those). |
+| *Stalker channels* | **First 100 pages**, Whole portal | How much of a portal is read (100 pages: about 1,400). *Whole portal*: minutes each ↻; a portal may block such a MAC. *Channel groups*: only those. |
+| *Stalker films and series* | **Kept 10 minutes**, Kept 5 minutes, Off | How long a portal's row, category or search is kept. |
+| *Channel list ›* *Merge duplicate channels* | **Off**, On: each copy a source, On: the best copy at once | One tile per channel listed twice or more: copies as sources, best first, or the best at once (the next if it fails). |
+| *Channel list ›* *Countries first* | **None**, your list | These countries' groups (UK, US, DE… or names) first, in order. |
+| *Channel list ›* *Hide channels with these words* | **None**, your list | Left out when its name or group has one; adult words suggested. |
+| *TV guide ›* *Extra TV guides* | **None**, epgshare01's by country, a link | Up to 6, for channels your playlists' guides leave empty. |
+| *TV guide ›* *TV guide names* | **As written**, Also other forms | Other forms: "Canal Telefé (Argentina)" is Telefe; a tag like "ENT\|" is left out. |
 
 ### YouTube
 
@@ -166,7 +171,7 @@ Addons (in order), playlists, portals, API keys, settings and, if ticked, your h
 |---------|---------|--------------|
 | *Preferred language* | **Default (first track)**, a language | The audio track picked when there's one in it. |
 | *Second choice* | **none**, a language | Picked when there's none in the preferred language. |
-| *Switching to it* | **Quick (no wait)**, Safe: waits 3, 6 or 10 seconds | Quick picks the track before the video starts; Safe once playing, reloading the audio 6 seconds back (when Quick names your language but you hear another). Live streams always switch Safely. |
+| *Switching to it* | **Quick (no wait)**, Safe: waits 3, 6 or 10 seconds | Quick: before the video starts; Safe: once playing, reloading the audio 6 seconds back (if Quick's language isn't what plays). Live streams: always Safe. |
 
 ### Subtitles
 
@@ -202,11 +207,17 @@ Addons (in order), playlists, portals, API keys, settings and, if ticked, your h
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Seek step* | 5, **10**, 15, 30 seconds | How far LEFT / RIGHT jump; FF / REW three steps; holding speeds up. |
-| *Reconnect live channels* | Off, **A few times**, Keep trying | A channel that drops opens again at the live edge: 3 times in 5 minutes, or always, up to a minute apart (BACK stops it). Off: it closes. |
 | *Buffer* | **Normal (the TV's own)**, More, Most | Loaded before starting and after running dry (More: 8 and 10 s; Most: 15 and 20): slower to start, dry less often. |
 | *Read the file's details* | **USB drives only**, All files, Off | Its codec, HDR and tracks, read from its start for Stream info. Links, network folders: more requests as it starts. |
 | *Leave out other subtitle tracks* | Always, More than 5, **After a jump**, Never | MKVs with many can stutter after jumps: through the service, your languages' only. |
 | *HLS through StremioK's service* | **Off**, Sources that need headers, All HLS sources | Fetched by the service with the source's own headers (the TV's player can't always send them): a step more to start. Hold OK on a source: once. |
+
+### Live TV
+
+| Setting | Choices | What it does |
+|---------|---------|--------------|
+| *Live TV behind the menus* | **Off**, On | BACK keeps a live channel playing behind Home. |
+| *Reconnect live channels* | Off, **A few times**, Keep trying | A channel that drops opens again at the live edge: 3 times in 5 minutes, or always, up to a minute apart (BACK stops it). Off: it closes. |
 
 ### Source ranking
 
@@ -226,8 +237,8 @@ for what's left out and what *▶ Play* does. Their rows sum up what's set.
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Sources the TV can't play* | **Shown**, Hidden | Shown: dimmed at the bottom. Hidden: torrents and links it can't open are left out (a line says how many); where-to-watch apps stay. |
-| *Movies' sizes* / *Series' sizes (an episode)* | *Smallest* (100 MB to 2 GB), *Largest* (2 GB to 80 GB), *Most per hour* (1 GB to 10 GB an hour); **no limits** | Sources outside a limit move to the bottom and are never picked on their own ([Size limits](#size-limits)). |
-| *Hide sources with these words* | **none**, your words, separated by commas | Sources with one in their name, description or file name (whole words, capitals or not: CAM, HDTS, a language) move to the bottom and are never picked on their own. |
+| *Movies' sizes* / *Series' sizes (an episode)* | *Smallest* (100 MB to 2 GB), *Largest* (2 GB to 80 GB), *Most per hour* (1 GB to 10 GB an hour); **no limits** | Sources outside a limit move to the bottom, never picked on their own ([Size limits](#size-limits)). |
+| *Hide sources with these words* | **none**, your words, separated by commas | Sources with one in their name, description or file name (whole words, capitals or not: CAM, HDTS, a language) move to the bottom, never picked on their own. |
 
 **When you press Play:**
 
@@ -298,7 +309,8 @@ them.
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Start on* | **Watching** (Continue Watching), any Home tab | The tab StremioK opens on (the Guide once its guide is read; Watching for a hidden tab). |
+| *Start on* | **Watching** (Continue Watching), any Home tab, Last IPTV / Guide channel | The tab StremioK opens on (the Guide once its guide is read; Watching for a hidden tab), or the last channel playing. |
+| *IPTV tab* | **Rows**, Channel browser | The IPTV tab as rows, or a browser: groups, channels, now and next. |
 | *Titles in a Home row* | **30**, 50, 100, 200, Unlimited | How many titles a Home row holds (catalogs, IPTV groups). More load slower, *Unlimited* much slower (an addon may refuse so many requests). ★ Favorites shows all. |
 | *Home bar preview* | **Most recent first**, As in Watching, Off | Continue Watching on the TV's home bar (StremioK on it: Apps › StremioK › *Add to Home*): up to 8 playable tiles. Sideloaded app, Tizen 4 and later. |
 | *Menu ›* | ⇈ ▲ ▼ ⇊, OK to show or hide | The top menu's order between Watching (first) and Settings (last), and which Home tabs show. Discover and Search always show. |
@@ -333,6 +345,12 @@ with its last steps. *Startup* shows how long this launch and the one before too
 
 The TV's apps with their IDs (hidden system apps on request). OK on one opens it: a check of
 which apps StremioK may launch from this install. On the TV only.
+
+### TV guide matches
+
+Once a TV guide is read: how many IPTV channels got a guide channel (with a program on now, or
+nothing on), and which got none and why: *unclear* (two countries' channels share its name), *not
+in its guide*, *no guide read*. *⇧ Send to your phone*: every channel and what it got, as a file.
 
 ## Profiles
 

@@ -12,10 +12,10 @@ var XtVod = (function () {
     var CATS_KEY = 'stremiok.xtvod.cats', CATS_FRESH_MS = 86400000, CATS_RETRY_MS = 6 * 3600000, PAGE = 100, CATS_MAX = 2000;
     function enc(v) { return encodeURIComponent('' + v); }
 
-    // The Xtream accounts among your playlists (switched on): { id, label, base, user, pass }.
+    // The Xtream accounts among your playlists (switched on, not Live TV only): { id, label, base, user, pass }.
     function accounts() {
         if (typeof IPTV === 'undefined' || !IPTV.xtreamParts || !IPTV.xtreamFormat) { return []; }
-        return IPTV.getPlaylists().filter(function (p) { return !p.off && IPTV.xtreamFormat(p.id); }).map(function (p) {
+        return IPTV.getPlaylists().filter(function (p) { return !p.off && !p.noVod && IPTV.xtreamFormat(p.id); }).map(function (p) {
             var x = IPTV.xtreamParts(p.url);
             return x && x.user && x.pass ? { id: p.id, label: IPTV.label(p.id), base: x.base, user: x.user, pass: x.pass } : null;
         }).filter(Boolean);

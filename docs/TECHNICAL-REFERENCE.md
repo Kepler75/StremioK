@@ -361,14 +361,26 @@ channels where it gives one; the rest is read from the source's name and file.
   Spanish titles too), else Cinemeta (original titles only). One sure match (the same name, and
   the year when known) opens its page; anything else, a show included, opens Search.
 - **Size:** each playlist is downloaded up to 20 MB and keeps its first 30,000 channels
-  (*Largest playlist*: up to 100 MB, 150,000). Big ones
+  (*Largest playlist on the TV*: up to 100 MB, 150,000). On a TV the service downloads an M3U or an
+  Xtream account's live channels (`player_api.php`, written as its `get.php` lines) up to 250 MB,
+  keeps it with its groups, and hands over only those picked (*Channel groups*, or ticked on a
+  one-time phone page: `/entry/give?kind=groups`); if it can't, the TV reads it itself. Big ones
   are read in chunks, with a count ("Reading playlists… 12,000 channels"), so the remote stays
   responsive. Copies are saved in the TV's database.
 - **Duplicates:** a channel listed twice is shown once only when it's exactly the same (link,
-  name, group and headers).
+  name, group and headers). *Merge duplicate channels* matches names with the country prefix
+  and quality words (HD, FHD, 4K, HEVC, backup…) left out, in the same country (its group's or
+  name's prefix); the sources are ordered 4K, FHD, HD, the rest, SD, backups last.
+- **Catch-up:** `catchup` (or `catchup-type`) `xc` (Xtream `timeshift` links, in the server's
+  time: its `server_info`, or *Catch-up time*), `default` / `append` (`catchup-source`, with
+  `{utc}`, `{start}`, `{end}`, `{lutc}`, `{duration}`, `{offset}`, `{Y}{m}{d}{H}{M}{S}`, `${…}`
+  too), `shift` (`utc=` / `lutc=`) or `flussonic` (`-ts`); `catchup-days` (or `timeshift`,
+  `tvg-rec`), 3 when it says none, 31 at most; on `#EXTM3U` for every channel. A Stalker portal's
+  (`tv_archive`): its program found in the portal's guide, its recording asked for when played.
+- **Dividers:** a name with no letter or digit, or a heading between runs of `#`, `=`, `-` or
+  `*`, isn't a channel.
 - **Auto-refresh:** checked every minute, counted from the oldest playlist's download (a saved
-  copy's too, so an old one is read again soon after StremioK starts) and from the last try (a
-  server that's down isn't asked every minute). It waits while something plays, or StremioK is
+  copy's too) and from the last try. It waits while something plays, or StremioK is
   in the background; its guides are read again at once (`&force=1`).
 - **Headers:** a channel's User-Agent and Referer (`#EXTVLCOPT:http-user-agent=` /
   `http-referrer=` or `http-referer=`, the same `#EXTINF` attributes, `#EXTHTTP:{…}`, or after
@@ -421,7 +433,7 @@ channels where it gives one; the rest is read from the source's name and file.
   seasons and episodes (by `movie_id`; a season that doesn't list its episodes, by `season_id`).
   What's read (a list from a position, a search, a series' seasons) is kept 10 minutes, the last
   40 a portal (*Stalker films and series*: 5, or 0: `&keep=`), so a row shown again isn't asked
-  again; *Reload* reads it all again. A copy of one of your titles: a search for its name (year
+  again; ↻ reads it all again. A copy of one of your titles: a search for its name (year
   within one). A source is the service's `/stalker/play`, which asks `create_link` as the player
   opens it and redirects, so a link saved to resume stays good.
 - **A channel's own format:** the player's *Format* swaps one channel's `/live/…/123.ts` and
@@ -440,15 +452,14 @@ channels where it gives one; the rest is read from the source's name and file.
   it plays `…/movie/user/pass/<id>.<ext>` or `…/series/user/pass/<episode id>.<ext>`.
 - **The index,** by the service (`/xtvod/…`): `get_vod_streams` and `get_series` whole, read a
   piece at a time (150 MB, 6 minutes, 100,000 titles each at most) into id, name, year, TMDB
-  id and date added; saved in the app's folder a title a line, read and written in small pieces
-  so YouTube, guides and the live relay aren't held up. Unused for 30 minutes it leaves memory
+  id and date added; saved in the app's folder a title a line, read and written in small pieces.
+  Unused for 30 minutes it leaves memory
   (but for the newest row), and comes back from the file when asked. A list not refreshed for 3
   days is deleted when a guide or list is next asked for; *Clear saved copies* deletes them all.
-  While one is being read Home shows *Loading…* and looks again, then redraws. Read again after a day (*Reload* on the
+  Read again after a day (↻ on the
   account: at once, its categories too). It answers the newest row (200), Search and matching.
-- **Its playlist:** the `/movie/` and `/series/` lines of an account whose server lists films or
-  series are left out of IPTV (shown through the API instead); the IPTV rows are made again,
-  from the saved copy, once its categories say whether it has any.
+- **Its playlist:** the `/movie/` and `/series/` lines of an account with films or series (or
+  *Live TV only*) are left out of IPTV; the rows are made again once its categories say.
 - **Matching** a title from your addons: its TMDB id, else its name and year, both without a
   language tag (`EN - `, `|EN|`), brackets, quality words or accents. An episode: its show,
   then the season and number in `get_series_info`.
@@ -458,18 +469,27 @@ channels where it gives one; the rest is read from the source's name and file.
 - **Where it comes from:** a playlist's typed *Guide link*, else its `url-tvg` / `x-tvg-url`,
   else an Xtream `get.php` link's `xmltv.php` (also in place of a guide the playlist names on its
   own server without the login).
-- **Read by the service:** gzipped or not; up to 60 MB, 200 MB unpacked, 5 minutes.
-- **Only your channels:** the app sends their keys (`tvg-id`, else the name, plain) as a bitset,
+- **Read by the service:** gzipped or not; up to 200 MB, 400 MB unpacked, 5 minutes.
+- **Countries:** a `tvg-id`'s `.tr`, a name's ` MX` at the end or `TR:` / `|UK|` / `DE -` at the
+  start, else the channel's group's, is its country; it asks in that country and in guides that
+  name none. A key without a country two countries' guide channels share answers neither
+  (*unclear*).
+- **Extra TV guides:** added after `#extra=` (never sent), read after the playlist's own, one
+  after another; an extra guide's channel takes only keys the earlier ones left without
+  programs.
+- **Only your channels:** the app sends their keys (`tvg-id`, else the name, plain) as a bitset
+  (two bits a key, up to 1,048,576),
   in a POST's body (a newer TV's service reads 8 KB of a request's address and headers:
   thousands of channels' keys don't fit there).
 - **What's kept:** programs from 2 hours ago to 30 hours ahead, 150 a channel (held to that as
-  it's read), 60,000 in all, each with its picture (`<icon>`). A channel's `<icon>` stands in
+  it's read), 120,000 in all (past that, each channel's share shrinks, to 4 at least: what's on,
+the one before, the next), each with its picture (`<icon>`). A channel's `<icon>` stands in
   for a missing `tvg-logo` (none into your home network from a guide on the internet).
 - **Answers:** kept to 2 MB; the Guide tab asks 20 channels at a time. A channel whose programs
   don't come (no answer, or past the 2 MB) stays on the Guide tab and is asked again 30 seconds
   later.
 - **Saved guides:** on the sideloaded app they're saved in its folder (written whole, then
-  swapped in) and read again after 6 hours (a playlist's *Reload*: its guide at once,
+  swapped in) and read again after 6 hours (a playlist's ↻: its guide at once,
   `&force=1`); under TizenBrew, kept in memory.
 - **How many:** four guides are kept: a fifth's arrival deletes the oldest's file, a file older
   than 2 days is deleted, one over 32 MB isn't read. *Clear saved copies* (Storage) deletes the
@@ -797,7 +817,7 @@ capped: 1,000 titles a catalog page, 500 sources an addon, 300 subtitle tracks, 
 episodes, 200 catalogs an addon, 30,000 channels a playlist. An addon that doesn't load says
 why in Settings › Content › Addons ("too large (over 2 MB)", "not an addon manifest", "timed out"…),
 with what the addon itself said when it refused (for example AIOStreams' "Invalid stream
-expression … Expected :" for a configuration it can't read); *Refresh* says it too.
+expression … Expected :" for a configuration it can't read); its ↻ says it too.
 
 A screen left for good (BACK out of a title page, Discover or Search, or Home from the menu)
 stops what it was still downloading — its details, ratings, cast, episode information, where
@@ -886,6 +906,7 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 | Phone page | `/entry/open`, `poll`, `close` | Opens, polls and closes the one-time page | + token or header |
 | AIOManager | `/aiom/addons` | Reads an account's addons | + token or header |
 | Xtream films and series | `/xtvod/list`, `/xtvod/find` | An account's newest titles and Search; a title's copies | + token or header |
+| IPTV playlists | `/iptv/read`, `/iptv/m3u`, `/iptv/forget` | A playlist read and kept; its picked groups; its copies deleted | + token or header |
 | Stalker | `/stalker/list`, `/stalker/link`, `/stalker/genres`, `/stalker/vod`, `/stalker/play` | A portal's channels as an M3U playlist; a channel's link to play; its genres; its films and series; a film's or episode's link, redirected to | + token or header (`play`: or the guide ticket) |
 | TV guide | `/epg/load`, `/epg/get` | Reads a playlist's guide for your channels; their programs | + token or header |
 | DRM | `/drm/license` (a POST) | Posts a Widevine channel's license request to its license server | + token or the guide ticket |

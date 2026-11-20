@@ -63,7 +63,7 @@ security problem, privately, as the [security policy](SECURITY.md) says.
 
 | What you see | Why, and what to do |
 |--------------|---------------------|
-| An addon doesn't load | Settings › Content › Addons says why ("too large (over 2 MB)", "not an addon manifest", "timed out"…), with what the addon itself said (AIOStreams' "Invalid stream expression…"). *Refresh* says it too. |
+| An addon doesn't load | Settings › Content › Addons says why ("too large (over 2 MB)", "not an addon manifest", "timed out"…), with what the addon itself said (AIOStreams' "Invalid stream expression…"). Its ↻ says it too. |
 | An addon fails the first time, then works | It's hosted where it sleeps when unused and takes a while to wake. Set *Wait for addons* longer (Settings › Content › Addons). |
 | An old addon link won't add | Only v3 addons work. Old `/stremio/v1` addons (e.g. `opensubtitles.strem.io/stremio/v1`) aren't supported; use their v3 versions. |
 | Title pages fail ("Couldn't load") while one addon is down | The addon describing your titles isn't answering (Diagnostics › Logs shows its errors, like HTTP 521). Keep a second details addon, such as Cinemeta, below it. |
@@ -118,7 +118,7 @@ sources. Try again later.
 | It stalls | A stalled stream reloads where it was; if it keeps stalling, you're back on the source list. Try another source, or *Buffer: More* / *Most* (Settings › Playback › Seeking & buffering) on a slow connection. |
 | An HLS quality won't start | It steps down a quality, then falls back to *Auto*. |
 | An HLS source stays on "Opening stream…" while direct ones play | Its host may want a Referer (or User-Agent, Cookie) on every piece, which the TV's player can't always send. Hold OK on it › *Play through StremioK's service*; for all such sources, *HLS through StremioK's service* (Settings › Playback › Seeking & buffering). |
-| A live channel keeps reconnecting | Its connection drops, or its server stops the stream; StremioK opens it again ("Connection lost — reconnecting…"). How often is up to *Reconnect live channels* (Settings › Playback › Seeking & buffering). |
+| A live channel keeps reconnecting | Its connection drops, or its server stops the stream; StremioK opens it again ("Connection lost — reconnecting…"). How often is up to *Reconnect live channels* (Settings › Playback › Live TV). |
 | A live channel closes when it drops | *Reconnect live channels* is Off, or it dropped 3 times in 5 minutes ("This channel keeps dropping"). *Keep trying* never gives up. |
 | After jumping forward, the picture stutters or breaks into blocks | Files with dozens of subtitle tracks; see *Leave out other subtitle tracks* (Settings › Playback › Seeking & buffering). |
 | After a pause, it jumps ahead | The TV's player sometimes does this. StremioK takes it back on its own and notes it in Diagnostics (see the [technical reference](TECHNICAL-REFERENCE.md#starting-and-recovering)). |
@@ -168,10 +168,10 @@ sources. Try again later.
 | What you see | Why, and what to do |
 |--------------|---------------------|
 | A channel's sound stutters | Some servers cut a channel's sound into pieces the TV's player stutters on. StremioK restarts the channel through its service ("Fixing this channel's sound…"), or choose it yourself: Red › *Sound*. |
-| A big playlist is missing channels, or is "Too large" | A playlist keeps its first 30,000 channels (up to 20 MB); its status line says when some were left out. Settings › Content › IPTV › *Largest playlist* raises both, at a risk on older TVs. |
+| A big playlist is missing channels, or is "Too large" | A playlist keeps its first 30,000 channels (up to 20 MB); its status line says when some were left out. Settings › Content › IPTV › *Largest playlist on the TV* raises both, at a risk on older TVs; or OK on it, *Channel groups*, to keep only what you watch. |
 | A Stalker portal is missing channels or genres | Only its first 100 pages may have been read: see *Stalker channels* in [Settings](SETTINGS.md). |
-| A playlist didn't refresh | The saved copy stays, and the playlist says why. *Reload* tries again. |
-| No TV guide on the cards | The playlist's line says why. Not every channel is in a guide; *Guide link* sets another. |
+| A playlist didn't refresh | The saved copy stays, and the playlist says why. Its ↻ tries again. |
+| No TV guide on the cards | The playlist's line says why. Not every channel is in a guide: Settings › Diagnostics › TV guide matches says which; *Guide link* sets another, *Extra TV guides* fill gaps. |
 | An Xtream account's films aren't offered on a title | Its list is read once a day (the first time, a minute or two). A copy needs the same TMDB id, or name and year. |
 | A Stalker portal refuses its MAC address | Use the one your provider registered. Portals that also want a login aren't supported. |
 | A DRM channel doesn't play | Its license server refused the TV (many only answer their own apps; see Logs). ClearKey: wrong keys, or the stream needs a User-Agent, Referer or Cookie, which a browser can't send. |

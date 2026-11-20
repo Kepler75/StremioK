@@ -79,6 +79,7 @@
                 U.toast(why ? U.t('No playable source for this channel: {why}', { why: why }) : U.t('No playable source for this channel'), why ? 6000 : 3000); App.back(); return;
             }
             if (playable.length === 1) {
+                if (playable[0]._fallbacks && playable[0]._fallbacks.length) { _d.fallbacks = [playable[0]].concat(playable[0]._fallbacks); }   // (a merged channel's best copy: the others if it doesn't start)
                 startPlayback(playable[0], id, _d.streamLabel || _d.meta.name || U.t('Live'));
             } else if ((opts && opts.playBest) || _d.autoBest) {   // (the remote's Play key)
                 var top = bestRow(rankRowsFor(list));
@@ -1532,6 +1533,10 @@
         (list || []).forEach(function (st) { if (st && st.infoHash) { Stremio.torrentSource(st); } });
     }
     function nextSourceFor(tried, avoid) {
+        if (_d && _d.fallbacks) {   // (a merged IPTV channel's copies, in their order: the best first)
+            var fb = _d.fallbacks.filter(function (st) { return /^https?:\/\//i.test(st.url || ''); }), nx = fb.filter(function (st) { return tried.indexOf(Stremio.sourceId(st)) === -1; })[0];
+            return nx ? { source: playableSources([nx])[0], total: fb.length } : null;
+        }
         serverNow(_d && _d.streams);
         var rows = (_d && _d.streams) ? filterRows(rankRowsFor(_d.streams)) : [], seen = {}, all = [];   // (within the filter: Addon ▾ / Resolution ▾)
         rows.forEach(function (r) {
@@ -2112,6 +2117,9 @@
         // Single-source live: skip the (already-skipped) source/info pages and go
         // straight back to the home grid, on the tab we came from.
         var zap = (_d && _d.channels && _d.channels.list.length > 1) ? zapChannel : null;
+        var lists = (_d && _d.live && /^iptv:/.test(videoId || '')) ? zapList : null;   // (the player's channel list)
+        var behindOk = !!(exitToBack && _d && _d.live) || undefined;   // (BACK: it can play on behind the menus, Settings › Playback › Live TV)
+        if (lists) { U.store.set('stremiok.iptv.last', { id: videoId, type: _d.type, name: label }); }   // (Settings › Home › Start on › Last IPTV channel)
         // Once it plays (or fails to): Formats learn from it; Played before and the series'
         // preferred source (Next episode) remember it, or forget it.
         var titleId = _d && _d.id, series = _d && _d.type === 'series', vtype = _d && _d.type;
@@ -2175,7 +2183,7 @@
                     variantUrl: YTPlay.resolverUrl(ytPage),
                     initialQualityHeight: 1080,
                     type: _d.type, id: videoId, name: label,
-                    poster: _d.meta && _d.meta.poster, streams: [], yt: ytPage, zap: zap, zapTo: zap ? zapToChannel : null
+                    poster: _d.meta && _d.meta.poster, streams: [], yt: ytPage, zap: zap, zapTo: zap ? zapToChannel : null, zapList: lists, behindOk: behindOk
                 }, onExit);
             }, function () {
                 U.spinner(false);
@@ -2186,10 +2194,10 @@
             return;
         }
         var ctx = { url: stream.url, type: _d.type, addonType: _d.addonType, id: videoId, name: label, parent: _d.id,
-            poster: _d.meta.poster, background: _d.meta.background, streams: playableSources(), _headers: U.sanitizeHeaders(stream._headers) || undefined, zap: zap, zapTo: zap ? zapToChannel : null,
+            poster: _d.meta.poster, background: _d.meta.background, streams: playableSources(), _headers: U.sanitizeHeaders(stream._headers) || undefined, zap: zap, zapTo: zap ? zapToChannel : null, zapList: lists, behindOk: behindOk,
             localSubs: stream._localSubs, localFile: stream._localFile,
             subExtra: fileHintsOf(stream), sourceSubs: sourceSubsOf(stream), formatInfo: Stremio.streamInfo(stream), fromStart: !!(how && how.fromStart) || undefined, viaService: !!(how && how.viaService) || undefined,
-            titleIds: titleIdsOf(_d.meta, videoId), stream: stream, nextSource: nextSourceFor, downloadAs: typeof Downloads !== 'undefined' ? downloadTitle(videoId) : undefined,
+            titleIds: titleIdsOf(_d.meta, videoId), stream: stream, nextSource: nextSourceFor, liveFallbacks: !!_d.fallbacks || undefined, downloadAs: typeof Downloads !== 'undefined' ? downloadTitle(videoId) : undefined,
             onStarted: learn.onStarted, onFailed: learn.onFailed, learnFor: learnFor };
         if (_d.type === 'series' && _d.meta.videos) {
             // (only episodes that are out: Previous / Next, the near-the-end preload and the next
@@ -2279,13 +2287,27 @@
         var m = ch.list[target].meta;
         U.toast((target + 1) + ' / ' + n + '    ' + (m.name || m.title || ''), 1600);
     }
+    // A channel picked in the player's channel list: that list (a group, or your favorites) is
+    // the row from then on (CH+ / CH− and the number keys go through it), and the channel tuned.
+    function zapList(metas, idx) {
+        if (!_d || !metas || !metas[idx]) { return null; }
+        if (_zap) { clearTimeout(_zap.timer); _zap = null; }
+        var on = -1;
+        metas.forEach(function (m, i) { if (m.id === _d.id) { on = i; } });
+        _d.channels = { list: metas.map(function (m) { return { meta: m }; }), idx: on !== -1 ? on : idx };
+        var keys = metas.length > 1 ? { zap: zapChannel, zapTo: zapToChannel } : { zap: null, zapTo: null };
+        if (on === idx) { return keys; }   // (the one playing: the row is that list now, nothing to tune)
+        U.toast((idx + 1) + ' / ' + metas.length + '    ' + (metas[idx].name || ''), 1600);
+        tuneTo(idx);
+        return keys;
+    }
     // Each tune is numbered: only the latest one's answer starts playback, clears the spinner or
     // shows an error (an older, slower lookup arriving later can't replace the channel you
     // chose since). Its lookup isn't stopped (it fills the source cache), only ignored.
     var _tuneGen = 0;
     function tuneTo(idx) {
         var page = _d, ch = page && page.channels;
-        if (!ch || !Player.isActive()) { return; }
+        if (!ch || !Player.inUse()) { return; }
         var gen = ++_tuneGen;
         ch.tuning = idx;
         var m = ch.list[idx].meta, type = m.type || page.type, name = m.name || m.title || U.t('Live');
@@ -2293,7 +2315,7 @@
         Stremio.getStreams(type, m.id).then(function (list) {
             if (gen !== _tuneGen) { return; }   // (a later channel was chosen: its own answer handles the spinner)
             ch.tuning = null;
-            if (_d !== page || !Player.isActive()) { U.spinner(false); return; }   // left the player meanwhile
+            if (_d !== page || !Player.inUse()) { U.spinner(false); return; }   // left the player meanwhile
             var playable = list.filter(Stremio.isPlayable);
             if (!playable.length) { U.spinner(false); U.toast(U.t('No playable source for {name}', { name: name })); return; }
             ch.idx = idx;
@@ -2303,7 +2325,7 @@
         }, function () {
             if (gen !== _tuneGen) { return; }
             ch.tuning = null;
-            if (_d !== page || !Player.isActive()) { U.spinner(false); return; }
+            if (_d !== page || !Player.inUse()) { U.spinner(false); return; }
             U.spinner(false);
             U.toast(U.t('Couldn\'t load {name}', { name: name }));
         });

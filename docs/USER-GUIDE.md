@@ -109,7 +109,7 @@ where it came from.
   describing shows from your files) answers before Cinemeta, move Cinemeta above it. The
   order of the addons that give sources is set separately, in Settings › Playback ›
   [Source ranking](SETTINGS.md#source-ranking).
-- OK on an addon: *Refresh*, *Remove*, *Share* (a QR code of its link, to add it elsewhere: it
+- **↻** on an addon's row reads it again. OK on an addon: *Remove*, *Share* (a QR code of its link, to add it elsewhere: it
   carries any personal parts of the link, your tokens, so only show it to your own devices)
   and, for an addon with a setup page, *Configure* (a QR code of that page, to change its
   settings on your phone; adding the new link it gives you replaces the old one).
@@ -154,7 +154,7 @@ where it came from.
 | 0–9 | The top menu's items (see below); in the player, the subtitles' [timing, position and size](#keys-while-it-plays); on a live channel, a [channel number](#iptv-and-radio). |
 | UP / DOWN in the player | The quick bar / the menu ([While it plays](#while-it-plays)). |
 | Red / Green / Yellow / Blue in the player | Audio tracks / subtitles / sources / stream info. |
-| CH+ / CH− | The next / previous channel while one plays. |
+| CH+ / CH− | The next / previous channel while one plays (LEFT: the [channel list](#iptv-and-radio)). |
 | Guide | The Guide tab (instead of the TV's own guide). |
 
 **Number keys outside the player** (not while typing) pick the top menu's items, left to right:
@@ -542,7 +542,7 @@ HDR10 · Atmos · 5.1 · MKV`).
   place is saved (sent to Trakt too); coming back, it waits paused (OK plays on). A live
   channel plays on.
 - A stalled stream reloads at the same position; a live channel that drops reconnects (see
-  *Reconnect live channels* in [Settings](SETTINGS.md#seeking--buffering)).
+  *Reconnect live channels* in [Settings](SETTINGS.md#live-tv)).
   See [Troubleshooting](TROUBLESHOOTING.md#playback) when it keeps happening.
 
 ## Subtitles and audio
@@ -621,12 +621,17 @@ per genre. Its own TV guide isn't read: set one with *Guide link*. Each shows it
 counts, last download and any error (a failed refresh keeps the saved copy).
 
 - **▲ / ▼** set the order: a channel in two playlists comes from the first, and rows follow
-  the order.
+  the order. **↻** downloads one again.
 - OK on one: *Rename*, *Turn off* / *Turn on* (off: its channels hidden, its copy kept), *Edit
-  link*, *Guide link*, *Reload*, *Remove*.
-- **A big Stalker portal:** *Channel groups* (OK on it) reads only the genres you tick.
+  link*, *Guide link*, *Channel groups*, *Remove*.
+- **A big playlist:** *Channel groups* keeps the groups you tick (or *▣ From phone*: tick them
+  there); StremioK's service reads one
+  up to 250 MB. Xtream: *Live TV only* drops its films and series.
+- **Tidier lists** (each off until set): *Merge duplicate channels* (one tile: each copy a
+  source, the best quality first, or the best played at once and the next if it doesn't start), *Countries first* and *Hide channels with these words*.
+  A playlist's divider lines ("-----", "#### UK ####") never show.
 - **Auto-refresh** (*Off* by default): every hour, 3, 6 or 12 hours, all playlists and their
-  TV guides are downloaded again, as *Reload* does, so a channel whose guide came late is back
+  TV guides are downloaded again, as ↻ does, so a channel whose guide came late is back
   on the Guide tab. Never while something plays.
 
 ### Films and series from Xtream and Stalker
@@ -640,7 +645,7 @@ An Xtream account's films and series come with its channels, as do a Stalker por
 - **On your own titles:** a film or episode you open from your addons lists the provider's copy
   among its sources (*Xtream*, *Stalker*). Order it, or turn it off, in Source ranking's addons list.
 - **Xtream, the first time:** the account's list is read (a minute or two for a big one, then
-  once a day): until then its row, Search and copies stay empty. *Reload* on
+  once a day): until then its row, Search and copies stay empty. ↻ on
   the account (Settings › Content › IPTV) reads its films and series again at once.
 - **Stalker:** titles are read as you browse; a copy is found by searching the portal by name. A portal without a series section may list its shows among the films.
 - A copy plays only if the TV plays its file: MKV with DTS sound often doesn't.
@@ -660,6 +665,15 @@ An Xtream account's films and series come with its channels, as do a Stalker por
   alone; OK on a program finds that film in your addons (else Search).
 - **CH+ / CH−** switch through the row a channel came from; the one you stop on starts after a
   short pause; BACK lands on its card.
+- **The channel list:** LEFT while a channel plays (or *≡ Channels* on the quick bar). Your
+  favorites, then each group; ←/→ the group, ↑/↓ the channel, with what's on now and next. OK
+  watches it, and CH+ / CH− then go through that group.
+- **The channel browser** (Settings › Home › *IPTV tab*): the IPTV tab as groups, a
+  group's channels with what's on now, and the focused one's now and next. OK watches it, hold OK
+  for its menu.
+- **Behind the menus** (Settings › Playback › Live TV, off by default): BACK keeps a channel playing
+  behind Home. ▶ brings it back full screen, ■ stops it, CH+ / CH− change it; opening anything
+  else stops it.
 - **A channel's number:** type its position in that row (7, or 1 then 2 for 12).
 - Live streams show **● LIVE**: no seeking or resume.
 - **DRM channels:** Widevine and PlayReady play if the playlist's license server licenses the TV;
@@ -678,9 +692,19 @@ An Xtream account's films and series come with its channels, as do a Stalker por
 
 - **Where it comes from:** the guide link a playlist names (`url-tvg`), or an Xtream
   playlist's (`get.php`) own guide. *Guide link* (OK on a playlist) sets another, or puts back
-  the automatic one. It's read again every 6 hours, or at once with the playlist's *Reload* (its limits: [TV guide](TECHNICAL-REFERENCE.md#tv-guide)).
-- A channel is matched by its `tvg-id`, else by its name. One without a logo in its playlist
-  gets the guide's.
+  the automatic one. It's read again every 6 hours, or at once with the playlist's ↻ (its limits: [TV guide](TECHNICAL-REFERENCE.md#tv-guide)).
+- A channel is matched by its `tvg-id`, else by its name, in its country ("TR: FOX" takes the
+  Turkish FOX, never the American). A name two countries' channels share takes neither. One
+  without a logo in its playlist gets the guide's.
+- **Extra TV guides** (Settings › Content › IPTV › TV guide, none until added): epgshare01's free guides by
+  country, or any guide's link, read for the channels your playlists' guides leave empty.
+- ***TV guide names*** › *Also other forms*: for guides that write "Canal Telefé (Argentina)", and
+  playlists that tag names ("ENT| Pasiones").
+- **Which channel got which:** Settings › Diagnostics › TV guide matches.
+- **Catch-up** (a channel whose playlist offers it: an Xtream account's, a Stalker portal's): programs shown
+  already, within its days, are marked ↺ on the Guide tab and in a channel's schedule; OK plays one
+  as a recording. Hold OK on what's on now: *⏮ From the start*. An Xtream account's *Catch-up
+  time* (OK on it) sets its server's time zone, when its own is wrong.
 - **Channel cards** show what's on now and how far along it is; Home's details strip adds its
   description and what's next.
 - **While a channel plays,** the bar at the bottom shows Now and Next.

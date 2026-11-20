@@ -69,7 +69,8 @@ locally, use a wrapper package, or use the
 | `js/hubpreview.js` | Continue Watching on the TV's home bar: sends the tiles to `service/preview.js` (the sideloaded app, Tizen 4 and later) |
 | `js/view-core.js` | Shared view pieces: dialogs, pick lists, the top menu (Home, Discover, Search, Settings and title pages), poster cards, Add to Continue Watching, poster long-press actions |
 | `js/view-home.js` | Home: tabs, catalog rows (loading, saved copy, refresh), details strip, Continue Watching, NEW badges |
-| `js/view-guide.js` | The Guide tab: the TV guide as a grid (channels by hours), its D-pad moves |
+| `js/view-guide.js` | The Guide tab: the TV guide as a grid (channels by hours), D-pad moves |
+| `js/view-iptv.js` | The IPTV tab's channel browser |
 | `js/view-detail.js` | Title pages: ranked sources (Play best, Played before), seasons / episodes, Cast & more, person pages, ratings grid, trailers, bulk watched, playback launch, CH+/CH−, next-episode matching |
 | `js/view-search.js` | Search: one row per searchable catalog (loads more as you scroll right), a People row (TMDB), recent searches |
 | `js/view-settings.js` | Settings sections (incl. Formats) and the text-entry pages (add addon / playlist) |
@@ -80,7 +81,7 @@ locally, use a wrapper package, or use the
 | `service/preview.js` | The home bar preview service: sets the tiles `js/hubpreview.js` sends, and sets them again when the TV asks (the sideloaded app only) |
 | `service/cacert.pem` | The trusted certificates downloads use (the 2017 TV's own list is too old for many servers) |
 
-The views are split into seven parts (`view-core`, `view-home`, `view-guide`, `view-detail`,
+The views are in eight parts (`view-core`, `view-home`, `view-guide`, `view-iptv`, `view-detail`,
 `view-search`, `view-settings`, `view-discover`) that share one namespace, `ViewParts`: each publishes the
 functions the others use and reaches theirs through small forwarders, resolved when called,
 so the parts can load in any order. `views.js` loads after them (see `index.html`) and

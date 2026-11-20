@@ -3,6 +3,29 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.4.5 — 2026-11-20
+Much of this release comes from ediziks' IPTV work (#29), ported and made configurable. Thank you!
+- **Big playlists:** StremioK's service reads an M3U up to 250 MB, or an Xtream account's live
+  channels from its API, and the TV gets only the *Channel groups* you pick: on the TV, or
+  ticked on your phone (*▣ From phone*). Xtream: *Live TV only*.
+- **Tidier channel lists** (Settings › Content › IPTV › *Channel list*): *Merge duplicate
+  channels*, *Countries first*, *Hide channels with these words*. Divider lines no longer show.
+- **TV guides matched by country** ("TR: FOX" takes the Turkish guide), bigger guides read whole,
+  *Extra TV guides* (epgshare01's or any link) and *TV guide names* (Settings › Content › IPTV ›
+  *TV guide*), and *TV guide matches* in Diagnostics.
+- **Catch-up:** past programs marked ↺ on the Guide and in a channel's schedule play as
+  recordings; *⏮ From the start* for what's on. Xtream accounts, playlists with catch-up
+  attributes and Stalker portals. A recording the provider refuses says so.
+- **The channel list in the player:** LEFT on a live channel, with what's on now and next; CH+ /
+  CH− then go through that group.
+- ***Live TV behind the menus*** (Settings › Playback › *Live TV*, off by default): BACK keeps a
+  channel playing behind Home.
+- ***IPTV tab › Channel browser*** (Settings › Home): groups, channels and what's on, in three
+  panes. *Start on* can also play the last IPTV or Guide channel.
+- **↻ on an addon's or a playlist's row** reads it again. Lists to tick have their buttons on top.
+- **Fixed:** *Skip intro* sometimes jumped back after a pause; the Guide tab could stay on
+  *Loading…*; changing *Channel groups* showed the old ones for minutes.
+
 ## 2.4.4 — 2026-11-18
 - **Profile pictures** (Settings › Profiles › a profile › *Picture*): a photo from your phone or
   an image link, made small and kept with the profile, in place of its initial (#25).

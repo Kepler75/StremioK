@@ -279,6 +279,23 @@ var ViewParts = {};
         });
     }
 
+    // An addon's manifest asked for again (its row's ↻ in Settings › Content › Addons): just this
+    // one; the others keep theirs.
+    function addonRefresh(url) {
+        U.spinner(true);
+        return Stremio.refreshAddon(url).then(function () {
+            refreshAddonRows(url);
+            U.spinner(false);
+            U.toast(U.t('Addon refreshed'));
+            renderSettings();
+        }, function () {
+            U.spinner(false);
+            var why = Stremio.manifestProblem ? Stremio.manifestProblem(url) : '', said = Stremio.manifestDetail ? Stremio.manifestDetail(url) : '';
+            U.toast(U.t('Could not refresh addon') + (why ? ' (' + why + ')' : '') + (said ? ': ' + said : ''), said ? 8000 : 3000);
+            renderSettings();   // (its row shows the reason)
+        });
+    }
+
     function addonActions(name, url) {
         var existing = document.querySelector('.modal-overlay');
         if (existing) { existing.parentNode.removeChild(existing); }
@@ -291,7 +308,6 @@ var ViewParts = {};
         var row = U.el('div', 'modal-row');
 
         var cancel = U.el('div', 'pill focusable modal-btn', U.t('Cancel'));
-        var refresh = U.el('div', 'pill focusable modal-btn', U.t('Refresh'));
         var remove = U.el('div', 'pill focusable modal-btn danger', U.t('Remove'));
         // Turn off / on: kept in your list, not asked for anything while it's off (a backup)
         var isOff = !!(Stremio.isAddonOff && Stremio.isAddonOff(url));
@@ -308,22 +324,6 @@ var ViewParts = {};
             closeModal();
         };
 
-        refresh.__onselect = function () {
-            closeModal();
-            U.spinner(true);
-  
-            Stremio.refreshAddon(url).then(function () {   // just this one; the others keep theirs
-                refreshAddonRows(url);
-                U.spinner(false);
-                U.toast(U.t('Addon refreshed'));
-                renderSettings();
-            }, function () {
-                U.spinner(false);
-                var why = Stremio.manifestProblem ? Stremio.manifestProblem(url) : '', said = Stremio.manifestDetail ? Stremio.manifestDetail(url) : '';
-                U.toast(U.t('Could not refresh addon') + (why ? ' (' + why + ')' : '') + (said ? ': ' + said : ''), said ? 8000 : 3000);
-                renderSettings();   // (its row shows the reason)
-            });
-        };
 
         remove.__onselect = function () {
             closeModal();
@@ -348,7 +348,6 @@ var ViewParts = {};
             };
         }
         row.appendChild(cancel);
-        row.appendChild(refresh);
         row.appendChild(onoff);
         if (configure) { row.appendChild(configure); }
         row.appendChild(share);
@@ -359,6 +358,21 @@ var ViewParts = {};
 
         showModal(overlay, cancel);
         }
+
+    // A playlist downloaded again (its row's ↻ in Settings › Content › IPTV); an Xtream account's
+    // or a Stalker portal's films and series too. One that's off: turned on first, said so.
+    function playlistReload(playlist) {
+        if (playlist.off) { U.toast(U.t('It’s off: OK on it, then Turn on'), 3000); return Promise.resolve(); }
+        U.toast(U.t('Reloading playlist…'), 4000);
+        if (typeof XtVod !== 'undefined' && XtVod.reload) { XtVod.reload(playlist.id); }   // (an Xtream account: its films and series too)
+        if (typeof StVod !== 'undefined' && StVod.reload) { StVod.reload(playlist.id); }   // (a Stalker portal: the same)
+        return Stremio.iptvReload(playlist.id).then(function () {
+            refreshAddonRows('local:iptv');
+            var st = Stremio.iptvStatus(playlist.id);
+            U.toast(st.error ? U.t('Reload failed: {why}', { why: st.error }) : U.t('Loaded {n} channels', { n: st.count }), 4000);
+            renderSettings();
+        });
+    }
 
     function playlistActions(playlist, label) {
         var existing = document.querySelector('.modal-overlay');
@@ -383,21 +397,24 @@ var ViewParts = {};
             U.toast(U.t('Its channels now play as {format} (reading the account again…)', { format: fmt === 'hls' ? 'MPEG-TS' : 'HLS' }), 4000);
             renderSettings();
         };
-        var groups = U.el('div', 'pill focusable modal-btn', U.t('Channel groups'));   // (a Stalker portal: the genres to read)
+        // Channel groups: the ones to read (a Stalker portal's genres; since 2.4.5 an M3U's or an
+        // Xtream account's too, read by StremioK's service: see IPTV.playlistGroups)
+        var portal = IPTV.isStalker(playlist);
+        var groups = U.el('div', 'pill focusable modal-btn', U.t('Channel groups'));
         groups.__onselect = function () {
             closeModal();
-            U.toast(U.t('Asking the portal for its groups…'), 4000);
-            IPTV.stalkerGroups(playlist.id).then(function (list) {
-                if (!list.length) { U.toast(U.t('The portal lists no groups'), 4000); return; }
-                pickMany(U.t('Groups to read from “{name}”', { name: label }), list.map(function (g) { return { key: g.id, label: g.title }; }), {
-                    on: playlist.genres, none: true,
-                    button: function (n) { return n ? U.tn(n, 'Read {n} group', 'Read {n} groups') : U.t('Read as Stalker channels says'); }
+            U.toast(portal ? U.t('Asking the portal for its groups…') : U.t('Reading the playlist’s groups…'), portal ? 4000 : 8000);
+            IPTV.playlistGroups(playlist.id).then(function (list) {
+                if (!list.length) { U.toast(portal ? U.t('The portal lists no groups') : U.t('The playlist lists no groups'), 4000); return; }
+                pickMany(U.t('Groups to read from “{name}”', { name: label }), list.map(function (g) { return { key: g.id, label: g.title, n: g.n, note: g.n ? U.tn(g.n, '{n} channel', '{n} channels') : '' }; }), {
+                    on: playlist.genres, none: true, phone: true,
+                    button: function (n) { return n ? U.tn(n, 'Read {n} group', 'Read {n} groups') : portal ? U.t('Read as Stalker channels says') : U.t('Read every group'); }
                 }, function (keys) {
-                    IPTV.setStalkerGroups(playlist.id, keys);
+                    IPTV.setPlaylistGroups(playlist.id, keys);
                     refreshAddonRows('local:iptv');
-                    U.toast(U.t('Reading the portal…'), 4000);
+                    U.toast(portal ? U.t('Reading the portal…') : U.t('Reloading playlist…'), 4000);
                     renderSettings();
-                    Stremio.iptvReload(playlist.id).then(function () {
+                    (Stremio.iptvRegroup ? Stremio.iptvRegroup() : Stremio.iptvReload(playlist.id)).then(function () {   // (not downloaded again: only the groups asked)
                         refreshAddonRows('local:iptv');
                         var st = Stremio.iptvStatus(playlist.id);
                         U.toast(st.error ? U.t('Reload failed: {why}', { why: st.error }) : U.t('Loaded {n} channels', { n: st.count }), 4000);
@@ -406,7 +423,26 @@ var ViewParts = {};
                 });
             }, function (e) { U.toast(U.problem(e), 5000); });
         };
-        var reload = U.el('div', 'pill focusable modal-btn', U.t('Reload'));
+        // Catch-up time (an Xtream account with catch-up): its server's own, as it says, or yours
+        var cuTime = U.el('div', 'pill focusable modal-btn', U.t('Catch-up time'));
+        cuTime.__onselect = function () {
+            closeModal();
+            var now = IPTV.catchupTz(playlist.id), opts = [['auto', U.t('As the server says (default)')]];
+            for (var h = -12; h <= 14; h++) { opts.push([String(h * 60), 'UTC' + (h < 0 ? '−' + (-h) : '+' + h)]); }
+            pickList(U.t('Catch-up time for “{name}”', { name: label }), opts, now === null ? 'auto' : String(now), function (v) {
+                IPTV.setCatchupTz(playlist.id, v === 'auto' ? null : +v);
+                U.toast(v === 'auto' ? U.t('Catch-up: the server’s own time') : U.t('Catch-up: its programs asked for in {tz}', { tz: 'UTC' + (+v < 0 ? '−' + (-v / 60) : '+' + (+v / 60)) }), 4000);
+            });
+        };
+        var noVod = IPTV.liveOnly ? IPTV.liveOnly(playlist.id) : false;   // (an Xtream account: its Movies and Series, or Live TV only)
+        var vod = U.el('div', 'pill focusable modal-btn', noVod ? U.t('Show its movies & series') : U.t('Live TV only'));
+        vod.__onselect = function () {
+            closeModal();
+            Stremio.iptvSetLiveOnly(playlist.id, !noVod);
+            refreshAddonRows('local:iptv');
+            U.toast(noVod ? U.t('Its movies and series are back') : U.t('Live TV only: its movies and series are hidden'), 4000);
+            renderSettings();
+        };
         var remove = U.el('div', 'pill focusable modal-btn danger', U.t('Remove'));
 
         cancel.__onselect = function () { closeModal(); };
@@ -461,18 +497,6 @@ var ViewParts = {};
                 }
             });
         };
-        reload.__onselect = function () {
-            closeModal();
-            U.toast(U.t('Reloading playlist…'), 4000);
-            if (typeof XtVod !== 'undefined' && XtVod.reload) { XtVod.reload(playlist.id); }   // (an Xtream account: its films and series too)
-            if (typeof StVod !== 'undefined' && StVod.reload) { StVod.reload(playlist.id); }   // (a Stalker portal: the same)
-            Stremio.iptvReload(playlist.id).then(function () {
-                refreshAddonRows('local:iptv');
-                var st = Stremio.iptvStatus(playlist.id);
-                U.toast(st.error ? U.t('Reload failed: {why}', { why: st.error }) : U.t('Loaded {n} channels', { n: st.count }), 4000);
-                renderSettings();
-            });
-        };
         remove.__onselect = function () {
             closeModal();
             Stremio.iptvRemovePlaylist(playlist.id);
@@ -487,8 +511,9 @@ var ViewParts = {};
         row.appendChild(edit);
         if (!playlist.off && typeof EPG !== 'undefined' && EPG.available && EPG.available()) { row.appendChild(guide); }
         if (!playlist.off && fmt) { row.appendChild(format); }
-        if (!playlist.off && IPTV.isStalker(playlist)) { row.appendChild(groups); }
-        if (!playlist.off) { row.appendChild(reload); }
+        if (!playlist.off && fmt) { row.appendChild(vod); }
+        if (!playlist.off && fmt && IPTV.hasCatchup && IPTV.hasCatchup(playlist.id)) { row.appendChild(cuTime); }
+        if (!playlist.off && (IPTV.canGroup ? IPTV.canGroup(playlist) : portal)) { row.appendChild(groups); }
         row.appendChild(remove);
         box.appendChild(row);
         overlay.appendChild(box);
@@ -529,9 +554,14 @@ var ViewParts = {};
 
     // Ticks in a popup (what to import): nothing ticked at first; OK on one ticks or unticks it,
     // Select all ticks every one that can be (again: none); the button counts what's ticked.
+    // The buttons above the list (a long one: no scrolling to its end for them), reached by UP
+    // from its first line and left by DOWN to it; Cancel under it, by DOWN from its last line
+    // (said, not measured: the lines scrolled out of the list still report places under and over
+    // it, so a measured move skipped the buttons). The remote's PLAY does what the button does, BACK what Cancel does.
     // items: [{ key, label, have (already yours: shown as such, can't be ticked), note }];
     // opts: { button(n) -> its label, haveText, on (keys ticked at first), none (the button works
-    // with nothing ticked) }; onDone(keys) on the button with something ticked (Cancel / BACK: nothing).
+    // with nothing ticked), phone (a From your phone button: phonePick's list, ticked there) };
+    // onDone(keys) on the button with something ticked (Cancel / BACK: nothing).
     function pickMany(title, items, opts, onDone) {
         var existing = document.querySelector('.modal-overlay');
         if (existing) { existing.parentNode.removeChild(existing); }
@@ -568,8 +598,7 @@ var ViewParts = {};
             nodes.push(n);
             listEl.appendChild(n);
         });
-        box.appendChild(listEl);
-        var row = U.el('div', 'modal-row');
+        var row = U.el('div', 'modal-row pick-top');
         go.__onselect = function () {
             var keys = ticked();
             if (!keys.length && !opts.none) { U.toast(U.t('Nothing ticked: OK on one ticks it'), 2500); return; }
@@ -580,11 +609,72 @@ var ViewParts = {};
         var cancel = U.el('div', 'pill focusable modal-btn', U.t('Cancel'));
         cancel.__onselect = function () { closeModal(); };
         row.appendChild(go);
-        row.appendChild(cancel);
+        if (opts.phone && typeof YTPlay !== 'undefined' && YTPlay.entryGive && (!YTPlay.installMode || YTPlay.installMode() !== 'browser')) {
+            var phone = U.el('div', 'pill focusable modal-btn', U.t('▣  From phone'));
+            phone.__onselect = function () { var t = ticked(); closeModal(); phonePick(title, items.filter(function (it) { return !it.have; }), t, opts, onDone); };   // (closed first: focus back on the screen, as phonePick's own close expects)
+            row.appendChild(phone);
+        }
         box.appendChild(row);
+        box.appendChild(listEl);
+        var under = U.el('div', 'modal-row pick-under');   // (Cancel under the list: the row above stays one line)
+        under.appendChild(cancel);
+        box.appendChild(under);
+        var first = listEl.firstChild, end = listEl.children[listEl.children.length - 1];
+        if (first) { first.__goUP = function () { return go; }; }
+        Array.prototype.forEach.call(row.children, function (b) { b.__goUP = function () { return false; }; b.__goDOWN = function () { return first || cancel; }; });
+        if (end) { end.__goDOWN = function () { return cancel; }; }
+        cancel.__goUP = function () { return end || go; };
+        cancel.__goDOWN = function () { return false; };
+        Array.prototype.forEach.call(box.querySelectorAll('.focusable'), function (n) { n.__onplay = function () { go.__onselect(); }; });   // (PLAY: as the button, wherever focus is; BACK: as Cancel)
         overlay.appendChild(box);
         document.body.appendChild(overlay);
-        showModal(overlay, listEl.firstChild || cancel);
+        showModal(overlay, first || cancel);
+    }
+
+    // pickMany's list ticked on the phone: a QR to the service's one-time page (YTPlay.entryGive,
+    // kind 'groups') with a tick per item, as ticked on the TV; what's sent there (the keys, polled
+    // as an entry's text) does what the TV's button would. Back: to the TV's list, as it was.
+    function phonePick(title, items, on, opts, onDone) {
+        var was = {}; on.forEach(function (k) { was[k] = true; });
+        var list = JSON.stringify({ title: title, items: items.map(function (it) { return { k: it.key, name: it.label, n: it.n || 0, on: !!was[it.key] }; }) });
+        var existing = document.querySelector('.modal-overlay');
+        if (existing) { existing.parentNode.removeChild(existing); }
+        var overlay = U.el('div', 'modal-overlay'), box = U.el('div', 'modal-box qr-box');
+        box.appendChild(U.el('div', 'modal-msg', title));
+        var spot = U.el('div', 'qr-spot'), how = U.el('div', 'qr-note', U.t('Opening the page for your phone…')), link = U.el('div', 'qr-link', '');
+        box.appendChild(spot); box.appendChild(link); box.appendChild(how);
+        var row = U.el('div', 'modal-row'), back = U.el('div', 'pill focusable modal-btn', U.t('Tick them on the TV'));
+        var token = null, timer = null, over = false;
+        back.__onselect = function () { closeModal(); pickMany(title, items, { button: opts.button, haveText: opts.haveText, on: on, none: opts.none, phone: opts.phone }, onDone); };
+        row.appendChild(back); box.appendChild(row); overlay.appendChild(box);
+        document.body.appendChild(overlay);
+        showModal(overlay, back);
+        onModalClose(function () { over = true; if (timer) { clearTimeout(timer); } if (token && YTPlay.entryClose) { YTPlay.entryClose(token); } token = null; });
+        function poll() {
+            timer = setTimeout(function () {
+                timer = null;
+                if (over || !token) { return; }
+                YTPlay.entryPoll(token).then(function (text) {
+                    if (over) { return; }
+                    if (text === null) { poll(); return; }
+                    token = null;   // (collected: the service closed it)
+                    var known = {}; items.forEach(function (it) { known[it.key] = true; });
+                    var keys = text === '-' ? [] : text.split(',').filter(function (k) { return known[k]; });
+                    closeModal();
+                    if (!keys.length && !opts.none) { U.toast(U.t('Nothing ticked: OK on one ticks it'), 2500); return; }
+                    onDone(keys);
+                }, function () { if (!over) { how.textContent = U.t('The phone page closed. Tick them on the TV, or try again.'); token = null; } });
+            }, ENTRY_POLL_MS);
+        }
+        YTPlay.entryGive(list, 'groups').then(function (r) {
+            if (over) { if (r && r.token) { YTPlay.entryClose(r.token); } return; }
+            if (!r || !r.url) { throw new Error('no page'); }
+            token = r.token;
+            spot.appendChild(qrSpotCanvas(r.url));
+            link.textContent = r.url;
+            how.textContent = U.t('Scan it with your phone (on the same Wi-Fi as the TV), tick them there and send. Only for the next 5 minutes, and once; unencrypted over your home network.');
+            poll();
+        }, function () { if (!over) { how.textContent = U.t('Your phone can’t reach the TV just now (no home network, or StremioK’s service isn’t running).'); } });
     }
 
     function _current() {
@@ -816,6 +906,23 @@ var ViewParts = {};
             }
         };
     }
+    // A program's catch-up (IPTV.catchupStream: a past one within its channel's days, or the one on
+    // now from its start), played as a recording: seekable, nothing remembered (an IPTV id), back
+    // where it was picked. id: the channel's; p: the program. false when it has none.
+    function playCatchup(id, name, logo, p) {
+        var st = typeof IPTV !== 'undefined' && IPTV.catchupStream ? IPTV.catchupStream(id, p.start, p.stop) : null;
+        if (!st) { return false; }
+        var back = Focus.current(), scope = _current();
+        function go(s) {
+            Player.play({ url: s.url, type: 'tv', id: id, name: p.title + '   ·   ' + name, poster: logo || '', streams: [], stream: s, _headers: s._headers || undefined, fromStart: true },
+                function () { if (back && document.documentElement.contains(back)) { Focus.setScope(scope, back); } });
+        }
+        if (!st._later) { go(st); return true; }
+        U.spinner(true);   // (a Stalker portal's recording: its link from the service first)
+        st._later().then(function (s) { U.spinner(false); go(s); }, function (e) { U.spinner(false); U.toast(U.t('Couldn’t open this recording ({why})', { why: U.problem(e) }), 6000); });
+        return true;
+    }
+    function catchupOk(id, p) { return !!(typeof IPTV !== 'undefined' && IPTV.catchupStream && IPTV.catchupStream(id, p.start, p.stop)); }
     // Hold OK on a channel card: ▶ Watch now, ★ Add to / Remove from favorites, and its schedule
     // from 2 hours ago to tomorrow (what's on now marked, and picked); OK on a program says
     // what it is. A channel without a guide: the first two.
@@ -829,9 +936,9 @@ var ViewParts = {};
             var fav = IPTV.isFavorite(meta.id), t = Date.now() / 1000, at = 'play';
             var items = [['play', U.t('▶  Watch now')], ['fav', fav ? U.t('★  Remove from favorites') : U.t('★  Add to favorites')]];
             list.forEach(function (p, i) {
-                var on = p.start <= t && t < p.stop;
-                if (on) { at = 'p' + i; }
-                items.push(['p' + i, (on ? '●  ' : '') + EPG.dayTime(p.start) + '   ' + p.title]);
+                var on = p.start <= t && t < p.stop, cu = !on && p.stop <= t && catchupOk(meta.id, p);
+                if (on) { at = 'p' + i; if (catchupOk(meta.id, p)) { items.push(['s' + i, '⏮  ' + U.t('From the start: “{title}”', { title: p.title })]); } }
+                items.push(['p' + i, (on ? '●  ' : cu ? '↺  ' : '') + EPG.dayTime(p.start) + '   ' + p.title]);
             });
             pickList((meta.name || '') + (list.length ? '  ·  ' + U.t('TV guide') : ''), items, at, function (v) {
                 if (v === 'play') { card.__onselect(); return; }
@@ -842,6 +949,7 @@ var ViewParts = {};
                     return;
                 }
                 var p = list[+v.slice(1)];
+                if (p && (v.charAt(0) === 's' || p.stop <= Date.now() / 1000) && playCatchup(meta.id, meta.name || '', meta.logo || meta.poster, p)) { return; }   // (↺: its catch-up; ⏮: what's on, from its start)
                 if (p) { U.toast(EPG.dayTime(p.start) + '–' + EPG.hhmm(p.stop) + '   ' + p.title + (p.desc ? ':  ' + p.desc : ''), 8000); }
             });
         });
@@ -1051,6 +1159,10 @@ var ViewParts = {};
     // ----- published for the other parts (and js/views.js) -----
     V._current = _current;
     V.addonActions = addonActions;
+    V.playCatchup = playCatchup; V.liveSchedule = liveSchedule;
+    V.catchupOk = catchupOk;
+    V.addonRefresh = addonRefresh;
+    V.playlistReload = playlistReload;
     V.buildTopMenu = buildTopMenu;
     V.profilePicker = profilePicker; V.switchProfile = switchProfile; V.profileBadge = profileBadge; V.PROFILE_COLORS = PROFILE_COLORS;
     V.closeModal = closeModal;

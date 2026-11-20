@@ -185,6 +185,8 @@ var Stremio = (function () {
             hiddenTabs: wordList(p.hiddenTabs, 20, 20),   // Settings > Home > Menu: tabs hidden
             menuOrder: wordList(p.menuOrder, 20, 20),     // ...and the menu's order (see ViewParts.menuOrder)
             startTab: /^[a-z]{1,20}$/.test(p.startTab || '') ? p.startTab : 'continue',   // Settings > Home > Start on: the Home tab a launch opens on
+            liveBehind: p.liveBehind === true,   // Settings › Playback › Live TV: BACK on a live channel plays it on behind the menus
+            iptvLayout: p.iptvLayout === 'browser' ? 'browser' : 'rows',   // Settings › Home › IPTV tab: rows, or the channel browser (js/view-iptv.js)
             hideWords: wordList(p.hideWords, 30, 40),     // Settings > Source ranking: sources with these words at the bottom
             watchRegion: /^[A-Z]{2}$/.test(p.watchRegion || '') ? p.watchRegion : '' };   // Settings > Integrations ('' = automatic)
     }
@@ -512,6 +514,16 @@ var Stremio = (function () {
         configChanged();
         return changed;
     }
+    function iptvSetLiveOnly(id, on) {   // (an Xtream account's Movies and Series in or out: the addons' list made again)
+        var changed = _hasIptv && IPTV.setLiveOnly ? IPTV.setLiveOnly(id, on) : false;
+        configChanged();
+        return changed;
+    }
+    function iptvSetTidy(patch) {   // (merge copies, countries first, words to hide: the channels made again from what's read)
+        var cfg = _hasIptv && IPTV.setTidy ? IPTV.setTidy(patch) : null;
+        configChanged();
+        return cfg;
+    }
     function iptvRenamePlaylist(id, name) { return _hasIptv ? IPTV.renamePlaylist(id, name) : false; }
     function iptvSetPlaylistGuide(id, url) { return _hasIptv && IPTV.setPlaylistGuide ? IPTV.setPlaylistGuide(id, url) : false; }
     function iptvSetPlaylistOff(id, off) { var ok = _hasIptv ? IPTV.setPlaylistOff(id, off) : false; configChanged(); return ok; }
@@ -548,6 +560,13 @@ var Stremio = (function () {
             if (has === Plex.isEnabled()) { sourcesChanged(); } else { configChanged(); }
         });
     }
+    // Channel groups changed: the channels made again from the copy already read (the service's: only
+    // the groups asked of it), not downloaded again as Reload does (minutes for a big playlist,
+    // with the rows picked before shown meanwhile). A Stalker portal's are read again, as they must.
+    function iptvRegroup() {
+        configChanged();
+        return _hasIptv ? IPTV.load() : Promise.resolve(null);
+    }
     function iptvReload(id) {
         configChanged();
         return _hasIptv ? IPTV.reload(id) : Promise.resolve(null);
@@ -577,7 +596,7 @@ var Stremio = (function () {
     var EXPORT_LINE = '#!stremiok ';
     var EXPORT_STORE = ['stremiok.prefs', 'stremiok.feeds', 'stremiok.searchfeeds', 'stremiok.sourcefeeds', 'stremiok.ranking', 'stremiok.server', 'stremiok.formats',
         'stremiok.resblock', 'stremiok.subcfg', 'stremiok.audiocfg', 'stremiok.playercfg', 'stremiok.private', 'stremiok.youtube', 'stremiok.appshortcuts',
-        'stremiok.appsallowed', 'stremiok.aiomanager', 'stremiok.iptv.stalkerall', 'stremiok.iptv.stalkerkeep', 'stremiok.iptv.every', 'stremiok.local.matching', 'stremiok.local.hidden',
+        'stremiok.appsallowed', 'stremiok.aiomanager', 'stremiok.iptv.stalkerall', 'stremiok.iptv.stalkerkeep', 'stremiok.iptv.every', 'stremiok.iptv.last', 'stremiok.iptv.tidy', 'stremiok.iptv.extraguides', 'stremiok.iptv.guidenames', 'stremiok.local.matching', 'stremiok.local.hidden',
         'stremiok.addonsoff', 'stremiok.integrations'];
     var HISTORY_STORE = ['stremiok.progress', 'stremiok.watched', 'stremiok.cworder', 'stremiok.subhist', 'stremiok.audiohist', 'stremiok.playedsrc', 'stremiok.seriessrc',
         'stremiok.unsuitable', 'stremiok.aspects', 'stremiok.iptv.favs', 'stremiok.local.matches', 'stremiok.local.fixes'];
@@ -2494,7 +2513,7 @@ var Stremio = (function () {
         importSetupList: importSetupList, savedManifest: savedManifest, isAddonOff: isAddonOff, setAddonOff: setAddonOff, onIptvReady: onIptvReady, streamListenerCount: function (type, id) { var e = _streamCache[type + ':' + id]; return e ? e.listeners.length : 0; },
         iptvGetPlaylists: iptvGetPlaylists, iptvAddPlaylist: iptvAddPlaylist,
         iptvUpdatePlaylist: iptvUpdatePlaylist, iptvRemovePlaylist: iptvRemovePlaylist,
-        iptvRenamePlaylist: iptvRenamePlaylist, iptvSetPlaylistGuide: iptvSetPlaylistGuide, iptvAddXtream: iptvAddXtream, iptvAddStalker: iptvAddStalker, iptvSetXtreamFormat: iptvSetXtreamFormat, iptvRefreshEvery: iptvRefreshEvery, iptvSetRefreshEvery: iptvSetRefreshEvery, iptvReadAt: iptvReadAt, iptvSetPlaylistOff: iptvSetPlaylistOff, iptvMovePlaylist: iptvMovePlaylist, iptvLabel: iptvLabel,
-        iptvLoad: iptvLoad, iptvStatus: iptvStatus, iptvReload: iptvReload
+        iptvRenamePlaylist: iptvRenamePlaylist, iptvSetPlaylistGuide: iptvSetPlaylistGuide, iptvAddXtream: iptvAddXtream, iptvAddStalker: iptvAddStalker, iptvSetXtreamFormat: iptvSetXtreamFormat, iptvSetLiveOnly: iptvSetLiveOnly, iptvSetTidy: iptvSetTidy, iptvRefreshEvery: iptvRefreshEvery, iptvSetRefreshEvery: iptvSetRefreshEvery, iptvReadAt: iptvReadAt, iptvSetPlaylistOff: iptvSetPlaylistOff, iptvMovePlaylist: iptvMovePlaylist, iptvLabel: iptvLabel,
+        iptvLoad: iptvLoad, iptvStatus: iptvStatus, iptvReload: iptvReload, iptvRegroup: iptvRegroup
     };
 })();

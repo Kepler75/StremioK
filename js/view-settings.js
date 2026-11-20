@@ -269,10 +269,16 @@
     // pages ordering the top menu, the Home rows and the Search rows.
     function settingsHome(wrap) {
         wrap.appendChild(U.el('h2', null, U.t('Home')));
-        wrap.appendChild(subPickRow(U.t('Start on'), V.HOME_TABS.map(function (t) { return [t.key, t.label]; }), 'startTab', {
+        wrap.appendChild(subPickRow(U.t('Start on'), V.HOME_TABS.map(function (t) { return [t.key, t.label]; }).concat([['lastch', U.t('Last IPTV channel')], ['lastguide', U.t('Last Guide channel')]]), 'startTab', {
             get: function () { return { startTab: Stremio.getPrefs().startTab }; },
             set: function (cfg) { Stremio.setPref('startTab', cfg.startTab); }   // (the next launch: Home stays where it is now)
         }));
+        if (typeof IPTV !== 'undefined' && IPTV.getPlaylists().length) {   // (the IPTV tab: rows, or the channel browser, js/view-iptv.js)
+            wrap.appendChild(subPickRow(U.t('IPTV tab'), [['rows', U.t('Rows (default)')], ['browser', U.t('Channel browser: groups, channels, what’s on')]], 'v', {
+                get: function () { return { v: Stremio.getPrefs().iptvLayout }; },
+                set: function (c) { Stremio.setPref('iptvLayout', c.v); if (V.homeDirty) { V.homeDirty(); } }
+            }));
+        }
         wrap.appendChild(subPickRow(U.t('Titles in a Home row'), [['30', '30'], ['50', '50'], ['100', '100'], ['200', '200'], ['all', U.t('Unlimited')]], 'rowCards', {
             warning: U.t('Unlimited: Home can take much longer to load, an addon may refuse so many requests, and very long rows can slow an older TV'),
             get: function () { return { rowCards: '' + Stremio.getPrefs().rowCards }; },
@@ -411,21 +417,23 @@
             [U.t('Audio'), U.t('Preferred and second-choice audio language'), 'audio'],
             [U.t('Subtitles'), U.t('Default language, size, color, background, position, font'), 'subtitles'],
             [U.t('Skipping'), U.t('Intros, recaps and previews, and the next episode at the credits: ask, or on their own after a countdown'), 'skipping'],
-            [U.t('Seeking & buffering'), U.t('How far ◀ ▶ jump; a bigger buffer for slow connections; reconnecting live channels'), 'seeking'],
+            [U.t('Seeking & buffering'), U.t('How far ◀ ▶ jump; a bigger buffer for slow connections'), 'seeking'],
+            [U.t('Live TV'), U.t('Live TV behind the menus; reconnecting live channels'), 'livetv'],
             [U.t('Source ranking'), U.t('How sources are ordered (played before, resolution, release type…), and your addons: their order, on or off'), 'ranking'],
             [U.t('Formats'), U.t('Allowed resolutions, and what plays on this TV, learned as you watch'), 'formats'],
             [U.t('Private viewing'), U.t('Play without anything recorded: no progress, Continue Watching, watched marks or Trakt'), 'private']] },
         diagnostics: { title: U.t('Diagnostics'), rows: [
             [U.t('Logs'), U.t('Recent problems (failed downloads, playback and script errors), secrets masked; how long launches took'), 'logs'],
             [U.t('Storage'), U.t('What StremioK keeps on the TV; the TV’s database: on or off, tidying it up; clearing saved copies'), 'storage'],
-            [U.t('Installed apps'), U.t('The TV’s apps with their IDs; OK on one opens it'), 'tvapps']] }
+            [U.t('Installed apps'), U.t('The TV’s apps with their IDs; OK on one opens it'), 'tvapps'],
+            [U.t('TV guide matches'), U.t('Which TV guide channel each IPTV channel got, and which got none'), 'guidematches']] }
     };
 
     // Return true if BACK stepped a settings section back to the menu.
     // BACK goes up one level, onto the row it came from: from a section to its group (on
     // that section, not the first one), from Menu / Home feeds / Search results to Home,
     // from a group to the Settings list (on that group).
-    var SECTION_PARENT = { menuorder: 'home', feeds: 'home', searchfeeds: 'home', aiomanager: 'addons', subtitlelook: 'subtitles', rankfilters: 'ranking', rankplay: 'ranking' };
+    var SECTION_PARENT = { menuorder: 'home', feeds: 'home', searchfeeds: 'home', aiomanager: 'addons', subtitlelook: 'subtitles', rankfilters: 'ranking', rankplay: 'ranking', iptvlist: 'iptv', iptvguide: 'iptv' };
     Object.keys(SETTINGS_GROUPS).forEach(function (g) {
         SETTINGS_GROUPS[g].rows.forEach(function (row) { SECTION_PARENT[row[2]] = g; });
     });
@@ -455,6 +463,9 @@
         else if (_settingsSection === 'subtitlelook') { settingsSubtitleLook(wrap); }
         else if (_settingsSection === 'skipping') { settingsSkipping(wrap); }
         else if (_settingsSection === 'seeking') { settingsSeeking(wrap); }
+        else if (_settingsSection === 'livetv') { settingsLiveTv(wrap); }
+        else if (_settingsSection === 'iptvlist') { settingsIptvList(wrap); }
+        else if (_settingsSection === 'iptvguide') { settingsIptvGuide(wrap); }
         else if (_settingsSection === 'menuorder') { settingsFeeds(wrap, 'menu'); }
         else if (_settingsSection === 'feeds') { settingsFeeds(wrap, 'home'); }
         else if (_settingsSection === 'searchfeeds') { settingsFeeds(wrap, 'search'); }
@@ -465,6 +476,7 @@
         else if (_settingsSection === 'logs') { settingsLogs(wrap); }
         else if (_settingsSection === 'storage') { settingsStorage(wrap); }
         else if (_settingsSection === 'tvapps') { settingsTvApps(wrap); }
+        else if (_settingsSection === 'guidematches') { settingsGuideMatches(wrap); }
         else if (_settingsSection === 'usb') { settingsUsb(wrap); }
         else if (_settingsSection === 'netfolders') { settingsNetFolders(wrap); }
         else if (_settingsSection === 'mediaservers') { settingsMediaServers(wrap); }
@@ -876,6 +888,7 @@
         wrap.appendChild(U.el('h2', null, g.title));
         g.rows.forEach(function (row) {
             if (row[2] === 'plugins' && !(typeof Plugins !== 'undefined' && Plugins.supported())) { return; }   // (a TV that can't run them: not offered)
+            if (row[2] === 'guidematches' && !(typeof EPG !== 'undefined' && EPG.hasAny && EPG.hasAny())) { return; }   // (no TV guide read: nothing to show)
             wrap.appendChild(sectionRow(row[0], row[1], row[2]));
         });
         if (key === 'diagnostics') {
@@ -948,7 +961,7 @@
         }));
         Stremio.loadAddons().then(function (addons) {
             var urls = Stremio.getAddonUrls(), want = null;
-            if (urls.length > 1) { wrap.appendChild(U.el('div', 'hint', U.t('▲ / ▼ set the order: a title\'s details come from the highest addon that has them (its page says which), and the higher addon comes first where several answer.'))); }
+            if (urls.length > 1) { wrap.appendChild(U.el('div', 'hint', U.t('▲ / ▼ set the order: a title\'s details come from the highest addon that has them (its page says which), and the higher addon comes first where several answer.') + ' ' + U.t('↻ reads one again.'))); }
             urls.forEach(function (url) {
                 var off = !!(Stremio.isAddonOff && Stremio.isAddonOff(url)), kept = off && Stremio.savedManifest ? Stremio.savedManifest(url) : null;
                 var loaded = addons.find(function (a) { return a.url === url; }) || (kept ? { url: url, manifest: kept } : null);   // (one that's off: its saved manifest)
@@ -971,10 +984,12 @@
                 item.__onselect = function () {
                     addonActions(name, url);
                 };
+                var rb = reloadButton(function () { _addonFocus = { url: url, ctl: 'reload' }; V.addonRefresh(url); });
                 if (urls.length > 1) { btns.forEach(function (b) { frow.appendChild(b); }); }
+                frow.appendChild(rb);
                 frow.appendChild(item);
                 wrap.appendChild(frow);
-                if (_addonFocus && _addonFocus.url === url) { want = btns[ctlIndex(_addonFocus.ctl)]; }
+                if (_addonFocus && _addonFocus.url === url) { want = _addonFocus.ctl === 'reload' ? rb : btns[ctlIndex(_addonFocus.ctl)]; }
             });
 
             var addRow = U.el('div', 'addon-item focusable add-row');
@@ -1496,9 +1511,10 @@
         if (!st.url) { return U.t('Not read yet'); }
         parts.push(U.tn(st.count || 0, '{n} channel', '{n} channels', { n: thousands(st.count || 0) }) + (st.groups ? ' ' + U.tn(st.groups, 'in {n} group', 'in {n} groups') : ''));
         if (st.fetchedAt) { var d = new Date(st.fetchedAt); parts.push(U.t('downloaded {when}', { when: U.dayLabel(st.fetchedAt) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes()) })); }
-        if (st.dropped) { parts.push(U.t('{n} more left out (a playlist keeps its first {max}: Largest playlist, below)', { n: thousands(st.dropped), max: thousands(IPTV.maxChannels()) })); }
+        if (st.dropped) { parts.push(U.t('{n} more left out (a playlist keeps its first {max}: Largest playlist on the TV, below)', { n: thousands(st.dropped), max: thousands(IPTV.maxChannels()) })); }
         if (p.genres) { parts.push(U.tn(p.genres.length, '{n} group chosen', '{n} groups chosen')); }
-        if (st.cut) { parts.push(st.cut > 0 ? U.t('stopped short of {n}: OK on it, then Channel groups, reads only what you want', { n: thousands(st.cut) }) : U.t('stopped short: OK on it, then Channel groups, reads only what you want')); }
+        if (st.svcCut) { parts.push(U.t('the service read {total}; the TV keeps {kept} (Largest playlist on the TV): OK on it, then Channel groups', { total: thousands(st.svcCut.total), kept: thousands(st.svcCut.kept) })); }   // (read by StremioK's service, more than the TV holds: see IPTV readNote)
+        else if (st.cut) { parts.push(st.cut > 0 ? U.t('stopped short of {n}: OK on it, then Channel groups, reads only what you want', { n: thousands(st.cut) }) : U.t('stopped short: OK on it, then Channel groups, reads only what you want')); }
         if (st.uncached) { parts.push(U.t('too large to save on the TV: downloaded each launch')); }
         var g = guideInfo(p);
         if (g) { parts.push(g); }
@@ -1519,7 +1535,7 @@
     function playlistProblem(p) {
         var st = Stremio.iptvStatus(p.id);
         if (p.off || !st.error) { return ''; }
-        return '⚠ ' + (st.stale ? U.t('Couldn’t refresh it (showing the saved copy):') + ' ' : '') + st.error + (/^Too large/.test(st.error) ? ' — ' + U.t('see Largest playlist, below') : '');
+        return '⚠ ' + (st.stale ? U.t('Couldn’t refresh it (showing the saved copy):') + ' ' : '') + st.error + (/^Too large/.test(st.error) ? ' — ' + U.t('see Largest playlist on the TV, below') : '');
     }
     // + Add Xtream account: its server, username and password, a page each (a whole Xtream link
     // in the server's fills the rest); checked with the server, then added (Stremio.iptvAddXtream).
@@ -1683,6 +1699,7 @@
                 playlistActions(playlist, label);
             };
             btns.forEach(function (b) { frow.appendChild(b); });
+            frow.appendChild(reloadButton(function () { _iptvFocus = { id: playlist.id, ctl: 'reload' }; V.playlistReload(playlist); }, ctl));
             frow.appendChild(item);
             wrap.appendChild(frow);
             rows.push({ p: playlist, info: info, problem: problem, idx: idx });
@@ -1745,7 +1762,7 @@
             var v = { mb: n, n: thousands(n * 1500) };
             return [String(n), n === 20 ? U.t('{mb} MB, up to {n} channels (default)', v) : U.t('{mb} MB, up to {n} channels', v)];
         });
-        wrap.appendChild(subPickRow(U.t('Largest playlist'), IPTV_SIZES, 'size', {
+        wrap.appendChild(subPickRow(U.t('Largest playlist on the TV'), IPTV_SIZES, 'size', {
             warning: U.t('Above 20 MB, an older TV may run out of memory and close StremioK; a big playlist takes longer to read, and may be too large to save on the TV'),
             get: function () { return { size: String(IPTV.sizeMb()) }; },
             set: function (c) {
@@ -1770,6 +1787,12 @@
             }
         }));
 
+        // (tidying the channels, and the TV guides: pages of their own)
+        var sub = [];
+        if (playlists.length && IPTV.tidyCfg) { sub.push(sectionRow(U.t('Channel list  ›'), U.t('Merge duplicate channels, countries first, hide channels with these words'), 'iptvlist')); }
+        if (playlists.length && typeof EPG !== 'undefined' && EPG.extraGuides && EPG.available && EPG.available()) { sub.push(sectionRow(U.t('TV guide  ›'), U.t('Extra TV guides, TV guide names'), 'iptvguide')); }
+        sub.forEach(function (r) { r.className += ' cfg-row'; wrap.appendChild(r); });
+
         if (typeof StVod !== 'undefined' && StVod.keepMinutes) {   // (what the service keeps of a portal's films and series)
             wrap.appendChild(subPickRow(U.t('Stalker films and series'), [['10', U.t('Kept 10 minutes')], ['5', U.t('Kept 5 minutes')], ['0', U.t('Off (asked each time)')]], 'keep', {
                 get: function () { return { keep: String(StVod.keepMinutes()) }; },
@@ -1778,7 +1801,7 @@
         }
 
         wrap.appendChild(U.el('div', 'hint',
-            U.t('Channels are grouped into IPTV and Radio rows on Home. ▲ / ▼ set the playlists\' order: a channel in two playlists comes from the first.')));
+            U.t('Channels are grouped into IPTV and Radio rows on Home. ▲ / ▼ set the playlists\' order: a channel in two playlists comes from the first.') + ' ' + U.t('↻ downloads one again.')));
         var s = scr('settings'), want = null;
         if (_iptvFocus) {
             var nodes = wrap.querySelectorAll('.playlist-row .focusable');
@@ -1787,8 +1810,125 @@
             }
             _iptvFocus = null;
         }
+        if (!want && (_focusChild === 'iptvlist' || _focusChild === 'iptvguide')) {   // (back from its page: on its row)
+            var secs = wrap.querySelectorAll('.cfg-row');
+            for (var si = 0; si < secs.length; si++) { if (secs[si].getAttribute('data-section') === _focusChild) { want = secs[si]; break; } }
+            _focusChild = null;
+        }
         Focus.setScope(s, want || wrap.querySelector('.playlist-item') || wrap.querySelector('.focusable') || undefined);   // (the playlist, not its ▲)
     }
+    // Content › IPTV › Channel list and TV guide: their rows on pages of their own; a row just
+    // changed (the page drawn again) keeps focus.
+    function tidyFocus(wrap) {
+        var want = null;
+        if (/^tidy:/.test(_focusChild || '')) {
+            var cr = wrap.querySelectorAll('.cfg-row');
+            for (var ci = 0; ci < cr.length; ci++) { if (cr[ci].__want) { want = cr[ci]; break; } }
+            _focusChild = null;
+        }
+        if (want) { Focus.setScope(scr('settings'), want); } else { focusSettings(); }
+    }
+    function settingsIptvList(wrap) {
+        wrap.appendChild(U.el('h2', null, U.t('Channel list')));
+        if (IPTV.tidyCfg) { iptvTidyRows(wrap); }
+        tidyFocus(wrap);
+    }
+    function settingsIptvGuide(wrap) {
+        wrap.appendChild(U.el('h2', null, U.t('TV guide')));
+        if (typeof EPG !== 'undefined' && EPG.extraGuides) { iptvExtraGuides(wrap); }
+        tidyFocus(wrap);
+    }
+
+    // Tidying the channels (IPTV.tidyCfg): Merge duplicate channels, Countries first, Hide channels
+    // with these words (the suggested list a start, not built in). Each change: the channels made
+    // again from what's read (Stremio.iptvSetTidy), the IPTV rows with them.
+    function iptvTidyRows(wrap) {
+        function changed(patch, focus) { Stremio.iptvSetTidy(patch); refreshAddonRows('local:iptv'); _focusChild = focus; renderSettings(); }
+        var cfg = IPTV.tidyCfg();
+        wrap.appendChild(subPickRow(U.t('Merge duplicate channels'), [['off', U.t('Off (default)')], ['all', U.t('On: one tile, each copy a source, the best first')],
+            ['best', U.t('On: one tile, the best copy played at once (the next ones if it doesn’t start)')]], 'merge', {
+            get: function () { return { merge: IPTV.tidyCfg().merge }; },
+            set: function (c) { Stremio.iptvSetTidy({ merge: c.merge }); refreshAddonRows('local:iptv'); }
+        }));
+        var cn = U.el('div', 'addon-item focusable cfg-row');
+        cn.appendChild(U.el('div', 'a-name', U.t('Countries first') + ':  ' + (cfg.countries.length ? cfg.countries.join(', ') : U.t('None'))));
+        cn.appendChild(U.el('div', 'a-url', U.t('Groups named for these countries come first, in this order (UK, US, DE… or their names)')));
+        cn.__onselect = function () {
+            App.openEntry({
+                title: U.t('Countries first'), value: cfg.countries.join(', '), placeholder: 'UK, US, DE',
+                hint: U.t('Countries by their code or name, separated by commas, then Confirm. Empty: the playlists’ own order. RETURN cancels.'),
+                validate: function () { return null; },
+                onConfirm: function (v) { App.back(); changed({ countries: v }, 'tidy:countries'); }
+            });
+        };
+        wrap.appendChild(cn);
+        if (_focusChild === 'tidy:countries') { cn.__want = true; }
+        var hw = U.el('div', 'addon-item focusable cfg-row');
+        hw.appendChild(U.el('div', 'a-name', U.t('Hide channels with these words') + ':  ' + (cfg.hide.length ? U.tn(cfg.hide.length, '{n} word', '{n} words') : U.t('None'))));
+        hw.appendChild(U.el('div', 'a-url', cfg.hide.length ? cfg.hide.join(', ') : U.t('A channel whose name or group has one is left out')));
+        hw.__onselect = function () {
+            function edit(value) {
+                App.openEntry({
+                    title: U.t('Hide channels with these words'), value: value, placeholder: 'xxx, adult',
+                    hint: U.t('Words separated by commas, then Confirm: a channel whose name or group has one is left out. Empty: none. RETURN cancels.'),
+                    validate: function () { return null; },
+                    onConfirm: function (v) { App.back(); changed({ hide: v }, 'tidy:hide'); }
+                });
+            }
+            var opts = [['edit', cfg.hide.length ? U.t('Change the words') : U.t('Type the words')], ['suggested', U.t('Start from the suggested list (adult channels)')]];
+            if (cfg.hide.length) { opts.push(['clear', U.t('Hide none')]); }
+            pickList(U.t('Hide channels with these words'), opts, null, function (k) {
+                if (k === 'edit') { edit(cfg.hide.join(', ')); }
+                else if (k === 'suggested') { edit(listJoin(cfg.hide.concat(IPTV.HIDE_SUGGESTED))); }
+                else { changed({ hide: [] }, 'tidy:hide'); }
+            });
+        };
+        wrap.appendChild(hw);
+        if (_focusChild === 'tidy:hide') { hw.__want = true; }
+    }
+    // Extra TV guides (EPG.extraGuides): read after each playlist's own, for the channels it gives
+    // no programs. Picked from epgshare01's guides by country (yours first, with how many of your
+    // channels are from there), or any guide's link; EPG.EXTRAS_MAX at most.
+    function iptvExtraGuides(wrap) {
+        var list = EPG.extraGuides(), cat = EPG.extraCatalog(), byUrl = {};
+        cat.forEach(function (x) { byUrl[x.url] = x; });
+        function name(u) { var x = byUrl[u], p = U.parseUrl(u); return x ? 'epgshare01 ' + x.file : (p ? p.host : u); }
+        function saved(l) { EPG.setExtraGuides(l); _focusChild = 'tidy:extra'; renderSettings(); }
+        var r = U.el('div', 'addon-item focusable cfg-row');
+        r.appendChild(U.el('div', 'a-name', U.t('Extra TV guides') + ':  ' + (list.length ? list.map(name).join(', ') : U.t('None'))));
+        r.appendChild(U.el('div', 'a-url', U.t('Read after your playlists’ own, for the channels they give no programs')));
+        r.__onselect = function () {
+            var opts = [['pick', U.t('Pick from epgshare01’s guides (by country)')], ['add', U.t('Add a guide’s link')]];
+            if (list.length) { opts.push(['none', U.t('Remove them all')]); }
+            pickList(U.t('Extra TV guides'), opts, null, function (k) {
+                if (k === 'none') { saved([]); return; }
+                if (k === 'add') {
+                    App.openEntry({
+                        title: U.t('Add a guide’s link'), phone: 'playlist', value: 'https://', placeholder: 'https://example.com/guide.xml.gz',
+                        hint: U.t('An XMLTV guide (.xml or .xml.gz), then Confirm. RETURN cancels.'),
+                        validate: function (v) { return U.urlProblem(v) || (list.length >= EPG.EXTRAS_MAX ? U.t('Up to {n} extra guides', { n: EPG.EXTRAS_MAX }) : null); },
+                        onConfirm: function (v) { App.back(); saved(list.concat([('' + v).trim()])); }
+                    });
+                    return;
+                }
+                var mine = list.filter(function (u) { return !byUrl[u]; });
+                pickMany(U.t('Extra TV guides'), cat.map(function (x) {
+                    return { key: x.url, label: x.cc.toUpperCase() + '  ·  epgshare01 ' + x.file, note: x.n ? U.tn(x.n, '{n} of your channels', '{n} of your channels', { n: thousands(x.n) }) : '' };
+                }), { on: list.filter(function (u) { return !!byUrl[u]; }), none: true, button: function (n) { return n ? U.tn(n, 'Use {n} guide', 'Use {n} guides') : U.t('Use none of these'); } }, function (keys) {
+                    if (mine.length + keys.length > EPG.EXTRAS_MAX) { U.toast(U.t('Up to {n} extra guides', { n: EPG.EXTRAS_MAX }), 4000); return; }
+                    saved(mine.concat(keys));
+                });
+            });
+        };
+        wrap.appendChild(r);
+        if (_focusChild === 'tidy:extra') { r.__want = true; }
+        // TV guide names (EPG.looseNames): as written, or also guides' and providers' other forms
+        wrap.appendChild(subPickRow(U.t('TV guide names'), [['exact', U.t('As written (default)')], ['loose', U.t('Also other forms: “Canal … (Argentina)” guides, a provider’s tag (“ENT| …”)')]], 'names', {
+            get: function () { return { names: EPG.looseNames() ? 'loose' : 'exact' }; },
+            set: function (c) { EPG.setLooseNames(c.names === 'loose'); refreshAddonRows('local:iptv'); }
+        }));
+    }
+    function listJoin(words) { var seen = {}; return words.filter(function (w) { var k = w.toLowerCase(); if (seen[k]) { return false; } seen[k] = 1; return true; }).join(', '); }
 
     // Settings › Content › YouTube: YouTube in Search (Videos and Channels rows), and your
     // YouTube catalogs (a channel, a playlist or a search each, a row on Home and a catalog in
@@ -2530,11 +2670,24 @@
             set: function (cfg) { Player.setPlayerCfg({ seek: +cfg.seek || 10, buffer: cfg.buffer, reconnect: cfg.reconnect, hls: cfg.hls, fileInfo: cfg.fileInfo, blank: cfg.blank }); } };
         wrap.appendChild(subPickRow(U.t('Seek step'), [['5', '5 s'], ['10', '10 s'], ['15', '15 s'], ['30', '30 s']], 'seek', store));
         wrap.appendChild(subPickRow(U.t('Buffer'), [['normal', U.t('Normal (the TV’s own)')], ['more', U.t('More')], ['most', U.t('Most')]], 'buffer', store));
-        wrap.appendChild(subPickRow(U.t('Reconnect live channels'), RECONNECTS, 'reconnect', store));
         wrap.appendChild(subPickRow(U.t('HLS through StremioK’s service'), HLS_ROUTES, 'hls', store));
         wrap.appendChild(subPickRow(U.t('Read the file’s details'), FILE_INFOS, 'fileInfo', store));   // (its codec, HDR, tracks and their names: player-core's fileInfoAsk)
         wrap.appendChild(subPickRow(U.t('Leave out other subtitle tracks'), BLANKS, 'blank', store));
-        wrap.appendChild(U.el('div', 'hint', 'Seek step: FF / REW jump three. Buffer: More or Most starts slower but stops less on a slow connection. Reconnect: a live channel that drops opens again (BACK stops it). HLS through StremioK’s service: for a host that wants headers the TV’s player can’t send; a step more before it starts.'));
+        wrap.appendChild(U.el('div', 'hint', 'Seek step: FF / REW jump three. Buffer: More or Most starts slower but stops less on a slow connection. HLS through StremioK’s service: for a host that wants headers the TV’s player can’t send; a step more before it starts.'));
+        focusSettings();
+    }
+    // Playback › Live TV: Live TV behind the menus (BACK on a live channel), Reconnect live channels.
+    function settingsLiveTv(wrap) {
+        wrap.appendChild(U.el('h2', null, U.t('Live TV')));
+        wrap.appendChild(subPickRow(U.t('Live TV behind the menus'), [['off', U.t('Off (default): BACK stops it')], ['on', U.t('On: BACK keeps it playing behind Home (▶ full screen, ■ stop)')]], 'v', {
+            get: function () { return { v: Stremio.getPrefs().liveBehind ? 'on' : 'off' }; },
+            set: function (c) { Stremio.setPref('liveBehind', c.v === 'on'); }
+        }));
+        wrap.appendChild(subPickRow(U.t('Reconnect live channels'), RECONNECTS, 'reconnect', {
+            get: function () { return { reconnect: Player.playerCfg().reconnect }; },
+            set: function (c) { Player.setPlayerCfg({ reconnect: c.reconnect }); }
+        }));
+        wrap.appendChild(U.el('div', 'hint', U.t('Reconnect: a live channel that drops opens again (BACK stops it).')));
         focusSettings();
     }
     function settingsSkipping(wrap) {
@@ -3016,6 +3169,53 @@
         STARTUP_STEPS.forEach(function (st) { if (m && typeof m[st[0]] === 'number') { parts.push(st[1] + ' ' + (m[st[0]] / 1000).toFixed(1) + ' s'); } });
         return parts.join('   ·   ');
     }
+    // Settings › Diagnostics › TV guide matches (EPG.matchReport): how many channels got a guide
+    // channel, per state; the ones that got none listed (GM_LIST at most); all of them, with what
+    // each got, as a text file on the phone.
+    var GM_STATES = ['ok', 'empty', 'unclear', 'none', 'noguide', 'failed'], GM_LIST = 300;
+    function gmState(s) {
+        return s === 'ok' ? U.t('matched, on now') : s === 'empty' ? U.t('matched, nothing on now') : s === 'unclear' ? U.t('unclear (two countries’ channels share its name)')
+            : s === 'none' ? U.t('not in its guide') : s === 'noguide' ? U.t('its playlist has no guide read') : U.t('not answered (try again)');
+    }
+    function settingsGuideMatches(wrap) {
+        wrap.appendChild(U.el('h2', null, U.t('TV guide matches')));
+        var note = U.el('div', 'hint', U.t('Asking the guides…'));
+        wrap.appendChild(note);
+        focusSettings();
+        var section = _settingsSection;
+        EPG.matchReport().then(function (rep) {
+            if (_settingsSection !== section) { return; }
+            var n = {};
+            rep.rows.forEach(function (r) { n[r.state] = (n[r.state] || 0) + 1; });
+            note.textContent = rep.guides.map(function (g) { return g.host + ': ' + U.tn(g.channels, '{n} channel', '{n} channels', { n: thousands(g.channels) }) + (g.partial ? ' ' + U.t('(part of it: too large)') : ''); }).join('   ·   ');
+            GM_STATES.forEach(function (s) {
+                if (!n[s]) { return; }
+                var r = U.el('div', 'addon-item focusable diag-row');
+                r.appendChild(U.el('div', 'a-name', thousands(n[s]) + '   ' + gmState(s)));
+                wrap.appendChild(r);
+            });
+            var missing = rep.rows.filter(function (r) { return r.state !== 'ok' && r.state !== 'empty'; });
+            missing.slice(0, GM_LIST).forEach(function (r) {
+                var row = U.el('div', 'addon-item focusable diag-row');
+                row.appendChild(U.el('div', 'a-name', r.c.name));
+                row.appendChild(U.el('div', 'a-url', r.c.group + '   ·   ' + gmState(r.state)));
+                wrap.appendChild(row);
+            });
+            if (missing.length > GM_LIST) { wrap.appendChild(U.el('div', 'hint', U.t('…and {n} more: Send to your phone lists them all', { n: thousands(missing.length - GM_LIST) }))); }
+            var send = U.el('div', 'addon-item focusable');
+            send.appendChild(U.el('div', 'a-name', U.t('⇧  Send to your phone')));
+            send.appendChild(U.el('div', 'a-url', U.t('Every channel, the guide channel it got and what’s on, as a text file')));
+            send.__onselect = function () {
+                var lines = ['StremioK TV guide matches', ''].concat(rep.guides.map(function (g) { return 'Guide: ' + g.host + ', ' + g.channels + ' channels' + (g.partial ? ' (partial)' : ''); }), ['']);
+                rep.rows.forEach(function (r) { lines.push([r.c.name, r.c.group, r.state, r.guide || '', r.gid || '', r.now || ''].join('\t')); });
+                var text = lines.join('\n') + '\n';
+                if (text.length > 1400000) { text = text.slice(0, 1400000).replace(/[^\n]*$/, '') + '… (cut: too many channels for one file)\n'; }   // (the phone page's limit: 1.5 MB)
+                V.phoneGive(U.t('TV guide matches'), text, '', 'guide');
+            };
+            wrap.appendChild(send);
+            focusSettings();
+        });
+    }
     // Settings › Diagnostics › Logs › Send to your phone: the logs (masked as they are in the list),
     // Startup, StremioK's version and how it's installed, and the TV (its browser, which names its
     // Tizen version; model and firmware where the TV says), as plain text in English.
@@ -3410,6 +3610,13 @@
             n.__onselect = function () { move(b[2], b[0]); };
             return n;
         });
+    }
+    // ↻ after them, where a row can be read again (an addon, a playlist): mark as above ('reload').
+    function reloadButton(fn, mark) {
+        var n = U.el('div', 'feed-btn feed-reload focusable', '↻');
+        if (mark) { mark(n, 'reload'); }
+        n.__onselect = fn;
+        return n;
     }
     function ctlIndex(ctl) { for (var i = 0; i < ORDER_BTNS.length; i++) { if (ORDER_BTNS[i][0] === ctl) { return i; } } return 1; }
     // ⇈ ▲ ▼ ⇊ / name rows for an ordered list (L: keyOf, hidden, move, toggle, off, prefix).

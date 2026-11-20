@@ -1270,7 +1270,7 @@
 
         if (_homeCatalogs === null) { useHomeCache(); }
         var launch = _homeTab === null;
-        if (launch) { _homeTab = Stremio.getPrefs().startTab; }   // (a launch: Settings › Home › Start on)
+        if (launch) { _homeTab = Stremio.getPrefs().startTab; if (_homeTab === 'lastch') { _homeTab = 'tv'; } else if (_homeTab === 'lastguide') { _homeTab = 'guide'; } }   // (a launch: Settings › Home › Start on; the last channel: the IPTV tab or the Guide under it, App.started)
         // Keep the active tab valid for what's actually available.
         var avail = availableTabs();
         if (!_homeTab || !avail.some(function (t) { return t.key === _homeTab; })) {
@@ -1294,7 +1294,7 @@
         // Rows for the active tab, from the once-per-session catalog cache. Catalog tabs
         // keep their built rows, so switching back doesn't rebuild every card; Continue
         // Watching is small and changes after every playback, so it's always rebuilt.
-        var rows = (_homeTab !== 'continue' && _homeTab !== 'local' && _homeTab !== 'calendar' && _homeTab !== 'guide') ? _tabRows[_homeTab] : null;
+        var rows = (_homeTab !== 'continue' && _homeTab !== 'local' && _homeTab !== 'calendar' && _homeTab !== 'guide' && !(_homeTab === 'tv' && V.iptvBrowserOn && V.iptvBrowserOn())) ? _tabRows[_homeTab] : null;
         if (_homeTab !== 'calendar' && _calCancel) { _calCancel.cancel(); _calCancel = null; }   // (its titles' details still coming: not wanted)
         if (rows) {
             s.appendChild(rows);
@@ -1308,6 +1308,8 @@
                 calendarRows(rows);
             } else if (_homeTab === 'guide') {
                 V.guideGrid(rows);
+            } else if (_homeTab === 'tv' && V.iptvBrowserOn && V.iptvBrowserOn()) {
+                V.iptvBrowser(rows);   // (Settings › Home › IPTV tab: the channel browser, js/view-iptv.js; not kept: drawn each time)
             } else if (_homeTab === 'continue') {
                 var entries = continueEntries();
                 if (entries.length) {
@@ -1341,7 +1343,7 @@
         var landed = false;
         var sameItem = (!firstCard && inMenu) ? menuItem(s, cur.textContent) : null;   // the menu item focus was on
         var rowsEl = s.querySelector('.rows'), fc = Focus.current();
-        if (_homeTab === 'guide' && fc && rowsEl && rowsEl.contains(fc)) { landed = true; }   // (the Guide drawn from what it had put focus back on its program)
+        if ((_homeTab === 'guide' || (_homeTab === 'tv' && V.iptvBrowserOn && V.iptvBrowserOn())) && fc && rowsEl && rowsEl.contains(fc)) { landed = true; }   // (the Guide drawn from what it had put focus back on its program; the channel browser on its channel)
         else if (again || sameItem) { Focus.setScope(s, again || sameItem); } else { landed = focusHome(s, !firstCard && inMenu); }
         if (_homeCatalogs === null || homeStale() || _reloadOnly) { loadHomeCatalogs(); }
         // No title to focus yet: try again when the rows arrive (Continue Watching and a

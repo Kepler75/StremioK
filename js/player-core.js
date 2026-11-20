@@ -101,6 +101,8 @@ var PlayerParts = {};
     var _pausedOnce = false; // paused since this was opened (it only happens after pauses)
     var _pausedSince = 0;    // when it was paused (Date.now), 0 playing: a long pause re-anchors the TV's player (play_)
     var _jumpBack = null;    // a jump taken back: { to (s), at (ms), tries }, checked on the next play times (checkJump)
+    var _asked = null;       // a jump you asked for (a seek, a skip): { to (s), at (ms) }, till it lands or ASKED_MS
+    var ASKED_MS = 20000;
 
     function init() {
         objEl = U.byId('av-player');
@@ -159,7 +161,9 @@ var PlayerParts = {};
     }
     function inBackground() { return !!_bg; }
 
-    function isActive() { return S.active; }
+    function isActive() { return S.active && !S.behind; }   // (live TV behind the menus: the menus are in use)
+    function inUse() { return S.active; }
+    function isBehind() { return !!(S.active && S.behind); }
 
     // fromTicker: the save while it plays, at most every SAVE_EVERY_MS: skipped when nothing moved
     // since the last one (paused); a stop, a leave or a jump always saves.
@@ -208,6 +212,7 @@ var PlayerParts = {};
         if (S.subsEl) { S.subsEl.style.bottom = Math.max(subsPosPx(), S.subsLift) + 'px'; }
     }
     function showOSD(sticky) {
+        if (S.behind) { return; }   // (playing behind the menus: no controls over them)
         var wasHidden = osdHidden();
         U.byId('player-osd').className = '';
         liftSubs(barShown() ? SUBS_OVER_BAR : SUBS_OVER_OSD);
@@ -496,6 +501,10 @@ var PlayerParts = {};
         // Replacing a YouTube stream that's playing (CH+/CH− to the next channel): the TV's
         // player can freeze on an open straight after closing it, so settle first (startAV).
         var settle = !!(S.active && S.ctx && S.ctx.yt);
+        // (CH+ / CH− from behind the menus: the next channel stays behind them; anything else full screen)
+        var stayBehind = !!(S.active && S.behind && _stayBehind > Date.now());
+        _stayBehind = 0;
+        if (S.behind) { S.behind = false; behindLook(false); }
         if (S.ctx !== ctx) { stopLiveLook(); }   // (another channel: the look at the one before stopped)
         stopFileLook();
         S.ctx = ctx; _onExit = onExit;
@@ -529,14 +538,15 @@ var PlayerParts = {};
         recoReset();
         _prefetchedNext = false; S.playStarted = false; S.playing = false;
         _segments = null; _creditsSec = null; _creditsHandled = false; _segmentsFor = null;
-        S.buffering = false; S.pendingSeek = null; S.lastSeekAt = 0; S.settleFrom = 0; _seekRecovering = false; _jumpUndone = null; _pausedOnce = false; _pausedSince = 0; _jumpBack = null;
+        S.buffering = false; S.pendingSeek = null; S.lastSeekAt = 0; S.settleFrom = 0; _seekRecovering = false; _jumpUndone = null; _pausedOnce = false; _pausedSince = 0; _jumpBack = null; _asked = null;
         updateHint();
 
-        U.byId('app').className = 'hidden';
+        if (stayBehind && S.isLive && ctx.behindOk) { S.behind = true; _onExit = null; behindLook(true); }   // (its way back is to where you are already)
+        U.byId('app').className = S.behind ? '' : 'hidden';
         document.body.style.background = 'transparent';
         showOSD(true);
         renderOSD();   // show the NEW title immediately (not the previous item's)
-        U.spinner(true, ctx.switching ? U.t('Switching source…') : ctx.initialQualityHeight ? U.t('Opening stream at {height}p…', { height: ctx.initialQualityHeight }) : U.t('Opening stream…'));
+        if (!S.behind) U.spinner(true, ctx.switching ? U.t('Switching source…') : ctx.initialQualityHeight ? U.t('Opening stream at {height}p…', { height: ctx.initialQualityHeight }) : U.t('Opening stream…'));
 
         engineFor(ctx);   // (the TV's player, or a ClearKey channel's own: see startShaka)
         // (a TorrServer torrent that doesn't say which of its files: its file list asked for first)
@@ -672,7 +682,7 @@ var PlayerParts = {};
     }
 
     function updateHint() {
-        var base = S.isLive ? U.t('OK: Play/Pause') : U.t('OK: Play/Pause   ←/→: Seek');
+        var base = S.isLive ? U.t('OK: Play/Pause') + (S.ctx && S.ctx.zapList ? '   ' + U.t('←: Channels') : '') : U.t('OK: Play/Pause   ←/→: Seek');
         base += '   ' + U.t('UP: Controls   DOWN: Menu   RETURN: Back');
         var h = U.byId('osd-hint');
         if (h) { h.textContent = base; }
@@ -1280,6 +1290,7 @@ var PlayerParts = {};
         var maxT = S.dur ? Math.max(0, S.dur - 2) : 1e9;
         var target = Math.max(0, Math.min(maxT, sec));
         S.cur = target; _jumpBack = null;   // (a jump you asked for: not taken back)
+        _asked = { to: target, at: Date.now() };
         renderOSD();
         showOSD(false);
         if (useAV) {
@@ -1422,6 +1433,14 @@ var PlayerParts = {};
             } else { return true; }   // (on its way back: that play time isn't shown)
         }
         _tick = { pos: pos, wall: now };
+        // (a jump you asked for — a seek, Skip intro — lands a tick or two late, the TV still
+        // giving the old play time meanwhile: landing near where you asked is never taken back)
+        var ak = _asked;
+        if (ak) {
+            var late = (now - ak.at) / 1000;
+            if (late * 1000 > ASKED_MS) { _asked = null; }
+            else if (pos >= ak.to - JUMP_SLACK_SECS - 5 && pos <= ak.to + late + JUMP_SLACK_SECS + 5) { _asked = null; _jumpUndone = null; return false; }
+        }
         if (!t || !_pausedOnce || S.isLive || !useAV || scrubbing() || S.pendingSeek != null || S.lastSeekAt >= t.wall) { return false; }
         var ahead = (pos - t.pos) - (now - t.wall) / 1000;
         if (ahead <= JUMP_SLACK_SECS) { return false; }
@@ -1445,11 +1464,11 @@ var PlayerParts = {};
     // Refused by the TV, or not started after AV_START_MS: with Settings › Source ranking › The
     // next source on (the default), the next best one this playback hasn't tried (the title's
     // page picks it: ctx.nextSource), at the same place, NEXT_TRIES more at most. Not for live
-    // channels, YouTube or a USB file.
+    // channels (but a merged IPTV channel's other copies: ctx.liveFallbacks), YouTube or a USB file.
     var NEXT_TRIES = 3, AV_START_MS = 45000, _openedAt = 0;
     function nextSourceOnFail(notice) {
         var c = S.ctx;
-        if (!c || !S.active || S.playing || S.isLive || c.trailer || c.yt || c.localFile || !c.stream || typeof c.nextSource !== 'function') { return false; }
+        if (!c || !S.active || S.playing || (S.isLive && !c.liveFallbacks) || c.trailer || c.yt || c.localFile || !c.stream || typeof c.nextSource !== 'function') { return false; }
         if (typeof Stremio === 'undefined' || !Stremio.getPrefs || !Stremio.getPrefs().nextOnFail) { return false; }
         var tried = (c._tried || []).concat([Stremio.sourceId(c.stream)]);
         if (tried.length > NEXT_TRIES) { return false; }
@@ -1484,8 +1503,15 @@ var PlayerParts = {};
     // skips the addon's links through that service; then the next source, or what's to say.
     function failedStart(why) {
         var c = S.ctx, token = _playToken, st = c && c.stream;
-        function finish(notice) {
+        function finish(notice, status) {
             if (!S.active || S.ctx !== c || token !== _playToken) { return; }   // (something else playing meanwhile)
+            // (a catch-up recording the provider won't give: said so, not a playback error)
+            if (!notice && st && st._catchup && status >= 400 && status < 500) {
+                U.log('player', 'Catch-up refused by the provider: HTTP ' + status + ' (' + where(String(st.url).replace(/^(https?:\/\/[^\/?#]+).*$/i, '$1')) + ')');
+                U.toast(U.t('Your provider refused this recording ({code}): catch-up may not be part of your account', { code: status }), 8000);
+                exitLater();
+                return;
+            }
             if (notice) {
                 U.log('player', 'The source sent a notice: ' + notice.kind + (notice.service ? ' (' + notice.service + ')' : ''));
                 if (notice.account && notice.tag) { c._avoid = (c._avoid || []).concat([{ addon: st._addon, tag: notice.tag }]); }
@@ -1495,14 +1521,14 @@ var PlayerParts = {};
             U.toast(notice ? notice.text : why, notice ? 8000 : undefined);
             exitLater();
         }
-        if (!c || !st || c.yt || c.localFile || S.isLive || !/^https?:\/\//i.test(st.url || '')) { finish(null); return; }
+        if (!c || !st || c.yt || c.localFile || (S.isLive && !st._catchup) || !/^https?:\/\//i.test(st.url || '')) { finish(null); return; }
         noticeOf(st, finish);
     }
     // Where a source's link leads (its first bytes, asked for): a notice video, by its name, or null.
     var NOTICE_PATH = /\/(?:videos|static\/exceptions|static\/videos|exceptions)\/([a-z0-9_-]+?)(?:_v\d+)?\.mp4$/i, NOTICE_MAX = 20 * 1048576;
     function noticeOf(st, cb) {
         var done = false;
-        function end(n) { if (!done) { done = true; clearTimeout(t); cb(n); } }
+        function end(n, status) { if (!done) { done = true; clearTimeout(t); cb(n, status || 0); } }
         var t = setTimeout(function () { end(null); }, 8000), x;
         try {
             x = new XMLHttpRequest();
@@ -1512,7 +1538,7 @@ var PlayerParts = {};
                 if (x.readyState !== 4) { return; }
                 var path = ('' + (x.responseURL || '')).replace(/^https?:\/\/[^\/]+/, '').split(/[?#]/)[0], m = NOTICE_PATH.exec(path);
                 var total = +((/\/(\d+)\s*$/.exec(x.getResponseHeader('Content-Range') || '') || [])[1] || 0);
-                end(m && (!total || total < NOTICE_MAX) ? describeNotice(m[1].toLowerCase(), st) : null);
+                end(m && (!total || total < NOTICE_MAX) ? describeNotice(m[1].toLowerCase(), st) : null, x.status);
             };
             x.onerror = function () { end(null); };   // (the real file on another host, often unreadable here: no notice)
             x.send();
@@ -1795,7 +1821,7 @@ var PlayerParts = {};
     // ---------- a live channel that drops ----------
     // A live channel that stops (an error once it played, its connection lost; frozen, stuck
     // loading, or ended by its server) is opened again at the live edge, as Settings › Playback ›
-    // Seeking & buffering › Reconnect live channels says: Off (the player closes), A few times
+    // Live TV › Reconnect live channels says: Off (the player closes), A few times
     // (STALL_MAX within STALL_WINDOW_MS, as any stall) or Keep trying (no limit). A try that
     // doesn't play is followed by another, each a little later (RECO_WAIT_S); BACK stops it.
     // Not for a trailer or YouTube (a stall there reloads as a video's does).
@@ -1845,6 +1871,53 @@ var PlayerParts = {};
         if (useAV) { startAV(S.ctx.url); } else { startHTML5(S.ctx.url); }
     }
 
+    // ---------- live TV behind the menus (Settings › Playback › Live TV) ----------
+    // BACK on a live channel opened from Home: it plays on behind the menus (seen through them),
+    // where you were before it. ▶ full screen again, ■ (or BACK to it) stops it, CH+ / CH− the
+    // next channel, still behind; opening anything else, or leaving Home, stops it.
+    var _stayBehind = 0;
+    function behindOk() { return !!(S.active && S.isLive && S.ctx && S.ctx.behindOk && typeof Stremio !== 'undefined' && Stremio.getPrefs().liveBehind); }
+    function behindLook(on) {
+        var b = document.body;
+        if (b && b.classList) { b.classList[on ? 'add' : 'remove']('live-behind'); }
+        var chip = U.byId('live-behind');
+        if (!on) { if (chip) { chip.className = 'hidden'; } return; }
+        if (!chip) { chip = U.el('div', 'hidden'); chip.id = 'live-behind'; b.appendChild(chip); }
+        U.clear(chip);
+        chip.appendChild(U.el('span', 'lb-live', '● ' + ((S.ctx && S.ctx.name) || U.t('Live'))));
+        chip.appendChild(U.el('span', 'lb-keys', U.t('▶ full screen   ■ stop   CH+/− channel')));
+        chip.className = '';
+    }
+    function toBehind() {
+        if (!behindOk() || S.behind) { return false; }
+        S.behind = true;
+        closeControls(); hideOSD(); U.spinner(false);
+        U.byId('app').className = '';
+        behindLook(true);
+        var cb = _onExit; _onExit = null;   // (where it came from, once: later its way back is where you are)
+        if (cb) { cb({ behind: true }); }
+        if (typeof App !== 'undefined' && App.current && App.current() !== 'home') { exit(); return false; }   // (not to Home: stopped)
+        return true;
+    }
+    function fromBehind() {
+        if (!S.behind) { return; }
+        S.behind = false; behindLook(false);
+        U.byId('app').className = 'hidden';
+        showOSD(false);   // (shown a moment, then gone, as after any key)
+    }
+    // A key while it plays behind the menus: true when it's the player's.
+    function behindKey(action) {
+        if (!S.behind) { return false; }
+        if (action === 'PLAY' || action === 'PLAYPAUSE') { fromBehind(); return true; }
+        if (action === 'STOP') { exit(); return true; }
+        if (action === 'PAUSE') { fromBehind(); P.handleKey('PAUSE'); return true; }
+        if (action === 'CHUP' || action === 'CHDOWN') {
+            if (S.ctx && S.ctx.zap) { _stayBehind = Date.now() + 20000; S.ctx.zap(action === 'CHUP' ? 1 : -1); }
+            return true;
+        }
+        return false;
+    }
+
     function exit() {
         if (!S.active) { return; }
         stopLiveLook(); stopFileLook();
@@ -1864,6 +1937,7 @@ var PlayerParts = {};
             }
         }
         S.active = false;
+        if (S.behind) { S.behind = false; behindLook(false); }
         _bg = null;
         closeControls();
         screenSaver(true);
@@ -1894,7 +1968,7 @@ var PlayerParts = {};
     }
 
     // ----- for the other parts (and js/player.js) -----
-    P.init = init; P.isActive = isActive; P.showOSD = showOSD; P.hideOSD = hideOSD; P.renderOSD = renderOSD; P.play = play; P.playLinked = playLinked; P.replaceSource = replaceSource;
+    P.init = init; P.isActive = isActive; P.inUse = inUse; P.isBehind = isBehind; P.toBehind = toBehind; P.fromBehind = fromBehind; P.behindKey = behindKey; P.showOSD = showOSD; P.hideOSD = hideOSD; P.renderOSD = renderOSD; P.play = play; P.playLinked = playLinked; P.replaceSource = replaceSource;
     P.updateHint = updateHint; P.startAV = startAV; P.startHTML5 = startHTML5;
     P.handleCredits = handleCredits; P.isPaused = isPaused; P.play_ = play_; P.pause_ = pause_;
     P.sponsorHighlight = sponsorHighlight;

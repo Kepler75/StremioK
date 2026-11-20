@@ -18,7 +18,7 @@ var Profiles = (function () {
     // The TV's own (every profile shares them): stremiok.<name>, or its own keys under <name>.
     var TV = ['profiles', 'manifests', 'discoverempty', 'tmdbproviders', 'integrations', 'server', 'formats', 'resblock',
         'appshortcuts', 'appsallowed', 'bigdb', 'importurl', 'aspects', 'iptv.playlists', 'iptv.stalkerall', 'iptv.stalkerkeep',
-        'iptv.every', 'iptv.size', 'liveformat', 'livefix', 'xtvod.cats', 'stvod.cats', 'local.index', 'local.indexes', 'local.matches',
+        'iptv.every', 'iptv.last', 'iptv.tidy', 'iptv.extraguides', 'iptv.guidenames', 'iptv.size', 'liveformat', 'livefix', 'xtvod.cats', 'stvod.cats', 'local.index', 'local.indexes', 'local.matches',
         'local.fixes', 'local.matching', 'local.hidden', 'netfolders', 'plugins', 'downloads', 'homesnap', 'homecache',
         'homepreview', 'session', 'lastlog', 'startup'];
     var TV_PREFIX = ['iptv.cache.', 'local.index.', 'plugins.code.'];

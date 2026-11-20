@@ -2323,7 +2323,7 @@ function handle(req, res) {
         var plugPost = req.method === 'POST' && path === '/plug/fetch';   // (a Nuvio plugin's request: see plugControl)
         var bakPost = req.method === 'POST' && path === '/bak/write';   // (a backup or the logs for a USB drive: see bakControl)
         if (req.method !== 'GET' && !epgPost && !drmPost && !givePost && !plugPost && !bakPost) { send(res, 405, 'text/plain', 'GET only'); return; }   // (before any work)
-        if (req.url.length > (/^\/epg\//.test(path) ? 32768 : /^\/(fsdl\/add|live\/(open|master)|dav\/(list|walk|sub|mi|open)|smb\/[a-z]+|dlna\/[a-z]+)$/.test(path) ? 8192 : 2048)) { send(res, 414, 'text/plain', 'request too long'); return; }   // (a download's link can be long; a guide's channels, a bitset)
+        if (req.url.length > (/^\/(epg\/|iptv\/m3u$)/.test(path) ? 32768 : /^\/(fsdl\/add|live\/(open|master)|dav\/(list|walk|sub|mi|open)|smb\/[a-z]+|dlna\/[a-z]+)$/.test(path) ? 8192 : 2048)) { send(res, 414, 'text/plain', 'request too long'); return; }   // (a download's link can be long; a guide's channels, a bitset)
         // (StremioK gave up on it — a screen left, the player closed: what it still waits for is
         // dropped; 'close' before the response finished means that on every Node)
         var leaving = [];
@@ -2387,6 +2387,7 @@ function handle(req, res) {
         if (/^\/dlna\//.test(path)) { dlnaControl(req, res, path, parts[1], leaving); return; }   // (a DLNA media server: see dlnaControl)   // (a network folder's file, for the player: its ticket)   // (a network folder: see davControl)
         if (path === '/aiom/addons') { aiomControl(req, res, parts[1], leaving); return; }
         if (path === '/img') { imgControl(req, res, parts[1], leaving); return; }   // (an image's link, for a profile picture: see imgControl)
+        if (path === '/iptv/read' || path === '/iptv/m3u' || path === '/iptv/forget') { iptvControl(req, res, path, parts[1]); return; }   // (an IPTV playlist read here: see iptvControl)
         if (path === '/xtvod/list' || path === '/xtvod/find') { xtvControl(req, res, path, parts[1]); return; }   // (an Xtream account's films and series: see xtvControl)
         if (path === '/stalker/list' || path === '/stalker/link' || path === '/stalker/genres' || path === '/stalker/vod' || path === '/stalker/play') { stalkerControl(req, res, path, parts[1], leaving); return; }   // (a Stalker portal: see stalkerControl)   // (AIOManager's addons: see aiomControl)   // (a live channel's sound repacked: see liveControl)   // (the phone's one-time page: see below)
         if (path === '/fsfile') {   // a USB file over HTTP, with Range: the player reads a big one from here (see fsfile in the header)
@@ -5585,7 +5586,8 @@ function stalkerWith(s, portal, mac, ctl, job, cb) {
 }
 function stalkerSlim(c) {   // (a page's channel: what the playlist takes; thousands of them are held meanwhile)
     if (!c || typeof c !== 'object') { return null; }
-    return { name: c.name, cmd: c.cmd, cmds: Array.isArray(c.cmds) ? c.cmds.slice(0, 1) : null, logo: c.logo, xmltv_id: c.xmltv_id, number: c.number, tv_genre_id: c.tv_genre_id };
+    return { id: c.id, name: c.name, cmd: c.cmd, cmds: Array.isArray(c.cmds) ? c.cmds.slice(0, 1) : null, logo: c.logo, xmltv_id: c.xmltv_id, number: c.number, tv_genre_id: c.tv_genre_id,
+        archive: +c.tv_archive === 1 || +c.enable_tv_archive === 1 || +c.archive === 1, archiveLen: +c.tv_archive_duration || 0 };
 }
 // picks: the genres to read (their ids), or none: all of them.
 function stalkerChannels(s, ctl, whole, picks, cb) {
@@ -5632,7 +5634,12 @@ function stalkerM3u(s, list, genres) {
         cmds[m[1]] = cmd.slice(0, 2000);
         var logo = clean(c.logo);
         if (logo && !/^https?:\/\//i.test(logo)) { logo = s.base + '/misc/logos/320/' + logo.replace(/^\/+/, ''); }
-        out.push('#EXTINF:-1' + (c.xmltv_id ? ' tvg-id="' + clean(c.xmltv_id) + '"' : '') + (logo ? ' tvg-logo="' + logo + '"' : '') + (c.number ? ' tvg-chno="' + clean(c.number) + '"' : '') +
+        // (its recordings: catchup="stalker", the channel's id; tv_archive_duration in hours on most
+        // portals, days on a few: up to 31 taken as days)
+        var cid = String(c.id == null ? '' : c.id), len = +(c.archiveLen || c.tv_archive_duration) || 0, days = len > 31 ? Math.ceil(len / 24) : len || 3;
+        var arch = c.archive === true || +c.archive === 1 || +c.tv_archive === 1 || +c.enable_tv_archive === 1;
+        var cu = arch && /^[\w-]{1,40}$/.test(cid) ? ' catchup="stalker" catchup-days="' + Math.min(days, 31) + '" catchup-source="' + cid + '"' : '';
+        out.push('#EXTINF:-1' + (c.xmltv_id ? ' tvg-id="' + clean(c.xmltv_id) + '"' : '') + (logo ? ' tvg-logo="' + logo + '"' : '') + (c.number ? ' tvg-chno="' + clean(c.number) + '"' : '') + cu +
             ' group-title="' + clean(genres[String(c.tv_genre_id)] || 'Live TV') + '",' + (clean(c.name).replace(/,/g, ' ·') || 'Channel'));
         out.push(m[1]);
         n++;
@@ -5662,6 +5669,40 @@ function stalkerKeepVod(s, key, v) {
     s.vodKept[key] = { at: Date.now(), v: v };
 }
 function stalkerText(v, n) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n); }
+// A channel's recording on a Stalker portal: the program at `start` (seconds) found in the
+// portal's guide (get_simple_data_table, that day's pages, then the days either side), its link
+// asked for (tv_archive create_link, "auto /media/<program>.mpg", as the portals' own players do).
+// cb(err, link): 404 no program then, 403 the portal gave no recording.
+var STALKER_ARCHIVE_PAGES = 12;
+function stalkerArchiveLink(s, ch, start, ctl, cb) {
+    var days = [], best = null;
+    [start, start - 86400, start + 86400].forEach(function (t) { var d = new Date(t * 1000).toISOString().slice(0, 10); if (days.indexOf(d) === -1) { days.push(d); } });
+    function day(i) { if (i >= days.length) { finish(); return; } page(i, 1); }
+    function page(i, p) {
+        stalkerAsk(s, 'type=epg&action=get_simple_data_table&ch_id=' + encodeURIComponent(ch) + '&date=' + days[i] + '&p=' + p, ctl, function (err, js) {
+            if (err) { cb(err); return; }
+            var data = js && Array.isArray(js.data) ? js.data : [];
+            data.forEach(function (e) {
+                var a = +(e && e.start_timestamp), b = +(e && e.stop_timestamp), d = Math.abs(a - start);
+                if (!(a > 0) || e.id == null || !/^[\w-]{1,40}$/.test(String(e.id))) { return; }
+                if ((a <= start + 120 && b > start) || d < 120) { if (!best || d < best.d) { best = { id: String(e.id), d: d }; } }
+            });
+            if (best && best.d < 120) { finish(); return; }
+            var total = +(js && js.total_items) || 0, per = +(js && js.max_page_items) || data.length || 1;
+            if (data.length && p * per < total && p < STALKER_ARCHIVE_PAGES) { page(i, p + 1); return; }
+            day(i + 1);
+        });
+    }
+    function finish() {
+        if (!best) { cb(upError('no program at that time in the portal’s guide', 404)); return; }
+        stalkerAsk(s, 'type=tv_archive&action=create_link&cmd=' + encodeURIComponent('auto /media/' + best.id + '.mpg') + '&series=&forced_storage=&disable_ad=0&download=0&force_ch_link_check=0', ctl, function (err, js) {
+            if (err) { cb(err); return; }
+            var m = /(https?:\/\/[^\s"]+)/i.exec(String((js && js.cmd) || ''));
+            cb(m ? null : upError('the portal gave no recording', 403), m ? m[1] : null);
+        });
+    }
+    day(0);
+}
 function stalkerCmdOk(cmd) { return !!cmd && cmd.length <= 2000 && !/[\r\n]/.test(cmd); }
 function stalkerVodItem(s, o) {
     if (!o || typeof o !== 'object' || o.id == null) { return null; }
@@ -5805,6 +5846,16 @@ function stalkerControl(req, res, path, query, leaving) {
         }, function (err, link) { json(err ? { why: err.message || 'failed' } : { url: link }); });
         return;
     }
+    if (path === '/stalker/archive') {   // (a channel's recording: its program found in the portal's guide, its link asked now, and sent there)
+        var ach = String(q.ch || ''), ast = parseInt(q.start, 10);
+        if (!/^[\w-]{1,40}$/.test(ach) || !(ast > 0)) { send(res, 400, 'text/plain', 'bad program'); return; }
+        stalkerWith(s, portal, mac, ctl, function (ss, done) { stalkerArchiveLink(ss, ach, ast, ctl, done); }, function (err, link) {
+            if (err) { log('Stalker: no recording (' + (err.message || 'failed') + ')'); send(res, err.status === 404 ? 404 : 403, 'text/plain', err.message || 'failed'); return; }
+            res.writeHead(302, { 'Location': link, 'Cache-Control': 'no-store' });
+            res.end();
+        });
+        return;
+    }
     if (path === '/stalker/play') {   // (a film's or episode's link: asked now, and sent there)
         var cmd = String(q.cmd || ''), ep = /^\d{1,4}$/.test(q.ep || '') ? +q.ep : -1;
         if (!stalkerCmdOk(cmd)) { send(res, 400, 'text/plain', 'bad title'); return; }
@@ -5926,32 +5977,75 @@ function drmControl(req, res, query, body, leaving) {
 // its id or one of its names is in it (a few others may slip through: harmless). Downloaded
 // (gzipped or not) up to EPG_MAX, read a piece at a time up to EPG_XML_MAX unpacked, within
 // EPG_MS (past a limit: what was read, "partial"); programs from EPG_BEFORE ago to EPG_AFTER
-// ahead, EPG_PER a channel, EPG_TOTAL in all. One guide read at a time, EPG_GUIDES kept. On the
+// ahead, EPG_PER a channel, EPG_TOTAL in all (shared: past it, each channel's cut to its share,
+// down to EPG_PER_MIN, before later ones are dropped). One guide read at a time, EPG_GUIDES kept. On the
 // sideloaded app saved in its folder (epg-<hash>.json), read again after EPG_FRESH_MS; under
 // TizenBrew (no folder) kept in memory. While a guide is read again, the last one still answers.
-var EPG_MAX = 60 * 1048576, EPG_XML_MAX = 200 * 1048576, EPG_MS = 5 * 60000, EPG_BEFORE = 2 * 3600, EPG_AFTER = 30 * 3600;
-var EPG_GET_BYTES = 2 * 1048576, EPG_BODY_MAX = 65536;   // (an /epg/get answer; a POST's body: the channels' keys)
-var EPG_PER = 150, EPG_TOTAL = 60000, EPG_TITLE = 120, EPG_DESC = 200, EPG_GUIDES = 4, EPG_FRESH_MS = 6 * 3600000, EPG_RETRY_MS = 10 * 60000;
+// (2.4.6, after ediziks' fork, #29: bigger guides read whole, matched by country, extra guides)
+var EPG_MAX = 200 * 1048576, EPG_XML_MAX = 400 * 1048576, EPG_MS = 5 * 60000, EPG_BEFORE = 2 * 3600, EPG_AFTER = 30 * 3600;
+var EPG_GET_BYTES = 2 * 1048576, EPG_BODY_MAX = 262144, EPG_FORMAT = 4, EPG_ASK_KEYS = 2000, EPG_K_MAX = 180000;   // (an /epg/get answer; a POST's body: the channels' keys; their bitset, base64: js/epg.js's bitsFor, 1,048,576 bits at most)
+var EPG_PER = 150, EPG_PER_MIN = 4, EPG_TOTAL = 120000, EPG_TITLE = 120, EPG_DESC = 200, EPG_GUIDES = 4, EPG_FRESH_MS = 6 * 3600000, EPG_RETRY_MS = 10 * 60000;
 var _epg = Object.create(null), _epgQueue = [], _epgBusy = false;
 var EPG_ACCENTS = { 'á': 'a', 'à': 'a', 'â': 'a', 'ä': 'a', 'ã': 'a', 'å': 'a', 'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
     'ó': 'o', 'ò': 'o', 'ô': 'o', 'ö': 'o', 'õ': 'o', 'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ñ': 'n', 'ç': 'c' };
 // A channel's key (the same as js/epg.js's EPG.key, see there): a tvg-id ("i:", iptv-org's feed
 // after an @ left out) or a name ("n:", no capitals, accents, spaces, "TV" or HD tags), a country
-// at the end kept apart after a dot. A guide's channel answers with it and without (epgKeys).
-var EPG_COUNTRY = { ar: 'ar', arg: 'ar', mx: 'mx', mex: 'mx', us: 'us', usa: 'us', uk: 'uk', gb: 'uk', es: 'es', br: 'br', cl: 'cl', co: 'co', pe: 'pe',
-    uy: 'uy', py: 'py', ve: 've', ec: 'ec', bo: 'bo', ca: 'ca', fr: 'fr', de: 'de', it: 'it', pt: 'pt' };
+// (".tr", " MX" at the end, "TR:" / "|UK|" at the start) kept apart after a dot. A guide's
+// channel answers with it in its country and without one (epgGuideKeys).
+var EPG_COUNTRY = { ar: 'ar', arg: 'ar', mx: 'mx', mex: 'mx', us: 'us', usa: 'us', uk: 'uk', gb: 'uk', gbr: 'uk', eng: 'uk', es: 'es', esp: 'es', br: 'br', cl: 'cl', co: 'co', pe: 'pe',
+    uy: 'uy', py: 'py', ve: 've', ec: 'ec', bo: 'bo', ca: 'ca', fr: 'fr', fra: 'fr', de: 'de', ger: 'de', deu: 'de', it: 'it', ita: 'it', pt: 'pt', por: 'pt',
+    tr: 'tr', tur: 'tr', nl: 'nl', ned: 'nl', nld: 'nl', be: 'be', bel: 'be', pl: 'pl', pol: 'pl', at: 'at', aut: 'at', ch: 'ch', se: 'se', swe: 'se',
+    no: 'no', dk: 'dk', fi: 'fi', gr: 'gr', gre: 'gr', ro: 'ro', hu: 'hu', cz: 'cz', sk: 'sk', ru: 'ru', rus: 'ru', ua: 'ua', 'in': 'in', au: 'au', aus: 'au',
+    ie: 'ie', irl: 'ie', al: 'al', rs: 'rs', hr: 'hr', ba: 'ba', bg: 'bg', si: 'si', il: 'il', ae: 'ae', sa: 'sa', eg: 'eg', ma: 'ma', za: 'za', nz: 'nz', ir: 'ir', irn: 'ir', pk: 'pk', pak: 'pk', bd: 'bd', cn: 'cn', chn: 'cn', 'do': 'do', afg: 'af', sw: 'se', jp: 'jp', kr: 'kr', ph: 'ph', th: 'th', vn: 'vn', my: 'my',
+    id: 'id', lk: 'lk', np: 'np', qa: 'qa', kw: 'kw', iq: 'iq', jo: 'jo', lb: 'lb', sy: 'sy', ps: 'ps', om: 'om', bh: 'bh', ye: 'ye', tn: 'tn', dz: 'dz', ly: 'ly',
+    ng: 'ng', gh: 'gh', ke: 'ke', mk: 'mk', me: 'me', xk: 'xk', lt: 'lt', lv: 'lv', ee: 'ee', is: 'is', lu: 'lu', cy: 'cy', mt: 'mt', cr: 'cr', gt: 'gt', hn: 'hn',
+    sv: 'sv', ni: 'ni', pa: 'pa', pr: 'pr', jm: 'jm', tt: 'tt', cu: 'cu' };
+var EPG_SUFFIX_SKIP = { 'in': 1, at: 1, no: 1, be: 1, ba: 1, ma: 1, sa: 1, si: 1, por: 1, aus: 1, 'do': 1, is: 1, me: 1, my: 1, id: 1, pa: 1, pr: 1, sv: 1, ni: 1, om: 1, cu: 1, ke: 1, ye: 1, ps: 1, tt: 1, gt: 1, cr: 1, lb: 1, jo: 1, np: 1, sw: 1 }, EPG_NOT_CC = { hd: 1, sd: 1, tv: 1, fm: 1, hq: 1 };
+var EPG_PREFIX = /^[\s|\[(│┃]*([a-z]{2,3})(?:\s*[:|\])│┃]+|\s+-+)\s*/;
 function epgParts(kind, s) {
     var t = String(s || '').toLowerCase().replace(/[áàâäãåéèêëíìîïóòôöõúùûüñç]/g, function (c) { return EPG_ACCENTS[c]; }).trim(), cc = '', m;
     if (kind === 'i') { t = t.replace(/@.*$/, ''); }
-    if ((m = /\.([a-z]{2})$/.exec(t))) { cc = m[1]; t = t.slice(0, -3); }
-    else if (kind === 'n' && (m = /[\s_-]+([a-z]{2,3})$/.exec(t)) && EPG_COUNTRY[m[1]] && t.length > m[0].length) { cc = EPG_COUNTRY[m[1]]; t = t.slice(0, -m[0].length); }
+    if (kind === 'n' && (m = EPG_PREFIX.exec(t)) && EPG_COUNTRY[m[1]] && t.length > m[0].length) { cc = EPG_COUNTRY[m[1]]; t = t.slice(m[0].length); }
+    if ((m = /\.([a-z]{2})$/.exec(t)) && !EPG_NOT_CC[m[1]]) { cc = cc || EPG_COUNTRY[m[1]] || m[1]; t = t.slice(0, -3); }
+    else if (kind === 'n' && (m = /[\s_-]+([a-z]{2,3})$/.exec(t)) && EPG_COUNTRY[m[1]] && !EPG_SUFFIX_SKIP[m[1]] && t.length > m[0].length) { cc = cc || EPG_COUNTRY[m[1]]; t = t.slice(0, -m[0].length); }
     if (kind === 'n') { t = t.replace(/\[[^\]]*\]|\([^)]*\)/g, ' ').replace(/\b(hd|fhd|uhd|sd|hq|4k|8k|hevc|h265|1080p?|720p?|tv)\b/g, ' '); }
     t = t.replace(/[^a-z0-9]+/g, '');
     if (kind === 'n' && t.length > 4) { t = t.replace(/tv$/, ''); }
     return { base: t.slice(0, 60), cc: cc };
 }
 function epgKey(kind, s) { var p = epgParts(kind, s); return p.base ? kind + ':' + p.base + (p.cc ? '.' + p.cc : '') : ''; }
-function epgKeys(kind, s) { var p = epgParts(kind, s); return !p.base ? [] : p.cc ? [kind + ':' + p.base + '.' + p.cc, kind + ':' + p.base] : [kind + ':' + p.base]; }
+// A guide's channel's keys (the same as js/epg.js's EPG.guideKeys): its id and display names,
+// each without a country and in the channel's (its id's, else a name's; ".~" when neither says).
+// Guides' other name forms (2.4.4.7, Settings › Content › IPTV › TV guide names: "loose", the
+// guide link's "#names=loose"): a name in gatotv's form, as epgshare01's Latin American guides
+// have it, also read as a playlist names it ("Canal Telefé (Argentina)" as "Telefé", "Canal 13
+// de Argentina (El Trece)" as "El Trece", "Canal 2 de México (Canal Las Estrellas - XEW)" as
+// "Las Estrellas"); a country in brackets is the channel's (EPG_PLACE: AR1 marks "Canal ESPN 2
+// (Bolivia)" .ar too), a region ("Latinoamérica") none.
+var EPG_PLACE = { argentina: 'ar', colombia: 'co', bolivia: 'bo', paraguay: 'py', chile: 'cl', uruguay: 'uy', peru: 'pe', mexico: 'mx', espana: 'es', spain: 'es', brasil: 'br', brazil: 'br',
+    venezuela: 've', ecuador: 'ec', usa: 'us', eeuu: 'us', 'estados unidos': 'us', 'united states': 'us', 'united kingdom': 'uk', england: 'uk', turkey: 'tr', turkiye: 'tr', germany: 'de',
+    deutschland: 'de', france: 'fr', italy: 'it', italia: 'it', portugal: 'pt', canada: 'ca', 'costa rica': 'cr', guatemala: 'gt', honduras: 'hn', 'el salvador': 'sv', nicaragua: 'ni',
+    panama: 'pa', 'puerto rico': 'pr', 'republica dominicana': 'do', cuba: 'cu', latinoamerica: '', latam: '', internacional: '', international: '' };
+function epgPlace(s) {
+    var k = String(s || '').toLowerCase().replace(/[áàâäãåéèêëíìîïóòôöõúùûüñç]/g, function (c) { return EPG_ACCENTS[c]; }).replace(/[^a-z ]+/g, '').replace(/\s+/g, ' ').trim();
+    return Object.prototype.hasOwnProperty.call(EPG_PLACE, k) ? EPG_PLACE[k] : null;
+}
+function epgNameForms(n) {
+    var out = [String(n || '')], cc = '', m = /^(.*\S)\s*\(([^()]+)\)\s*$/.exec(out[0]);
+    if (m) { var pl = epgPlace(m[2]); if (pl === null) { out.push(m[2].split(/\s+-\s+/)[0]); } else { cc = pl; } }
+    out.slice().forEach(function (x) { var c = /^\s*canal\s+(.*[A-Za-zÀ-ɏ].*)$/i.exec(x); if (c) { out.push(c[1]); } });
+    return { forms: out, cc: cc };
+}
+function epgGuideKeys(id, names, loose) {
+    var all = [], place = '';
+    (names || []).forEach(function (n) { if (!loose) { all.push(n); return; } var f = epgNameForms(n); if (f.cc && !place) { place = f.cc; } f.forms.forEach(function (x) { all.push(x); }); });
+    var ip = epgParts('i', id), np = all.map(function (n) { return epgParts('n', n); }), cc = place || ip.cc, out = [];
+    np.forEach(function (q) { if (!cc && q.cc) { cc = q.cc; } });
+    function add(kind, q) { if (q.base) { out.push(kind + ':' + q.base, kind + ':' + q.base + '.' + (cc || '~')); } }
+    add('i', ip);
+    np.forEach(function (q) { add('n', q); });
+    return { keys: out, cc: cc };
+}
 function epgHash(s) {
     var h = 0x811c9dc5;
     for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0; }
@@ -5959,8 +6053,8 @@ function epgHash(s) {
 }
 function epgHas(bits, key) {
     if (!bits || !bits.length || !key) { return false; }
-    var i = epgHash(key) % (bits.length * 8);
-    return !!(bits[i >> 3] & (1 << (i & 7)));
+    var n = bits.length * 8, i = epgHash(key) % n, j = epgHash('~' + key) % n;   // (two bits a key: js/epg.js's bitsFor)
+    return !!(bits[i >> 3] & (1 << (i & 7))) && !!(bits[j >> 3] & (1 << (j & 7)));
 }
 function epgBits(k) {   // base64url -> bytes
     var b64 = String(k || '').replace(/-/g, '+').replace(/_/g, '/');
@@ -6022,26 +6116,39 @@ function epgAbout(cats) {
 }
 // The reader: text in, a piece at a time (feed); <channel> and <programme> elements read as
 // they complete.
-function epgParser(want, now) {
-    var p = { buf: '', channels: Object.create(null), keys: Object.create(null), progs: Object.create(null), icons: Object.create(null), count: 0, partial: false, isGuide: false };   // (no prototype: a channel id like "__proto__" or "constructor" is just a name)
-    var from = now - EPG_BEFORE, to = now + EPG_AFTER;
+function epgParser(want, now, loose) {
+    var p = { buf: '', channels: Object.create(null), keys: Object.create(null), progs: Object.create(null), icons: Object.create(null), count: 0, partial: false, isGuide: false, per: EPG_PER };   // (no prototype: a channel id like "__proto__" or "constructor" is just a name)
+    var from = now - EPG_BEFORE, to = now + EPG_AFTER, kcc = Object.create(null), ksrc = Object.create(null), idKeys = Object.create(null);   // (each key's channel's country and source, each channel's keys, while it's read)
+    p.src = 0;   // (the source being read: 0 the playlist's guide, then your extra ones, see epgSources)
+    function srcId(id) { return p.src ? 'x' + p.src + ':' + id : id; }   // (an extra guide's channel ids kept apart from the others')
+    // (a key an earlier source gave a channel with no programs: an extra guide's channel takes it)
+    function emptyKey(k) { var old = p.keys[k]; return !!old && ksrc[k] < p.src && !(p.progs[old] && p.progs[old].length); }
     function channel(el) {
-        var id = epgAttr(el.slice(0, el.indexOf('>') + 1), 'id');
-        if (!id) { return; }
-        var keys = epgKeys('i', id);
-        epgInner(el, 'display-name', true).forEach(function (n) { keys = keys.concat(epgKeys('n', n)); });
-        if (!keys.some(function (k) { return epgHas(want, k); })) { return; }
+        var raw = epgAttr(el.slice(0, el.indexOf('>') + 1), 'id');
+        if (!raw) { return; }
+        var gk = epgGuideKeys(raw, epgInner(el, 'display-name', true), loose), id = srcId(raw);
+        if (!gk.keys.some(function (k) { return epgHas(want, k) && (!p.src || !(k in p.keys) || emptyKey(k)); })) { return; }   // (an extra guide's channel only where it adds one)
         p.channels[id] = 1;
-        keys.forEach(function (k) { if (!p.keys[k]) { p.keys[k] = id; } });
+        // (a key without a country that two countries' channels share answers neither: 0, unclear,
+        // rather than the first one listed; in one country, the first one keeps it)
+        var olds = [];
+        function take(k) { p.keys[k] = id; kcc[k] = gk.cc; ksrc[k] = p.src; (idKeys[id] = idKeys[id] || []).push(k); }
+        gk.keys.forEach(function (k) {
+            if (!(k in p.keys)) { take(k); }
+            else if (emptyKey(k)) { if (olds.indexOf(p.keys[k]) === -1) { olds.push(p.keys[k]); } take(k); }
+            else if (p.keys[k] && p.keys[k] !== id && ksrc[k] === p.src && k.indexOf('.') === -1 && kcc[k] !== gk.cc) { p.keys[k] = 0; }
+        });
+        // (an empty channel an extra guide's replaces: all its keys to this one, its tvg-id's too)
+        olds.forEach(function (old) { (idKeys[old] || []).forEach(function (k) { if (p.keys[k] === old) { take(k); } }); });
         var icon = /<icon\s[^>]*\bsrc\s*=\s*["']([^"']{1,1000})["']/i.exec(el);   // (its logo: for a channel the playlist gives none)
         if (icon && /^https?:\/\/[^\s]+$/i.test(epgText(icon[1]))) { p.icons[id] = epgText(icon[1]); }
     }
     function programme(el) {
         var tag = el.slice(0, el.indexOf('>') + 1), ch = epgAttr(tag, 'channel');
-        if (!ch || !p.channels[ch]) { return; }
+        if (!ch || !p.channels[ch = srcId(ch)]) { return; }
         var start = epgTime(epgAttr(tag, 'start')), stop = epgTime(epgAttr(tag, 'stop')) || start + 1800;
         if (!start || stop <= from || start >= to || stop <= start) { return; }
-        if (p.count >= EPG_TOTAL) { p.partial = true; return; }
+        if (p.count >= EPG_TOTAL) { p.partial = true; return; }   // (each channel down to EPG_PER_MIN and still too many)
         var row = [start, stop, epgInner(el, 'title').slice(0, EPG_TITLE) || '?', epgInner(el, 'desc').slice(0, EPG_DESC)];
         var pic = /<icon\s[^>]*\bsrc\s*=\s*["']([^"']{1,1000})["']/i.exec(el);   // (its picture)
         if (pic && /^https?:\/\/[^\s]+$/i.test(epgText(pic[1]))) { row.push(epgText(pic[1])); }
@@ -6050,11 +6157,21 @@ function epgParser(want, now) {
         var l = p.progs[ch] = p.progs[ch] || [];
         l.push(row);
         p.count++;
-        if (l.length > 2 * EPG_PER) {   // (held to EPG_PER as it's read, the earliest: a feed may list one channel's programs out of order)
-            l.sort(function (a, b) { return a[0] - b[0]; });
-            p.count -= l.length - EPG_PER;
-            l.length = EPG_PER;
+        if (l.length > (p.per < EPG_PER ? p.per : 2 * p.per)) { cut(l); }   // (held to p.per as it's read: a feed may list one channel's programs out of order)
+        if (p.count >= EPG_TOTAL && p.per > EPG_PER_MIN) {   // (a big guide: EPG_TOTAL shared by its channels, not the first ones' alone)
+            p.per = Math.max(EPG_PER_MIN, Math.min(p.per - 1, Math.floor(EPG_TOTAL * 0.8 / Math.max(1, Object.keys(p.channels).length))));
+            Object.keys(p.progs).forEach(function (c) { if (p.progs[c].length > p.per) { cut(p.progs[c]); } });
         }
+    }
+    function cut(l) {   // (a channel's programs to p.per: what's on now first, then what's next; of the past only the one before)
+        l.sort(function (a, b) { return a[0] - b[0]; });
+        var i = 0;
+        while (i < l.length && l[i][1] <= now) { i++; }
+        i = Math.max(0, Math.min(i - 1, l.length - p.per));
+        var keep = l.slice(i, i + p.per);
+        p.count -= l.length - keep.length;
+        l.length = 0;
+        l.push.apply(l, keep);
     }
     p.feed = function (text) {
         if (!text) { return; }
@@ -6079,7 +6196,7 @@ function epgParser(want, now) {
         var total = 0;
         Object.keys(p.progs).forEach(function (ch) {
             var l = p.progs[ch].sort(function (a, b) { return a[0] - b[0]; });
-            if (l.length > EPG_PER) { l = p.progs[ch] = l.slice(0, EPG_PER); }
+            if (l.length > p.per) { cut(l); }
             total += l.length;
         });
         p.count = total;
@@ -6087,12 +6204,16 @@ function epgParser(want, now) {
     return p;
 }
 // The guide's download, unpacked if it's gzipped, its text handed to onText as it comes; past
-// EPG_MAX / EPG_XML_MAX it stops there (cb(null, true): what was read is kept).
-function epgFetch(url, onText, cb) {
+// EPG_MAX / EPG_XML_MAX it stops there (cb(null, why): what was read is kept; and { got, unpacked,
+// ms }: what it took). lim: other limits
+// ({ max, unpacked, ms }: an IPTV playlist's, see m3uFetchSrc).
+function epgFetch(url, onText, cb, lim) {
     cb = once(cb);
+    lim = lim || {};
+    var maxGot = lim.max || EPG_MAX, maxText = lim.unpacked || EPG_XML_MAX;
     var hops = 0, r = null, done = false, got = 0, unpacked = 0, stopGz = null;
-    var timer = setTimeout(function () { end(null, true); }, EPG_MS);
-    function end(err, partial) { if (done) { return; } done = true; clearTimeout(timer); try { if (r) { r.abort(); } } catch (e) {} if (stopGz) { stopGz(); } cb(err, !!partial); }
+    var t0 = Date.now(), timer = setTimeout(function () { end(null, 'took over ' + Math.round((lim.ms || EPG_MS) / 60000) + ' min'); }, lim.ms || EPG_MS);
+    function end(err, partial) { if (done) { return; } done = true; clearTimeout(timer); try { if (r) { r.abort(); } } catch (e) {} if (stopGz) { stopGz(); } cb(err, partial || '', { got: got, unpacked: unpacked, ms: Date.now() - t0 }); }
     function get(u) {
         var pu;
         try { pu = urllib.parse(u); } catch (e) { end(upError('a bad link', 400)); return; }
@@ -6110,7 +6231,7 @@ function epgFetch(url, onText, cb) {
                     if (done) { return; }
                     unpacked += buf.length;
                     try { onText(dec.write(buf)); } catch (e) { end(e); return; }
-                    if (unpacked > EPG_XML_MAX) { end(null, true); }
+                    if (unpacked > maxText) { end(null, 'over ' + Math.round(maxText / 1048576) + ' MB unpacked'); }
                 }
                 var told = /gzip/i.test(String(resp.headers['content-encoding'] || '')), decided = false;
                 function decide(b) {   // gzip (its header said so, or 1f 8b) or text
@@ -6137,7 +6258,7 @@ function epgFetch(url, onText, cb) {
                         chunk = head; head = null;
                     }
                     feed(chunk);
-                    if (got > EPG_MAX) { end(null, true); }
+                    if (got > maxGot) { end(null, 'a download over ' + Math.round(maxGot / 1048576) + ' MB'); }
                 });
                 resp.on('end', function () {
                     if (done) { return; }
@@ -6151,6 +6272,248 @@ function epgFetch(url, onText, cb) {
         } catch (e) { end(e); }
     }
     get(url);
+}
+// ---- IPTV playlists read here (2.4.5, after ediziks' fork: #29) ----
+// An M3U playlist (u: its link) or an Xtream account's live channels (base, user, pass, fmt: from
+// its player_api.php, written out as the M3U its get.php gives) downloaded here, up to M3U_MAX,
+// and kept on disk: m3u-<hash>.m3u, each channel after a "#G:<its group's key>" line, and
+// m3u-<hash>.json, its groups (key, name, channels) and when it was read. StremioK is handed only
+// the groups picked (Channel groups), up to the bytes the TV can hold, and reads it as any
+// playlist: one reader, the same channels. A group's key: an M3U's, its name's hash (the TV's
+// own, js/iptv.js hash); an Xtream account's, its category's number. A copy is used for
+// M3U_FRESH_MS unless asked again (Reload); kept when a new read fails (said: stale); one not
+// used for M3U_KEEP_MS is deleted.
+var M3U_MAX = 250 * 1048576, M3U_MS = 12 * 60000, M3U_FRESH_MS = 86400000, M3U_RETRY_MS = 60000, M3U_KEEP_MS = 14 * 86400000, M3U_GROUPS = 5000, M3U_KEYS = 3000;
+var M3U_FILES = /^m3u-[0-9a-z]+\.(m3u|json)(\.part)?$/, _m3u = Object.create(null), _m3uSwept = false;
+function m3uHash(s) {
+    var h = 0x811c9dc5, t = '' + s;
+    for (var i = 0; i < t.length; i++) {
+        h ^= t.charCodeAt(i);
+        h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+    }
+    return h.toString(36);
+}
+// What's asked about: { kind, key, … } or null (a link or an account that can't be).
+function m3uSrc(q) {
+    if (q.u) {
+        var u = String(q.u).trim();
+        return (/^https?:\/\/[^\s]+$/i.test(u) && u.length <= 2000) ? { kind: 'm3u', u: u, key: 'u|' + u } : null;
+    }
+    var base = String(q.base || '').replace(/\/+$/, ''), fmt = q.fmt === 'hls' ? 'hls' : 'ts';
+    if (!/^https?:\/\/[^\s]+$/i.test(base) || base.length > 500 || !q.user || !q.pass || String(q.user).length > 200 || String(q.pass).length > 200) { return null; }
+    return { kind: 'xt', base: base, user: String(q.user), pass: String(q.pass), fmt: fmt, key: 'x|' + base + '|' + q.user + '|' + q.pass + '|' + fmt };
+}
+function m3uHost(u) { try { return urllib.parse(u).hostname || '?'; } catch (e) { return '?'; } }   // (never the link: an account's login is in it)
+function m3uFile(key, ext) { var d = tokenDir(); return d ? d + '/m3u-' + epgHash(key).toString(36) + '.' + ext : null; }
+function m3uSweep() {
+    if (_m3uSwept) { return; }
+    _m3uSwept = true;
+    var d = tokenDir(), fs = require('fs');
+    if (!d) { return; }
+    fs.readdir(d, function (err, names) {
+        (err ? [] : names).filter(function (n) { return M3U_FILES.test(n); }).forEach(function (n) {
+            fs.stat(d + '/' + n, function (e, st) { if (!e && st && Date.now() - st.mtime.getTime() > (/\.part$/.test(n) ? 3600000 : M3U_KEEP_MS)) { fs.unlink(d + '/' + n, noop); } });
+        });
+    });
+}
+function m3uTouch(x) {
+    var fs = require('fs'), now = new Date();
+    [m3uFile(x.key, 'm3u'), m3uFile(x.key, 'json')].forEach(function (f) { if (f) { fs.utimes(f, now, now, noop); } });
+}
+// Its state: { state: 'new' | 'loading' | 'ready' | 'failed', at, read (bytes so far), total,
+// groups: { key: { name, n } }, header, partial, stale, error }; from its saved file at first.
+function m3uState(src, force) {
+    m3uSweep();
+    var x = _m3u[src.key];
+    if (!x) {
+        x = _m3u[src.key] = { key: src.key, state: 'new', at: 0, read: 0, total: 0, groups: {}, header: '' };
+        try {
+            var m = JSON.parse(require('fs').readFileSync(m3uFile(src.key, 'json'), 'utf8'));
+            if (m && m.key === src.key && m.at > 0 && require('fs').existsSync(m3uFile(src.key, 'm3u'))) {
+                x.state = 'ready'; x.at = m.at; x.total = +m.total || 0; x.groups = m.groups || {}; x.header = m.header || ''; x.partial = !!m.partial;
+            }
+        } catch (e) {}
+    }
+    var again = Date.now() - (x.failedAt || 0) > M3U_RETRY_MS, due = x.state === 'new' || (x.state === 'ready' && Date.now() - x.at > M3U_FRESH_MS && again) || (x.state === 'failed' && again);   // (a read that failed: tried again a minute later, or when asked again)
+    if (x.state !== 'loading' && (force || due)) { m3uFetch(x, src); }
+    return x;
+}
+function m3uFetch(x, src) {
+    var fs = require('fs'), f = m3uFile(x.key, 'm3u'), out, failed = false, groups = {}, ng = 0, total = 0, header = '';
+    if (!f) { x.state = 'failed'; x.error = 'no folder to keep it in'; return; }
+    var had = x.state === 'ready';
+    x.state = 'loading'; x.read = 0; x.error = ''; x.refused = false;
+    try { out = fs.createWriteStream(f + '.part', { mode: 384 }); } catch (e) { x.state = had ? 'ready' : 'failed'; x.error = 'couldn\'t keep it'; return; }
+    out.on('error', function () { failed = true; });
+    function put(key, name, text) {   // (a channel, under its group)
+        if (!groups[key]) { if (ng >= M3U_GROUPS) { key = '_more'; name = '…'; } if (!groups[key]) { groups[key] = { name: name, n: 0 }; ng++; } }
+        groups[key].n++; total++;
+        x.read += text.length;
+        out.write('#G:' + key + '\n' + text);
+    }
+    function end(err, partial) {
+        out.end(function () {
+            if (_m3u[x.key] !== x) { fs.unlink(f + '.part', noop); return; }   // (cleared meanwhile: Clear saved copies)
+            if (err || failed || !total) {
+                fs.unlink(f + '.part', noop);
+                x.error = err ? (err.message || 'failed') : failed ? 'couldn\'t keep it' : (src.kind === 'xt' ? 'no live channels' : 'no channels in it (is it an M3U playlist?)');
+                if (err && err.status === 401) { x.refused = true; }
+                x.failedAt = Date.now();
+                if (had) { x.state = 'ready'; x.stale = true; } else { x.state = 'failed'; }
+                log('IPTV playlist (' + m3uHost(src.kind === 'xt' ? src.base : src.u) + ') not read: ' + x.error);
+                return;
+            }
+            fs.rename(f + '.part', f, function (e) {
+                if (e) { x.state = had ? 'ready' : 'failed'; x.stale = had; x.error = 'couldn\'t keep it'; return; }
+                x.state = 'ready'; x.at = Date.now(); x.total = total; x.groups = groups; x.header = header; x.partial = !!partial; x.stale = false; x.refused = false;
+                try { fs.writeFileSync(m3uFile(x.key, 'json'), JSON.stringify({ key: x.key, at: x.at, total: total, groups: groups, header: header, partial: x.partial }), { mode: 384 }); } catch (e2) {}
+            });
+        });
+    }
+    if (src.kind === 'xt') { m3uXtream(src, put, end, function (h) { header = h; }); return; }
+    var split = m3uSplitter(function (block, group) { put(m3uHash(group), group, block); }, function (h) { if (!header) { header = h.slice(0, 8000); } });
+    epgFetch(src.u, split, function (err, partial) { if (!err) { split(null); } end(err, partial); }, { max: M3U_MAX, unpacked: M3U_MAX, ms: M3U_MS });
+}
+function m3uAttr(line, name) { var m = new RegExp('(?:^|\\s)' + name + '="([^"]*)"', 'i').exec(line); return m ? m[1] : ''; }
+// An M3U's text, as it comes (null: the end), in channels: onBlock(its lines, its group-title)
+// for each #EXTINF with the lines about it (options before or after it, then its link); the
+// #EXTM3U line to onHeader. A link without an #EXTINF is left out, as the TV's reader does.
+function m3uSplitter(onBlock, onHeader) {
+    var carry = '', block = [], inf = false, group = '';
+    function flush() { if (inf) { onBlock(block.join('\n') + '\n', group); } block = []; inf = false; group = ''; }
+    function line(raw) {
+        var t = raw.replace(/\r$/, '').replace(/^\s+/, '');
+        if (!t) { return; }
+        if (t.indexOf('#EXTM3U') === 0) { onHeader(t); return; }
+        if (t.indexOf('#EXTINF') === 0) { if (inf) { flush(); } inf = true; group = m3uAttr(t, 'group-title'); block.push(t); return; }
+        if (t.charAt(0) === '#') { if (block.length < 60) { block.push(t); } return; }
+        if (inf) { block.push(t); flush(); } else { block = []; }
+    }
+    return function (text) {
+        if (text === null) { if (carry) { line(carry); carry = ''; } flush(); return; }
+        var parts = (carry + text).split('\n');
+        carry = parts.pop();
+        if (carry.length > 1048576) { carry = ''; }   // (not a playlist's line)
+        for (var i = 0; i < parts.length; i++) { line(parts[i]); }
+    };
+}
+// An Xtream account's live channels (its categories, then its streams, read as they come), each
+// as the M3U line get.php gives: the same names and guide ids (the same channels on the TV);
+// radio="true" for its radio streams; catchup="xc" and catchup-days for those it keeps.
+// (2.4.6: the server's clock first, from its account answer: how far its time is from UTC, in
+// minutes, written in the header (x-tz-offset): its catch-up links are in its own time. Not
+// answered: none, and the read goes on.)
+function m3uXtream(src, put, end, setHeader) {
+    var api = src.base + '/player_api.php?username=' + encodeURIComponent(src.user) + '&password=' + encodeURIComponent(src.pass) + '&action=';
+    var cats = '', names = Object.create(null), ext = src.fmt === 'hls' ? 'm3u8' : 'ts', acct = '';
+    function clean(v) { return String(v == null ? '' : v).replace(/["\r\n]+/g, ' ').trim(); }
+    xtvGet(api.replace(/&action=$/, ''), function (t) { if (acct.length < 65536) { acct += t; } }, function () {
+        var o = null;
+        try { o = JSON.parse(acct); } catch (e) { o = null; }
+        var si = o && o.server_info, ts = si && +si.timestamp_now, local = si && Date.parse(String(si.time_now || '').replace(' ', 'T') + 'Z');
+        if (ts > 0 && local > 0) {
+            var mins = Math.round((local / 1000 - ts) / 900) * 15;
+            if (mins >= -720 && mins <= 840) { setHeader('#EXTM3U x-tz-offset="' + mins + '"'); }
+        }
+        live();
+    });
+    function live() {
+    xtvGet(api + 'get_live_categories', function (t) { if (cats.length < 4194304) { cats += t; } }, function (err) {
+        if (err) { end(err); return; }
+        var list = null;
+        try { list = JSON.parse(cats); } catch (e) { list = null; }
+        if (!Array.isArray(list)) { end(upError(list && list.user_info ? 'the server refused the login' : 'not an Xtream server\'s answer', list && list.user_info ? 401 : 502)); return; }
+        list.forEach(function (c) { if (c && c.category_id != null) { names[String(c.category_id)] = clean(c.category_name); } });
+        var feed = xtvItems(function (o) {
+            var sid = parseInt(o && o.stream_id, 10);
+            if (!(sid > 0)) { return; }
+            var name = String(o.name == null ? '' : o.name).replace(/[\r\n]+/g, ' ').trim() || 'Channel ' + sid;
+            var cid = String(o.category_id == null ? '' : o.category_id), days = +o.tv_archive_duration || 0;
+            put(cid || '_none', names[cid] || '', '#EXTINF:-1 tvg-id="' + clean(o.epg_channel_id) + '" tvg-name="' + clean(name) + '" tvg-logo="' + clean(o.stream_icon) + '" group-title="' + (names[cid] || '') + '"' +
+                (o.stream_type === 'radio_streams' ? ' radio="true"' : '') + (+o.tv_archive === 1 && days > 0 ? ' catchup="xc" catchup-days="' + Math.min(days, 365) + '"' : '') + ',' + name + '\n' +
+                src.base + '/live/' + encodeURIComponent(src.user) + '/' + encodeURIComponent(src.pass) + '/' + sid + '.' + ext + '\n');
+        });
+        xtvGet(api + 'get_live_streams', feed, function (e) { end(e); });
+    });
+    }
+}
+// The kept copy to res: its #EXTM3U line, the channels of the groups asked (keys; none: all),
+// until max bytes (whole channels), then "#STREMIOK-READ:{ total, kept, cut, at, stale, partial }"
+// (total: the channels of those groups; cut: stopped short at max).
+function m3uServe(res, x, keys, max) {
+    var fs = require('fs'), want = null, total = x.total, kept = 0, bytes = 0, cut = false, rs;
+    if (keys.length) {
+        want = Object.create(null); total = 0;
+        keys.forEach(function (k) { want[k] = true; if (x.groups[k]) { total += x.groups[k].n; } });
+    }
+    try { rs = fs.createReadStream(m3uFile(x.key, 'm3u'), { highWaterMark: 65536 }); } catch (e) { send(res, 500, 'text/plain', 'not kept'); return; }
+    m3uTouch(x);
+    var dec = new StringDecoder('utf8'), carry = '', on = false, block = '', done = false;
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Access-Control-Allow-Origin': '*' });
+    res.write((x.header || '#EXTM3U') + '\n');
+    function emit() {
+        if (!on || !block) { block = ''; return true; }
+        var n = Buffer.byteLength(block);
+        if (max && bytes + n > max) { cut = true; return false; }
+        bytes += n; kept++;
+        var room = res.write(block);
+        block = '';
+        if (!room) { rs.pause(); res.once('drain', function () { if (!done) { rs.resume(); } }); }
+        return true;
+    }
+    function finish() {
+        if (done) { return; }
+        done = true;
+        try { rs.destroy(); } catch (e) {}
+        res.end('#STREMIOK-READ:' + JSON.stringify({ total: total, kept: kept, cut: cut, at: x.at, stale: !!x.stale, partial: !!x.partial }) + '\n');
+    }
+    function line(l) {
+        if (l.indexOf('#G:') === 0) {
+            if (!emit()) { finish(); return false; }
+            var k = l.slice(3);
+            on = !want || !!want[k];
+            return true;
+        }
+        if (on) { block += l + '\n'; }
+        return true;
+    }
+    rs.on('data', function (c) {
+        if (done) { return; }
+        var parts = (carry + dec.write(c)).split('\n');
+        carry = parts.pop();
+        for (var i = 0; i < parts.length; i++) { if (!line(parts[i])) { return; } }
+    });
+    rs.on('end', function () { if (done) { return; } if (carry) { line(carry); } if (!done && emit()) { finish(); } else { finish(); } });
+    rs.on('error', function () { finish(); });
+    res.on('close', function () { if (!done) { done = true; try { rs.destroy(); } catch (e) {} } });
+}
+function m3uView(x, full) {
+    var o = { state: x.state, at: x.at, read: x.read, total: x.total, stale: !!x.stale, partial: !!x.partial, error: x.error || '', refused: !!x.refused };
+    if (full && x.state === 'ready') {
+        o.groups = Object.keys(x.groups).map(function (k) { return { k: k, name: x.groups[k].name, n: x.groups[k].n }; });
+    }
+    return o;
+}
+// GET /iptv/read: start (force=1: read it again) or look at a read: m3uView (full=1: its groups);
+// /iptv/m3u: the kept copy (groups=keys, max=bytes: see m3uServe); /iptv/forget: its copies
+// deleted (a playlist removed or its link changed: its login is in them).
+function iptvControl(req, res, path, query) {
+    if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
+    var q = {};
+    String(query || '').split('&').forEach(function (kv) { var i = kv.indexOf('='); if (i > 0) { try { q[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); } catch (e) {} } });
+    var src = m3uSrc(q);
+    if (!src) { send(res, 400, 'text/plain', 'bad playlist'); return; }
+    if (path === '/iptv/forget') {
+        var fs = require('fs'), keys = src.kind === 'xt' ? ['ts', 'hls'].map(function (f) { return 'x|' + src.base + '|' + src.user + '|' + src.pass + '|' + f; }) : [src.key];
+        keys.forEach(function (k) { delete _m3u[k]; ['m3u', 'json', 'm3u.part'].forEach(function (e) { var f = m3uFile(k, e); if (f) { fs.unlink(f, noop); } }); });
+        send(res, 200, 'application/json', '{"ok":true}');
+        return;
+    }
+    if (path === '/iptv/read') { send(res, 200, 'application/json', JSON.stringify(m3uView(m3uState(src, q.force === '1'), q.full === '1'))); return; }
+    var x = _m3u[src.key] || m3uState(src, false);
+    if (x.state !== 'ready') { send(res, 409, 'application/json', JSON.stringify(m3uView(x, false))); return; }
+    var ks = String(q.groups || '').split(',').filter(function (k) { return /^[\w.-]{1,40}$/.test(k); }).slice(0, M3U_KEYS);
+    m3uServe(res, x, ks, Math.max(0, Math.min(+q.max || 0, M3U_MAX)));
 }
 function epgFile(url) { var d = tokenDir(); return d ? d + '/epg-' + epgHash(url).toString(36) + '.json' : null; }
 // A saved guide is read only up to EPG_FILE_MAX (a bigger one is deleted); one saved more than
@@ -6175,11 +6538,27 @@ function epgSaved(url) {
         var st = fs.statSync(f);
         if (st.size > EPG_FILE_MAX) { fs.unlink(f, function () {}); return null; }
         var g = JSON.parse(String(fs.readFileSync(f, 'utf8')));
-        if (!g || g.url !== url || typeof g.k !== 'string' || !g.keys || !g.progs) { return null; }
+        if (!g || g.v !== EPG_FORMAT || g.url !== url || typeof g.k !== 'string' || !g.keys || !g.progs) { return null; }   // (saved by an older StremioK: its keys are made another way)
         g.state = 'ready';
         return g;
     } catch (e) { return null; }
 }
+// A guide's sources: its link, and after "#extra=" your extra TV guides (js/epg.js: Settings ›
+// Content › IPTV › Extra TV guides), read after the playlist's own, for the channels it gives no
+// programs. The part after # is never sent.
+var EPG_EXTRAS = 6;
+// (the part after #: "extra=<links, %-encoded, by |>" and "names=loose", by &)
+function epgFrag(url, name) {
+    var i = String(url).indexOf('#'), m = i === -1 ? null : new RegExp('(?:^|&)' + name + '=([^&]*)').exec(String(url).slice(i + 1));
+    if (!m) { return ''; }
+    try { return decodeURIComponent(m[1]); } catch (e) { return ''; }
+}
+function epgSources(url) {
+    var i = String(url).indexOf('#'), out = [i === -1 ? String(url) : String(url).slice(0, i)];
+    epgFrag(url, 'extra').split('|').forEach(function (u) { if (/^https?:\/\/[^\s|]+$/i.test(u) && out.length <= EPG_EXTRAS && out.indexOf(u) === -1) { out.push(u); } });
+    return out;
+}
+function epgHost(u) { try { return urllib.parse(u).hostname || '?'; } catch (e) { return '?'; } }   // (never the link: an Xtream guide's has the login)
 function epgView(g) { return { state: g.state, at: g.at || 0, channels: g.channels || 0, programmes: g.programmes || 0, partial: !!g.partial, error: g.error || '' }; }
 function epgStart(url, k, force) {
     epgSweep();
@@ -6212,8 +6591,22 @@ function epgPump() {
     var g = _epgQueue.shift();
     if (_epg[g.url] !== g) { epgPump(); return; }   // (replaced meanwhile)
     _epgBusy = true;
-    var p = epgParser(epgBits(g.k), Math.floor(Date.now() / 1000));
-    epgFetch(g.url, p.feed, function (err, partial) {
+    var p = epgParser(epgBits(g.k), Math.floor(Date.now() / 1000), epgFrag(g.url, 'names') === 'loose'), srcs = epgSources(g.url), firstErr = null, cutWhy = '', notes = [];
+    (function next(i) {
+        if (i < srcs.length) {
+            p.src = i; p.buf = '';
+            var before = Object.keys(p.channels).length;
+            epgFetch(srcs[i], p.feed, function (e, why, size) {
+                if (e) { if (!i) { firstErr = e; } else { log('Extra TV guide not read (' + epgHost(srcs[i]) + '): ' + (e.message || 'failed')); } }
+                if (why && !cutWhy) { cutWhy = (i ? epgHost(srcs[i]) + ': ' : '') + why; }
+                notes.push((i ? epgHost(srcs[i]) + ' ' : '') + Math.round(size.got / 1048576) + ' MB (' + Math.round(size.unpacked / 1048576) + ' MB unpacked) in ' + Math.round(size.ms / 1000) + ' s' + (i ? ', ' + (Object.keys(p.channels).length - before) + ' channels added' : ''));
+                next(i + 1);
+            });
+            return;
+        }
+        done(srcs.length > 1 && Object.keys(p.channels).length ? null : firstErr, cutWhy);
+    })(0);
+    function done(err, partial) {
         _epgBusy = false;
         try {
             p.finish();
@@ -6226,10 +6619,11 @@ function epgPump() {
                 log('TV guide not read: ' + g.error);
             } else if (_epg[g.url] === g) {   // (still wanted: not cleared, nor dropped, meanwhile)
                 g.keys = p.keys; g.progs = p.progs; g.icons = p.icons; g.channels = kept; g.programmes = p.count;
-                g.partial = partial || p.partial; g.error = ''; g.state = 'ready'; g.at = Date.now();
+                g.partial = !!(partial || p.partial); g.error = ''; g.state = 'ready'; g.at = Date.now();
+                log('TV guide read: ' + kept + ' channels, ' + p.count + ' programs; ' + notes.join('; ') + (firstErr ? '; its own guide failed: ' + (firstErr.message || 'failed') : '') + (partial ? '; cut: ' + partial : p.partial ? '; cut: over ' + EPG_TOTAL + ' programs' : '') + (p.per < EPG_PER ? '; ' + p.per + ' programs a channel' : ''));
                 var f = epgFile(g.url);
                 if (f) {
-                    var keep = { url: g.url, k: g.k, at: g.at, keys: g.keys, progs: g.progs, icons: g.icons, channels: g.channels, programmes: g.programmes, partial: g.partial };
+                    var keep = { v: EPG_FORMAT, url: g.url, k: g.k, at: g.at, keys: g.keys, progs: g.progs, icons: g.icons, channels: g.channels, programmes: g.programmes, partial: g.partial };
                     require('fs').writeFile(f + '.part', JSON.stringify(keep), { mode: 384 }, function (e) {   // (written whole, then swapped in)
                         if (e) { log('TV guide not saved (' + (e.code || e.message) + ')'); return; }
                         require('fs').rename(f + '.part', f, function (e2) { if (e2) { log('TV guide not saved (' + (e2.code || e2.message) + ')'); } });
@@ -6238,7 +6632,7 @@ function epgPump() {
             }
         } catch (e) { g.state = 'failed'; g.error = 'failed'; g.at = Date.now(); }
         epgPump();
-    });
+    }
 }
 // The guide ticket: for an app that can't read the service's token (its header instead), asked
 // for once (/epg/ticket, a GET with the header: what that app reaches everything with; a web page,
@@ -6261,11 +6655,12 @@ function epgSavedFiles(re) {
     return out;
 }
 function epgClear() {
-    var d = tokenDir(), files = epgSavedFiles(), lists = epgSavedFiles(XTV_FILES);
-    (files.names || []).concat(lists.names || []).forEach(function (n) { try { require('fs').unlinkSync(d + '/' + n); } catch (e) {} });
+    var d = tokenDir(), files = epgSavedFiles(), lists = epgSavedFiles(XTV_FILES), m3us = epgSavedFiles(M3U_FILES);
+    (files.names || []).concat(lists.names || [], m3us.names || []).forEach(function (n) { try { require('fs').unlinkSync(d + '/' + n); } catch (e) {} });
+    _m3u = Object.create(null);   // (IPTV playlists read here: read again when asked for)
     _epg = Object.create(null); _epgQueue = [];   // (one being read: not saved, see epgPump)
     _xtv = Object.create(null); _xtvQueue = [];   // (the Xtream lists: read again when asked for)
-    return files.count + lists.count;
+    return files.count + lists.count + m3us.count;
 }
 function epgControl(req, res, path, query) {
     if (!entryAllowed(req, query) && !(req.method === 'POST' && hasTicket(query))) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }   // (the guide ticket: its POSTs, see hasTicket)
@@ -6274,7 +6669,7 @@ function epgControl(req, res, path, query) {
         send(res, 200, 'application/json', JSON.stringify({ ticket: _epgTicket }));
         return;
     }
-    if (path === '/epg/files') { var sf = epgSavedFiles(), xf = epgSavedFiles(XTV_FILES); send(res, 200, 'application/json', JSON.stringify({ count: sf.count, bytes: sf.bytes, xtv: { count: xf.count, bytes: xf.bytes } })); return; }
+    if (path === '/epg/files') { var sf = epgSavedFiles(), xf = epgSavedFiles(XTV_FILES), mf = epgSavedFiles(M3U_FILES); send(res, 200, 'application/json', JSON.stringify({ count: sf.count, bytes: sf.bytes, xtv: { count: xf.count + mf.count, bytes: xf.bytes + mf.bytes } })); return; }   // (IPTV playlists read here: with the Xtream lists)
     if (path === '/epg/clear') {
         if (req.method !== 'POST') { send(res, 405, 'text/plain', 'POST only'); return; }
         send(res, 200, 'application/json', JSON.stringify({ cleared: epgClear() }));
@@ -6285,7 +6680,7 @@ function epgControl(req, res, path, query) {
     var u = String(q.u || '').trim();
     if (!/^https?:\/\/[^\s]+$/i.test(u) || u.length > 2000) { send(res, 400, 'text/plain', 'bad guide link'); return; }
     if (path === '/epg/load') {
-        if (!/^[A-Za-z0-9_-]{4,24000}$/.test(q.k || '')) { send(res, 400, 'text/plain', 'bad channels'); return; }
+        if (!/^[A-Za-z0-9_-]{4,}$/.test(q.k || '') || q.k.length > EPG_K_MAX) { send(res, 400, 'text/plain', 'bad channels'); return; }
         send(res, 200, 'application/json', JSON.stringify(epgView(epgStart(u, q.k, q.force === '1'))));
         return;
     }
@@ -6297,9 +6692,13 @@ function epgControl(req, res, path, query) {
         if (!(g && g.keys)) { out._unread = true; }
         else {
             var icons = {}, bytes = 0;   // (an answer kept to EPG_GET_BYTES: past it, said to be partial)
-            String(q.ids || '').split('|').slice(0, 300).forEach(function (key) {
+            var asked = String(q.ids || '').split('|');
+            if (asked.length > EPG_ASK_KEYS) { out._cut = asked.slice(EPG_ASK_KEYS); }   // (past the limit: not looked at, so asked again, never taken as none)
+            asked.slice(0, EPG_ASK_KEYS).forEach(function (key) {
                 var own = Object.prototype.hasOwnProperty;   // (a saved guide's tables have a prototype: own entries only, of the right kind)
                 var id = key && own.call(g.keys, key) && typeof g.keys[key] === 'string' ? g.keys[key] : null;
+                if (!id && key && own.call(g.keys, key) && g.keys[key] === 0) { (out._amb = out._amb || []).push(key); }   // (two countries' channels: neither)
+                if (id && q.match === '1') { (out._ids = out._ids || Object.create(null))[key] = id; }   // (Diagnostics › TV guide matches: which channel answered)
                 var l = id && own.call(g.progs, id) && Array.isArray(g.progs[id]) ? g.progs[id] : null;
                 if (id && g.icons && own.call(g.icons, id) && typeof g.icons[id] === 'string') { icons[key] = g.icons[id]; }
                 if (!id) { return; }
@@ -6335,9 +6734,12 @@ var ENTRY_PORT = PORT + 10, ENTRY_MS = 5 * 60 * 1000, ENTRY_IDLE_MS = 30000, ENT
 var PICTURE_PX = 240, PICTURE_MAX = 262144;   // (a profile picture from the phone: made that small there, sent as a JPEG data: link)
 // A configuration file: pasted on the import's page (CONFIG_MAX, sent %-encoded: 3 times that), or
 // given by the TV to the export's page (GIVE_MAX, POSTed to /entry/give), shown to copy or download.
-var CONFIG_MAX = 1572864, GIVE_MAX = 1572864;   // (1.5 MB: a file with your history too; the page reads it as JSON, 2 MB at most)
+var CONFIG_MAX = 1572864, GIVE_MAX = 1572864;
+// A list to tick on the phone (a playlist's Channel groups: /entry/give?kind=groups, JSON
+// { title, items: [{ k, name, n, on }] }, PICK_ITEMS at most): what's ticked comes back as its keys.
+var PICK_ITEMS = 3000, PICK_KEY = /^[\w.-]{1,40}$/, PICK_MAX = PICK_ITEMS * 41 * 3 + 64;   // (1.5 MB: a file with your history too; the page reads it as JSON, 2 MB at most)
 var ENTRY_OPEN_MAX = 2, ENTRY_OPENS = 12, ENTRY_CONNECTIONS = 8, ENTRY_VISIT_MS = 20000, ENTRY_QUIET_MS = 10000;
-var ENTRY_TITLES = { link: 'Play a link on StremioK', addon: 'Add an addon to StremioK', playlist: 'Add an IPTV playlist to StremioK', config: 'Import a configuration file into StremioK', give: 'Your StremioK configuration', givelog: 'Your StremioK logs',
+var ENTRY_TITLES = { link: 'Play a link on StremioK', addon: 'Add an addon to StremioK', playlist: 'Add an IPTV playlist to StremioK', config: 'Import a configuration file into StremioK', give: 'Your StremioK configuration', givelog: 'Your StremioK logs', giveguide: 'StremioK’s TV guide matches', pick: 'Channel groups for StremioK',
     search: 'Search on StremioK', youtube: 'Add a YouTube catalog to StremioK', aiom: 'Your AIOManager address for StremioK', aiomkey: 'Your AIOManager API key for StremioK',
     server: 'Your streaming server’s address for StremioK', mac: 'Your Stalker portal’s MAC address for StremioK', webdav: 'Your network folder’s address for StremioK',
     jellyfin: 'Your media server’s address for StremioK', plugins: 'Add a Nuvio plugin repository to StremioK', picture: 'A profile picture for StremioK' };
@@ -6414,14 +6816,17 @@ function entryControl(req, res, path, query, body) {
         var now = Date.now();
         _entryOpened = _entryOpened.filter(function (x) { return now - x < 60000; });
         if (_entryOpened.length >= ENTRY_OPENS) { send(res, 429, 'text/plain', 'too many, try again in a minute'); return; }
-        var wm = /(?:^|&)what=([a-z]{1,12})(?:&|$)/.exec(query || ''), what = path === '/entry/give' ? (/(?:^|&)kind=logs(?:&|$)/.test(query || '') ? 'givelog' : 'give') : wm && ENTRY_TITLES[wm[1]] && !/^give/.test(wm[1]) ? wm[1] : 'link';   // (an export: a configuration, or the logs)
+        var wm = /(?:^|&)what=([a-z]{1,12})(?:&|$)/.exec(query || ''), km = /(?:^|&)kind=(logs|groups|guide)(?:&|$)/.exec(query || ''),
+            what = path === '/entry/give' ? (km ? (km[1] === 'logs' ? 'givelog' : km[1] === 'guide' ? 'giveguide' : 'pick') : 'give') : wm && ENTRY_TITLES[wm[1]] && !/^give/.test(wm[1]) && wm[1] !== 'pick' ? wm[1] : 'link';   // (an export: a configuration, or the logs; or a list to tick)
+        var pick = null;
+        if (what === 'pick') { pick = pickList(body); if (!pick) { send(res, 400, 'text/plain', 'bad list'); return; } }
         var ip = lanAddress();
         if (!ip) { send(res, 503, 'text/plain', 'no home network address'); return; }
         _entryOpened.push(now);
         var open = Object.keys(_entries).sort(function (a, b) { return _entries[a].at - _entries[b].at; });
         while (open.length >= ENTRY_OPEN_MAX) { entryDrop(open.shift(), true); }   // (the oldest goes)
         var t = crypto.randomBytes(16).toString('hex');
-        _entries[t] = { what: what, text: null, sent: false, at: now, timer: setTimeout(function () { entryDrop(t); }, ENTRY_MS), idle: null, give: /^give/.test(what) ? String(body) : null, seen: false };
+        _entries[t] = { what: what, text: null, sent: false, at: now, timer: setTimeout(function () { entryDrop(t); }, ENTRY_MS), idle: null, give: /^give/.test(what) ? String(body) : null, pick: pick, seen: false };
         entryIdle(t);
         var opened = function () { send(res, 200, 'application/json', JSON.stringify({ url: 'http://' + ip + ':' + ENTRY_PORT + '/e/' + t, token: t, expires: ENTRY_MS })); };
         if (_entryServer) { opened(); return; }
@@ -6447,11 +6852,45 @@ function entryControl(req, res, path, query, body) {
     if (path === '/entry/poll') {
         var text = e.text;
         if (e.sent) { entryDrop(token); } else { entryIdle(token); }   // (collected: the page and its code go)
-        send(res, 200, 'application/json', JSON.stringify(e.give !== null ? { seen: e.seen } : { text: text }));   // (an export: whether the phone has it)
+        send(res, 200, 'application/json', JSON.stringify(e.give !== null ? { seen: e.seen } : e.pick ? { text: text, seen: e.seen } : { text: text }));   // (an export: whether the phone has it)
         return;
     }
     if (path === '/entry/close') { entryDrop(token); send(res, 200, 'text/plain', 'closed'); return; }
     send(res, 404, 'text/plain', 'not found');
+}
+// The list given (pickList: checked, the bad ones dropped) and its page: a tick per item, a
+// filter box, Select all / none (of those shown), and Send to the TV (the keys ticked, by commas).
+function pickList(body) {
+    var o = null;
+    try { o = JSON.parse(String(body || '')); } catch (e) { return null; }
+    if (!o || !Array.isArray(o.items) || !o.items.length) { return null; }
+    var seen = Object.create(null), items = [];
+    o.items.slice(0, PICK_ITEMS).forEach(function (it) {
+        if (!it || typeof it.k !== 'string' || !PICK_KEY.test(it.k) || seen[it.k]) { return; }
+        seen[it.k] = true;
+        items.push({ k: it.k, name: String(it.name == null ? '' : it.name).slice(0, 200), n: Math.max(0, parseInt(it.n, 10) || 0), on: !!it.on });
+    });
+    return items.length ? { title: String(o.title || '').slice(0, 200), items: items } : null;
+}
+function htmlEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function pickPage(title, pick) {
+    var rows = pick.items.map(function (it) {
+        return '<label class="r"><input type="checkbox" value="' + htmlEsc(it.k) + '"' + (it.on ? ' checked' : '') + '> <span>' + htmlEsc(it.name) + '</span>' + (it.n ? ' <i>' + it.n + '</i>' : '') + '</label>';
+    }).join('');
+    return entryHtml(title, (pick.title ? '<p>' + htmlEsc(pick.title) + '</p>' : '') +
+        '<style>.r{display:flex;gap:10px;align-items:center;padding:10px 4px;border-bottom:1px solid #1f2633;font-size:17px}.r input{width:22px;height:22px;flex:none}.r span{flex:1}.r i{color:#9aa3b5;font-style:normal;font-size:14px}' +
+        '.bar{display:flex;gap:8px;margin:12px 0}.bar button{margin:0;flex:1;background:#2a3346;color:#e6e9ef}#go{position:sticky;bottom:12px}</style>' +
+        '<input id="q" type="search" autocomplete="off" placeholder="Filter"><div class="bar"><button type="button" id="all">Select all</button><button type="button" id="none">Select none</button></div>' +
+        '<form method="post" id="fm"><div id="l">' + rows + '</div><input type="hidden" name="text" id="t"><button type="submit" id="go">Send to the TV</button></form>' +
+        '<p>None ticked reads every group. It goes straight to your TV over your home network, <b>unencrypted</b>. This page stops working once it has been sent.</p>' +
+        '<script>var L=[].slice.call(document.querySelectorAll(".r")),go=document.getElementById("go");' +
+        'function n(){var c=L.filter(function(r){return r.firstChild.checked;}).length;go.textContent=c?"Send to the TV ("+c+")":"Send to the TV (every group)";}' +
+        'function shown(){return L.filter(function(r){return r.style.display!=="none";});}' +
+        'document.getElementById("q").oninput=function(){var q=this.value.toLowerCase();L.forEach(function(r){r.style.display=r.textContent.toLowerCase().indexOf(q)===-1?"none":"";});};' +
+        'document.getElementById("all").onclick=function(){shown().forEach(function(r){r.firstChild.checked=true;});n();};' +
+        'document.getElementById("none").onclick=function(){shown().forEach(function(r){r.firstChild.checked=false;});n();};' +
+        'document.getElementById("l").onchange=n;n();' +
+        'document.getElementById("fm").onsubmit=function(){document.getElementById("t").value=L.filter(function(r){return r.firstChild.checked;}).map(function(r){return r.firstChild.value;}).join(",")||"-";};</script>');
 }
 function entryHtml(title, body) {
     return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
@@ -6463,16 +6902,16 @@ function entryHtml(title, body) {
 function entryPage(req, res) {
     try {
         res.setHeader('Cache-Control', 'no-store');
-        var m = /^\/e\/([0-9a-f]{32})(\/stremiok(?:-logs)?\.txt)?$/.exec(String(req.url || '')), e = m && _entries[m[1]];
+        var m = /^\/e\/([0-9a-f]{32})(\/stremiok(?:-logs|-guide)?\.txt)?$/.exec(String(req.url || '')), e = m && _entries[m[1]];
         if (!e || e.sent) { send(res, 404, 'text/plain', 'Not here (it was used, or the TV closed it)'); return; }
         var title = ENTRY_TITLES[e.what];
         if (e.give !== null) {   // (an export: the file to copy, or download)
             if (req.method !== 'GET') { send(res, 405, 'text/plain', 'GET only'); return; }
             e.seen = true;
-            var logs = e.what === 'givelog', fname = logs ? 'stremiok-logs.txt' : 'stremiok.txt';
+            var logs = e.what === 'givelog', guide = e.what === 'giveguide', fname = logs ? 'stremiok-logs.txt' : guide ? 'stremiok-guide.txt' : 'stremiok.txt';
             if (m[2]) { if (m[2] !== '/' + fname) { send(res, 404, 'text/plain', 'Not here'); return; } res.setHeader('Content-Disposition', 'attachment; filename="' + fname + '"'); send(res, 200, 'text/plain; charset=utf-8', e.give); return; }
             var esc = e.give.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            send(res, 200, 'text/html; charset=utf-8', entryHtml(title, (logs ? '<p>StremioK\'s recent problems and how long it took to start, with its version and the TV\'s. Keys and passwords are masked; still, look it over before sharing it publicly.</p>' +
+            send(res, 200, 'text/html; charset=utf-8', entryHtml(title, (guide ? '<p>Each IPTV channel, its group, how it matched (ok, empty, unclear, none, noguide, failed), the TV guide and guide channel it got, and what was on, separated by tabs.</p>' : logs ? '<p>StremioK\'s recent problems and how long it took to start, with its version and the TV\'s. Keys and passwords are masked; still, look it over before sharing it publicly.</p>' +
                 '<p>To report a problem: open an issue at <a href="https://github.com/Kepler75/StremioK/issues">github.com/Kepler75/StremioK/issues</a>, say what you did, what you expected and what happened instead, and attach this file (Download).</p>'
                 : '<p>It holds your addon links, playlist logins, API keys and MAC addresses: keep it somewhere private. To restore it: Settings › Content › Import configuration file, ▣ From your phone, then choose this file there (or paste it).</p>') +
                 '<textarea id="f" readonly rows="12">' + esc + '</textarea><button type="button" onclick="var f=document.getElementById(\'f\');f.focus();f.select();try{document.execCommand(\'copy\');this.textContent=\'Copied\';}catch(x){}">Copy</button>' +
@@ -6480,7 +6919,8 @@ function entryPage(req, res) {
             return;
         }
         if (m[2]) { send(res, 404, 'text/plain', 'Not here'); return; }
-        var config = e.what === 'config', max = config ? CONFIG_MAX * 3 : e.what === 'picture' ? PICTURE_MAX : ENTRY_MAX;   // (a pasted file: its lines kept, %-encoded as sent)
+        if (req.method === 'GET' && e.pick) { e.seen = true; send(res, 200, 'text/html; charset=utf-8', pickPage(title, e.pick)); return; }
+        var config = e.what === 'config', max = config ? CONFIG_MAX * 3 : e.what === 'picture' ? PICTURE_MAX : e.pick ? PICK_MAX : ENTRY_MAX;   // (a pasted file: its lines kept, %-encoded as sent)
         if (req.method === 'GET' && e.what === 'picture') {   // (a photo from the phone, made small here, on the phone: or an image's link)
             send(res, 200, 'text/html; charset=utf-8', entryHtml(title, '<form method="post" id="fm"><p>A photo from this phone</p><input id="pick" type="file" accept="image/*">' +
                 '<img id="pv" alt="" style="display:none;width:120px;height:120px;border-radius:50%;margin:8px 0;object-fit:cover">' +
@@ -6523,6 +6963,10 @@ function entryPage(req, res) {
             try { text = tm ? decodeURIComponent(tm[1].replace(/\+/g, ' ')) : ''; } catch (e3) { text = ''; }
             if (!text.trim() && lm) { try { text = decodeURIComponent(lm[1].replace(/\+/g, ' ')); } catch (e4) { text = ''; } }   // (a link to the file, as before)
             text = config ? text.replace(/\r\n?/g, '\n').trim().slice(0, CONFIG_MAX) : text.replace(/[\r\n\t]+/g, ' ').trim();
+            if (e.pick) {   // (the keys ticked, by commas: only those in the list; '-' for none)
+                var known = Object.create(null); e.pick.items.forEach(function (it) { known[it.k] = true; });
+                text = text === '-' ? '-' : text.split(',').filter(function (k) { return known[k]; }).join(',') || '-';
+            }
             if (!text || !_entries[m[1]] || e.sent) { send(res, 400, 'text/plain', 'Nothing sent'); return; }
             e.text = text; e.sent = true;
             send(res, 200, 'text/html; charset=utf-8', entryHtml(title, '<p>Sent to your TV.</p>'));
