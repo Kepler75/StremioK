@@ -3,6 +3,11 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.4.6 — 2026-11-20
+- **Fixed:** on newer TVs (such as 2021’s, Tizen 6) StremioK’s service was failing to store
+  information, causing guides and playlists to be read again each time, and USB drives stayed
+  closed to it. It now uses StremioK’s own folder on those TVs.
+
 ## 2.4.5 — 2026-11-20
 Much of this release comes from ediziks' IPTV work (#29), ported and made configurable. Thank you!
 - **Big playlists:** StremioK's service reads an M3U up to 250 MB, or an Xtream account's live

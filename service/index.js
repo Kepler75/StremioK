@@ -1061,14 +1061,41 @@ function inside(p, root) { return p === root || p.indexOf(root + '/') === 0; }
 // wgt-private), the same one across restarts. Where it can't be kept (TizenBrew runs this
 // file inside its own package), the USB endpoints stay closed.
 var TOKEN_FILE = 'stremiok-service-token';
+// Next to where it runs (…/<package>/res/wgt/service: …/<package>/data) when that folder is
+// there; a TV that runs it from its read-only install area (Tizen 6: /opt/usr/apps/<package>/…)
+// keeps the app's data under apps_rw instead (/opt/usr/home/owner/apps_rw/<package>/data).
+var _tokenDir;
 function tokenDir() {
+    if (_tokenDir !== undefined) { return _tokenDir; }
+    var fs = require('fs'), tries = [];
     if (typeof __filename === 'string') {
         var i = __filename.indexOf('/res/wgt/');
-        if (i !== -1) { return __filename.slice(0, i) + '/data'; }
+        if (i !== -1) {
+            var base = __filename.slice(0, i), pkg = base.split('/').pop();
+            tries.push(base + '/data');
+            if (/^[\w.-]{1,64}$/.test(pkg)) { tries.push('/opt/usr/home/owner/apps_rw/' + pkg + '/data'); }
+        }
     }
-    return UNDER_TIZENBREW ? null : '/opt/usr/home/owner/apps_rw/StremioK01/data';
+    if (!UNDER_TIZENBREW) { tries.push('/opt/usr/home/owner/apps_rw/StremioK01/data'); }
+    _tokenDir = tries[0] || null;
+    for (var k = 0; k < tries.length; k++) {
+        try { if (fs.statSync(tries[k]).isDirectory()) { _tokenDir = tries[k]; break; } } catch (e) {}
+    }
+    return _tokenDir;
 }
 var _fsToken = null;
+// Whether the service can keep files in its folder: { dir, ok, code } (asked of the system, no
+// file written; for Diagnostics: a folder that isn't there, or isn't this process's).
+function dirCheck() {
+    var fs = require('fs'), dir = tokenDir(), W = (fs.constants && fs.constants.W_OK) || fs.W_OK || 2;
+    if (!dir) { return { dir: null, ok: false, code: 'none' }; }
+    try { fs.accessSync(dir, W); return { dir: dir, ok: true }; }
+    catch (e) {
+        var ex = null;
+        try { ex = fs.statSync(dir); } catch (e2) {}
+        return { dir: dir, ok: false, code: e.code || e.message, exists: !!ex, mode: ex ? (ex.mode & 511).toString(8) : null, uid: ex ? ex.uid : null, me: typeof process.getuid === 'function' ? process.getuid() : null, file: __filename };
+    }
+}
 (function () {
     try {
         var fs = require('fs'), dir = tokenDir();
@@ -6343,8 +6370,10 @@ function m3uFetch(x, src) {
     if (!f) { x.state = 'failed'; x.error = 'no folder to keep it in'; return; }
     var had = x.state === 'ready';
     x.state = 'loading'; x.read = 0; x.error = ''; x.refused = false;
-    try { out = fs.createWriteStream(f + '.part', { mode: 384 }); } catch (e) { x.state = had ? 'ready' : 'failed'; x.error = 'couldn\'t keep it'; return; }
-    out.on('error', function () { failed = true; });
+    // (why it couldn't be kept: the system's error and where, for Diagnostics)
+    function why(e) { return 'couldn\'t keep it (' + ((e && (e.code || e.message)) || 'failed') + ', ' + f.replace(/\/[^\/]*$/, '') + ')'; }
+    try { out = fs.createWriteStream(f + '.part', { mode: 384 }); } catch (e) { x.state = had ? 'ready' : 'failed'; x.error = why(e); log('IPTV playlist not kept: ' + x.error); return; }
+    out.on('error', function (e) { failed = e || true; });
     function put(key, name, text) {   // (a channel, under its group)
         if (!groups[key]) { if (ng >= M3U_GROUPS) { key = '_more'; name = '…'; } if (!groups[key]) { groups[key] = { name: name, n: 0 }; ng++; } }
         groups[key].n++; total++;
@@ -6356,7 +6385,7 @@ function m3uFetch(x, src) {
             if (_m3u[x.key] !== x) { fs.unlink(f + '.part', noop); return; }   // (cleared meanwhile: Clear saved copies)
             if (err || failed || !total) {
                 fs.unlink(f + '.part', noop);
-                x.error = err ? (err.message || 'failed') : failed ? 'couldn\'t keep it' : (src.kind === 'xt' ? 'no live channels' : 'no channels in it (is it an M3U playlist?)');
+                x.error = err ? (err.message || 'failed') : failed ? why(failed) : (src.kind === 'xt' ? 'no live channels' : 'no channels in it (is it an M3U playlist?)');
                 if (err && err.status === 401) { x.refused = true; }
                 x.failedAt = Date.now();
                 if (had) { x.state = 'ready'; x.stale = true; } else { x.state = 'failed'; }
@@ -6364,7 +6393,7 @@ function m3uFetch(x, src) {
                 return;
             }
             fs.rename(f + '.part', f, function (e) {
-                if (e) { x.state = had ? 'ready' : 'failed'; x.stale = had; x.error = 'couldn\'t keep it'; return; }
+                if (e) { x.state = had ? 'ready' : 'failed'; x.stale = had; x.error = why(e); log('IPTV playlist not kept: ' + x.error); return; }
                 x.state = 'ready'; x.at = Date.now(); x.total = total; x.groups = groups; x.header = header; x.partial = !!partial; x.stale = false; x.refused = false;
                 try { fs.writeFileSync(m3uFile(x.key, 'json'), JSON.stringify({ key: x.key, at: x.at, total: total, groups: groups, header: header, partial: x.partial }), { mode: 384 }); } catch (e2) {}
             });
@@ -6669,7 +6698,7 @@ function epgControl(req, res, path, query) {
         send(res, 200, 'application/json', JSON.stringify({ ticket: _epgTicket }));
         return;
     }
-    if (path === '/epg/files') { var sf = epgSavedFiles(), xf = epgSavedFiles(XTV_FILES), mf = epgSavedFiles(M3U_FILES); send(res, 200, 'application/json', JSON.stringify({ count: sf.count, bytes: sf.bytes, xtv: { count: xf.count + mf.count, bytes: xf.bytes + mf.bytes } })); return; }   // (IPTV playlists read here: with the Xtream lists)
+    if (path === '/epg/files') { var sf = epgSavedFiles(), xf = epgSavedFiles(XTV_FILES), mf = epgSavedFiles(M3U_FILES); send(res, 200, 'application/json', JSON.stringify({ count: sf.count, bytes: sf.bytes, xtv: { count: xf.count + mf.count, bytes: xf.bytes + mf.bytes }, dir: dirCheck() })); return; }   // (IPTV playlists read here: with the Xtream lists)
     if (path === '/epg/clear') {
         if (req.method !== 'POST') { send(res, 405, 'text/plain', 'POST only'); return; }
         send(res, 200, 'application/json', JSON.stringify({ cleared: epgClear() }));
