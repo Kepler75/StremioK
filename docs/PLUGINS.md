@@ -38,7 +38,8 @@ nothing comes: [Troubleshooting](TROUBLESHOOTING.md#nuvio-plugins).
 
 ## How it works
 - **The code** is downloaded when you add or refresh a repository (up to 1 MB a plugin, 50
-  plugins) and kept on the TV.
+  plugins) and kept on the TV. If the TV didn't keep it, it's downloaded again when the
+  plugin runs.
 - **Each run** gets a fresh copy of QuickJS (a JavaScript engine) in a background worker:
   64 MB of memory, nothing of StremioK's inside. It's given the
   title's TMDB number, the season and episode, your TMDB key, `fetch`, `cheerio`, `crypto-js`,

@@ -17,6 +17,8 @@
     function markHomeDirty() { return V.markHomeDirty.apply(null, arguments); }   // home
     function onModalClose() { return V.onModalClose.apply(null, arguments); }   // core
     function pickList() { return V.pickList.apply(null, arguments); }   // core
+    // (Nuvio plugins: code the TV's database didn't keep, said on Add / Refresh; #31)
+    function unsavedNote(r) { return r && r.unsaved ? '   ·   ' + U.tn(r.unsaved, '{n} plugin not kept on the TV (downloaded when needed)', '{n} plugins not kept on the TV (downloaded when needed)') : ''; }
     function playlistActions() { return V.playlistActions.apply(null, arguments); }   // core
     function scr() { return V.scr.apply(null, arguments); }   // core
     function showModal() { return V.showModal.apply(null, arguments); }   // core
@@ -418,6 +420,7 @@
             [U.t('Subtitles'), U.t('Default language, size, color, background, position, font'), 'subtitles'],
             [U.t('Skipping'), U.t('Intros, recaps and previews, and the next episode at the credits: ask, or on their own after a countdown'), 'skipping'],
             [U.t('Seeking & buffering'), U.t('How far ◀ ▶ jump; a bigger buffer for slow connections'), 'seeking'],
+            [U.t('Player screen'), U.t('BACK: leave at once or ask first; the time shown: when it ends or what’s left'), 'playerscreen'],
             [U.t('Live TV'), U.t('Live TV behind the menus; reconnecting live channels'), 'livetv'],
             [U.t('Source ranking'), U.t('How sources are ordered (played before, resolution, release type…), and your addons: their order, on or off'), 'ranking'],
             [U.t('Formats'), U.t('Allowed resolutions, and what plays on this TV, learned as you watch'), 'formats'],
@@ -463,6 +466,7 @@
         else if (_settingsSection === 'subtitlelook') { settingsSubtitleLook(wrap); }
         else if (_settingsSection === 'skipping') { settingsSkipping(wrap); }
         else if (_settingsSection === 'seeking') { settingsSeeking(wrap); }
+        else if (_settingsSection === 'playerscreen') { settingsPlayerScreen(wrap); }
         else if (_settingsSection === 'livetv') { settingsLiveTv(wrap); }
         else if (_settingsSection === 'iptvlist') { settingsIptvList(wrap); }
         else if (_settingsSection === 'iptvguide') { settingsIptvGuide(wrap); }
@@ -2388,7 +2392,7 @@
                     U.spinner(true, U.t('Reading the repository…'));
                     Plugins.addRepo(url).then(function (r) {
                         U.spinner(false);
-                        U.toast(U.tn(r.repo.plugins.length, 'Added “{name}”: {n} plugin (off until you turn it on)', 'Added “{name}”: {n} plugins (off until you turn them on)', { name: r.repo.name }), 5000);
+                        U.toast(U.tn(r.repo.plugins.length, 'Added “{name}”: {n} plugin (off until you turn it on)', 'Added “{name}”: {n} plugins (off until you turn them on)', { name: r.repo.name }) + unsavedNote(r), 5000);
                         _focusChild = 'pl:' + r.repo.id;
                         renderSettings();
                     }, function (e) { U.spinner(false); U.toast(U.t('Couldn’t add it: {why}', { why: U.problem(e) }), 6000); });
@@ -2407,7 +2411,7 @@
                         U.spinner(true, U.t('Reading the repository…'));
                         Plugins.refreshRepo(r.id).then(function (x) {
                             U.spinner(false);
-                            U.toast(U.t('“{name}”: {added} new, {changed} changed', { name: r.name, added: x.added, changed: x.changed }) + (x.failed ? '   ·   ' + U.tn(x.failed, '{n} didn’t come (kept as it was)', '{n} didn’t come (kept as they were)') : ''), 5000);
+                            U.toast(U.t('“{name}”: {added} new, {changed} changed', { name: r.name, added: x.added, changed: x.changed }) + (x.failed ? '   ·   ' + U.tn(x.failed, '{n} didn’t come (kept as it was)', '{n} didn’t come (kept as they were)') : '') + unsavedNote(x), 5000);
                             renderSettings();
                         }, function (e) { U.spinner(false); U.toast(U.t('Couldn’t refresh it: {why}', { why: U.problem(e) }), 6000); });
                     } else {
@@ -2674,6 +2678,18 @@
         wrap.appendChild(subPickRow(U.t('Read the file’s details'), FILE_INFOS, 'fileInfo', store));   // (its codec, HDR, tracks and their names: player-core's fileInfoAsk)
         wrap.appendChild(subPickRow(U.t('Leave out other subtitle tracks'), BLANKS, 'blank', store));
         wrap.appendChild(U.el('div', 'hint', 'Seek step: FF / REW jump three. Buffer: More or Most starts slower but stops less on a slow connection. HLS through StremioK’s service: for a host that wants headers the TV’s player can’t send; a step more before it starts.'));
+        focusSettings();
+    }
+    // Playback › Player screen: what BACK does while a video plays; the time on the bar.
+    var BACKS = [['once', U.t('Leave at once (default)')], ['twice', U.t('Press twice: the first one asks')]];
+    var TIMES = [['ends', U.t('The length, and when it ends (default)')], ['left', U.t('What’s left (−42:10)')], ['both', U.t('What’s left, and when it ends')]];
+    function settingsPlayerScreen(wrap) {
+        wrap.appendChild(U.el('h2', null, U.t('Player screen')));
+        var store = { get: function () { var c = Player.playerCfg(); return { back: c.back, time: c.time }; },
+            set: function (cfg) { Player.setPlayerCfg({ back: cfg.back, time: cfg.time }); } };
+        wrap.appendChild(subPickRow(U.t('BACK while a video plays'), BACKS, 'back', store));
+        wrap.appendChild(subPickRow(U.t('Time shown'), TIMES, 'time', store));
+        wrap.appendChild(U.el('div', 'hint', U.t('Press twice: BACK only says “Press BACK again to leave”, and leaves if pressed again within 3 seconds. A live channel kept behind the menus isn’t asked.')));
         focusSettings();
     }
     // Playback › Live TV: Live TV behind the menus (BACK on a live channel), Reconnect live channels.

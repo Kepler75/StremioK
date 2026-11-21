@@ -155,7 +155,7 @@
     // play (even if the quality list hasn't loaded yet), a pick with no lower rung left,
     // and a plain stream whose first open failed.
     function tryAutoFallback() {
-        if (_autoRetried || !S.ctx) { return false; }
+        if (_autoRetried || !S.ctx || (S.isLive && S.ctx.liveFallbacks && !S.ctx.yt)) { return false; }   // (a live channel with other copies: the next copy instead)
         var wasAuto = (_qualityBw == null && !S.ctx.initialQualityHeight);   // a plain stream already in Auto
         _autoRetried = true;
         _qualityBw = null;
@@ -328,6 +328,8 @@
     P.resetQuality = resetQuality; P.qualityOnStart = qualityOnStart; P.clearStartNote = clearStartNote;
     P.qualityHeight = qualityHeight; P.qualityCount = qualityCount; P.hasQualities = hasQualities; P.qualityUnread = qualityUnread;
     P.adaptiveInfo = adaptiveInfo; P.tryFallback = tryFallback; P.switchSource = switchSource; P.hlsMasterText = getHlsMaster;
-    P.qualityLabel = qualityLabel; P.qualityMenu = qualityMenu;
+    P.qualityLabel = qualityLabel; P.qualityMenu = qualityMenu; P.qualityBw = function () { return _qualityBw || 0; };
+    // The HLS rung playing (its height, as the TV's player says it): its BANDWIDTH; 0 when unknown.
+    P.variantBwAt = function (h) { for (var i = 0; i < _variants.length; i++) { if (_variants[i].h === h) { return _variants[i].bw; } } return 0; };
     P.hasYtLanguages = hasYtLanguages; P.ytLanguageLabel = ytLanguageLabel; P.ytLanguageMenu = ytLanguageMenu;
 })(PlayerParts);

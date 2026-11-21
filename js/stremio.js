@@ -1607,11 +1607,21 @@ var Stremio = (function () {
             var cc = p.combined_credits || {}, seen = {}, credits = [];
             (cc.cast || []).concat(cc.crew || []).forEach(function (r) {
                 var k = r.media_type + ':' + r.id;
-                if (seen[k] || !r.poster_path || (r.media_type !== 'movie' && r.media_type !== 'tv')) { return; }
+                if (!r.poster_path || (r.media_type !== 'movie' && r.media_type !== 'tv')) { return; }
                 if (r.character !== undefined && SELF_ROLE.test(r.character || '')) { return; }   // (as themselves)
                 if (r.job === 'Thanks') { return; }
-                seen[k] = 1;
-                credits.push(tmdbItem(r, r.media_type));
+                // their part in it: the character they played, or their job (a second one added:
+                // "Director, Writer"; a series' many episode credits come as one already)
+                var role = ('' + (r.character !== undefined ? r.character || '' : r.job || '')).replace(/\s+/g, ' ').trim().slice(0, 80);
+                if (seen[k]) {
+                    var was = seen[k];
+                    if (role && was.role.split(', ').indexOf(role) === -1 && was.role.split(', ').length < 2) { was.role = was.role ? was.role + ', ' + role : role; }
+                    return;
+                }
+                var it = tmdbItem(r, r.media_type);
+                it.role = role;
+                seen[k] = it;
+                credits.push(it);
             });
             var bits = [];
             if (p.known_for_department) { bits.push(p.known_for_department); }
@@ -2350,6 +2360,7 @@ var Stremio = (function () {
         var codec = ('' + (actual.codec || '')).toLowerCase(), out = [];
         codec = /hevc|h265|hvc|hev/.test(codec) ? 'hevc' : /av01|av1/.test(codec) ? 'av1' : /avc|h264/.test(codec) ? 'h264' : info.codec;
         if (res) { out.push(PROFILE_RES[res] || res + 'p'); }
+        if (+actual.fps > 0) { out.push(Math.round(+actual.fps) + ' fps'); }   // (what the TV's player says it plays at)
         if (codec) { out.push(PROFILE_CODEC[codec] || codec.toUpperCase()); }
         if (info.bits10 || info.hdr) { out.push('10-bit'); }
         if (info.hdr) { out.push({ hdr: 'HDR10', hdr10p: 'HDR10+', dv: 'Dolby Vision', 'dv-only': 'Dolby Vision' }[info.hdr]); }

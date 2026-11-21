@@ -9,7 +9,8 @@
    64 MB, RUN_MS. Only where that can run: see supported() (2017 and newer TVs)
    and StremioK's own service (the sideloaded app); elsewhere the option isn't shown.
 
-   The code is downloaded on Add and Refresh only, kept in the TV's database (U.bigStore). New
+   The code is downloaded on Add and Refresh, kept in the TV's database (U.bigStore; downloaded
+   again when it isn't there: codeOf). New
    plugins start off. Plugins are handed the user's TMDB key (they look titles up by TMDB number),
    which Settings says before they're turned on. Their sources come in as a synthetic addon's,
    "Nuvio plugins", placed and ranked like any addon's.
@@ -110,12 +111,13 @@ var Plugins = (function () {
             var rid = old ? old.id : 'r' + Date.now().toString(36);
             var before = {};
             if (old) { old.plugins.forEach(function (p) { before[p.id] = p; }); }
-            var added = 0, changed = 0, failed = 0, writes = [];
+            var added = 0, changed = 0, failed = 0, unsaved = 0, writes = [];
             var plugins = got.plugins.map(function (p) {
                 var was = before[p.id];
                 if (p.error) { failed++; return was || null; }
                 if (!was) { added++; } else if (was.hash !== p.hash) { changed++; }
-                writes.push(U.bigStore.set(CODE + rid + '.' + p.id, p.code));
+                delete _fetched[CODE + rid + '.' + p.id];
+                writes.push(U.bigStore.set(CODE + rid + '.' + p.id, p.code).then(function (ok) { if (!ok) { unsaved++; } }));   // (not kept: downloaded again when it's needed)
                 return { id: p.id, name: p.name, version: p.version, file: p.file, types: p.types, on: !!(was && was.on), size: p.size, hash: p.hash, authorOff: !!p.authorOff };   // (authorOff: its repository marks it off, often as broken)
             }).filter(Boolean);
             return Promise.all(writes).then(function () {
@@ -126,7 +128,8 @@ var Plugins = (function () {
                 s2.repos.push(repo);
                 save(s2);
                 reloadAddons();
-                return { repo: repo, added: added, changed: changed, failed: failed };
+                if (unsaved) { U.log('plugins', '“' + repo.name + '”: the TV’s database didn’t keep the code of ' + unsaved + ' of ' + plugins.length + ' plugins (downloaded again when needed)'); }
+                return { repo: repo, added: added, changed: changed, failed: failed, unsaved: unsaved };
             });
         });
     }
@@ -141,7 +144,7 @@ var Plugins = (function () {
     }
     function removeRepo(id) {
         var s = state();
-        s.repos.forEach(function (r) { if (r.id === id) { r.plugins.forEach(function (p) { U.bigStore.remove(CODE + r.id + '.' + p.id); }); } });
+        s.repos.forEach(function (r) { if (r.id === id) { r.plugins.forEach(function (p) { delete _fetched[CODE + r.id + '.' + p.id]; U.bigStore.remove(CODE + r.id + '.' + p.id); }); } });
         s.repos = s.repos.filter(function (r) { return r.id !== id; });
         save(s);
         reloadAddons();
@@ -232,6 +235,28 @@ var Plugins = (function () {
         var w = typeof Stremio !== 'undefined' && Stremio.getPrefs ? (+Stremio.getPrefs().addonWait || 0) * 1000 : 0;
         return Math.max(w, 15000);
     }
+    // A plugin's code: as kept on the TV, or (not there: the TV's database refused to keep it, or
+    // lost it tidying up; #31) downloaded again from its address, used, and saved once more. Kept
+    // in memory for the session too, so a TV that won't keep it doesn't download it for each title.
+    var _fetched = {};
+    function codeOf(x) {
+        var key = CODE + x.repo.id + '.' + x.p.id;
+        if (_fetched[key]) { return Promise.resolve(_fetched[key]); }
+        return U.bigStore.get(key).then(function (code) {
+            if (typeof code === 'string' && code) { return code; }
+            if (!x.p.file) { throw new Error('its code isn’t on the TV: refresh its repository'); }
+            return U.getText(x.p.file, 20000, CODE_MAX).then(function (got) {
+                got = '' + (got || '');
+                if (!got) { throw new Error('empty'); }
+                _fetched[key] = got;
+                U.bigStore.set(key, got).then(function (ok) {
+                    if (ok) { delete _fetched[key]; }
+                    U.log('plugins', x.p.name + ': its code wasn’t on the TV: downloaded it again' + (ok ? '' : ' (the TV’s database still won’t keep it: downloaded again next launch)'));
+                });
+                return got;
+            }, function (e) { throw new Error('its code isn’t on the TV, and downloading it again failed: ' + U.problem(e)); });
+        });
+    }
     function streams(type, id, meta) {
         if (!isEnabled()) { return Promise.resolve([]); }
         var kind = type === 'series' ? 'tv' : type === 'movie' ? 'movie' : '';
@@ -251,8 +276,7 @@ var Plugins = (function () {
                     return function () {
                         if (over) { return Promise.resolve(); }
                         state[x.p.id] = 'running';
-                        return U.bigStore.get(CODE + x.repo.id + '.' + x.p.id).then(function (code) {
-                            if (typeof code !== 'string' || !code) { throw new Error('its code isn’t on the TV: refresh its repository'); }
+                        return codeOf(x).then(function (code) {
                             return runOne(code, x.p, args, net);
                         }).then(function (r) {
                             if (over) { return; }

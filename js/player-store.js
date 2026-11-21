@@ -272,7 +272,11 @@
             // as it starts, so only when chosen)
             fileInfo: d.fileInfo === 'all' || d.fileInfo === 'off' ? d.fileInfo : 'usb',
             // (an MKV's other subtitle tracks left out through the service: player-core's blankFits)
-            blank: d.blank === 'always' || d.blank === 'many' || d.blank === 'never' ? d.blank : 'jump' };
+            blank: d.blank === 'always' || d.blank === 'many' || d.blank === 'never' ? d.blank : 'jump',
+            // (Settings › Playback › Player screen: BACK leaves at once, or asks first ('twice');
+            // the time on the bar: the length and "Ends", or what's left (−mm:ss), or both)
+            back: d.back === 'twice' ? 'twice' : 'once',
+            time: d.time === 'left' || d.time === 'both' ? d.time : 'ends' };
     }
     function setPlayerCfg(cfg) {   // (what's given changes; the rest stays)
         var d = U.store.get(PLAYERCFG_KEY, {}) || {};

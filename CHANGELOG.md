@@ -3,6 +3,23 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.4.7 — 2026-11-21
+More of ediziks' IPTV work (#29), ported: thank you again!
+- **IPTV:** a live channel with no sound or picture recovers (its first audio track, the next
+  copy, its sound repacked); copies ranked by what the TV measured; **⟲ Recent** on the IPTV
+  tab; favorites survive a renumbered playlist; "EU | UK" groups keep countries apart.
+- **Fixed:** on 2024 TVs StremioK's service kept nothing (guides and playlists read again each time).
+
+Also:
+- **Speed** in the player's menu (#27): 1×, or 2× and 4× without sound (under TizenBrew 0.5× to 2×).
+- **Settings › Playback › Player screen** (#27): *BACK while a video plays* (at once, or press
+  twice) and *Time shown* (when it ends, what's left, or both).
+- **The remote's INFO key** opens the stream info, which now shows the bitrate (#27).
+- **Home rows still loading** show gray cards the shape of their posters (#28).
+- **The player's Cast & more:** a person's titles show the character they played, or their job.
+- **Fixed:** Nuvio plugins saying "its code isn't on the TV" (#31); CH+ / CH− onto a channel
+  that leads to YouTube; channels whose server refuses the TV's player.
+
 ## 2.4.6 — 2026-11-20
 - **Fixed:** on newer TVs (such as 2021’s, Tizen 6) StremioK’s service was failing to store
   information, causing guides and playlists to be read again each time, and USB drives stayed

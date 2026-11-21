@@ -56,7 +56,7 @@
 
     // A new playback: nothing open, no skip prompt shown yet.
     function resetControls() {
-        _menuOpen = false; _barOpen = false; _segShown = {};
+        _menuOpen = false; _barOpen = false; _segShown = {}; _backAt = 0;
         if (_barTimer) { clearTimeout(_barTimer); _barTimer = null; }
         closeCast(true);
         resetYtLinks();
@@ -457,7 +457,11 @@
         }
         card.appendChild(U.el('div', 'cs-name', it.name || ''));
         var sub = level.kind === 'cast' ? (it.character || '') : [it.kind === 'tv' ? U.t('Series') : U.t('Movie'), it.year].filter(Boolean).join(' · ');
-        if (sub) { card.appendChild(U.el('div', 'cs-role', sub)); }
+        if (sub) {
+            var role = U.el('div', 'cs-role', sub);
+            if (level.kind !== 'cast' && it.role) { role.appendChild(U.el('div', 'cs-as', it.role)); }   // (the character they played, or their job)
+            card.appendChild(role);
+        }
         return card;
     }
     // The whole level: where you are (the path, its last three steps), what OK / BACK do, the strip.
@@ -668,6 +672,7 @@
         }
         if (!S.isLive) {
             items.push({ label: U.t('Playback'), run: function () { pushMenu(playbackMenu()); } });
+            items.push({ label: U.t('Speed'), detail: P.speedName(P.speed()), run: function () { pushMenu(speedMenu()); } });
         }
         items.push({ label: U.t('Picture'), detail: aspectDef(P.aspectNow())[1].split(' (')[0], run: function () { pushMenu(pictureMenu()); } });
         if (P.liveFormat()) { items.push({ label: U.t('Format'), detail: P.liveFormat() === 'hls' ? 'HLS' : 'MPEG-TS', run: function () { pushMenu(formatMenu()); } }); }
@@ -930,6 +935,24 @@
         if (c.localFile) { return /^http:\/\/localhost/.test(typeof LocalMedia !== 'undefined' && LocalMedia.openUrl ? LocalMedia.openUrl(c.url, c.localFile.size) : '') ? U.t('From the USB drive, through StremioK’s service (over 2 GB)') : U.t('From the USB drive'); }
         return U.t('Straight from the server');
     }
+    // The bitrate: what the TV's player says of its video and audio tracks (Bit_rate, in bits a
+    // second; some TVs give the audio's only). The video's, when not said: the HLS rung playing (its
+    // BANDWIDTH, by the height playing), else the HLS quality picked, else the file's average from
+    // its size and length. '' when none of them is known.
+    function rate(bps) { return bps >= 1e6 ? (bps / 1e6).toFixed(1) + ' Mbps' : Math.round(bps / 1e3) + ' kbps'; }
+    function bitOf(t) { return t ? +(t.Bit_rate || t.bit_rate || t.Bitrate || t.bitrate || t.BitRate) || 0 : 0; }
+    function bitrateText(video, audio) {
+        var vb = bitOf(video), ab = bitOf(audio), parts = [];
+        var h = video ? +(video.Height || video.height) || 0 : 0;
+        var rung = h && P.variantBwAt ? P.variantBwAt(h) : 0, q = P.qualityBw ? P.qualityBw() : 0;
+        var info = S.ctx.formatInfo, size = (info && info.size) || (S.ctx.localFile && S.ctx.localFile.size) || 0;
+        if (vb > 0) { parts.push(U.t('video {rate}', { rate: rate(vb) })); }
+        else if (rung > 0) { parts.push(U.t('{rate} (this HLS quality)', { rate: rate(rung) })); }
+        else if (q > 0) { parts.push(U.t('up to {rate} (the quality picked)', { rate: rate(q) })); }
+        else if (size > 0 && S.dur > 60 && !S.isLive) { parts.push(U.t('{rate} on average (its size and length)', { rate: rate(size * 8 / S.dur) })); }
+        if (ab > 0) { parts.push(U.t('audio {rate}', { rate: rate(ab) })); }
+        return parts.join('  ·  ');
+    }
     function renderStreamInfo() {
         var el = U.byId('stream-info');
         if (!el || !S.ctx) { return; }
@@ -964,6 +987,9 @@
                 if (bw > 0) { lines.push([U.t('Bandwidth'), (bw / 1e6).toFixed(1) + ' Mbps']); }
             } catch (e2) {}
         }
+        var br = bitrateText(video, audio);
+        if (br) { lines.push([U.t('Bitrate'), br]); }
+        if (P.speed() !== 1) { lines.push([U.t('Speed'), P.speedName(P.speed())]); }
         var host = (('' + (S.ctx.url || '')).match(/^https?:\/\/([^\/:?#]+)/) || [])[1];
         if (host) { lines.push([U.t('Server'), host === 'localhost' ? U.t('YouTube (built-in service)') : host]); }
         lines.push([U.t('Plays'), howItPlays()]);
@@ -977,6 +1003,21 @@
             row.appendChild(U.el('span', 'si-v', l[1]));
             el.appendChild(row);
         });
+    }
+
+    // Speed: 1× / 2× / 4× on the TV's player, without sound (0.5× to 2× on the web player), this title (a reload or another source keeps it; the next title is 1×).
+    function speedMenu() {
+        var now = P.speed(), idx = 0;
+        var items = P.speeds().map(function (n, i) {
+            if (n === now) { idx = i; }
+            return { label: n === 1 ? U.t('{speed} (normal)', { speed: P.speedName(n) }) : P.speedName(n), detail: P.speedMuted(n) ? U.t('No sound') : '', sel: n === now, run: function () {
+                closeMenu();
+                if (n === now) { return; }
+                if (!P.setSpeed(n)) { U.toast(U.t('This TV’s player doesn’t play at {speed}', { speed: P.speedName(n) }), 3500); return; }
+                showOSD(false);
+            } };
+        });
+        return { title: U.t('Speed'), items: items, idx: idx };
     }
 
     function playbackMenu() {
@@ -1149,7 +1190,7 @@
                 if (S.ctx && S.ctx.zap) { S.ctx.zap(action === 'CHUP' ? 1 : -1); }
                 return true;
             case 'RED': case 'GREEN': case 'YELLOW': colorMenu(action); return true;
-            case 'BLUE': toggleStreamInfo(); return true;   // the stream info, shown or hidden
+            case 'BLUE': case 'INFO': toggleStreamInfo(); return true;   // the stream info, shown or hidden (blue, or the remote's INFO)
             case 'NUM0': case 'NUM1': case 'NUM2': case 'NUM3': case 'NUM4': case 'NUM5': case 'NUM6': case 'NUM7': case 'NUM8': case 'NUM9':
                 numberKey(+action.slice(3)); return true;
             case 'NEXT': case 'PREV':   // ⏭ / ⏮: the next / previous episode (a live channel: the next / previous one)
@@ -1186,8 +1227,20 @@
             case 'LEFT': if (S.isLive && canChannels()) { openChannels(); return true; } scrub(-seekStep()); return true;
             case 'UP': openBar(); return true;
             case 'DOWN': openMenu(); return true;
-            case 'BACK': if (P.toBehind && P.toBehind()) { return true; } exit(); return true;
+            case 'BACK': if (P.toBehind && P.toBehind()) { return true; } if (backAsks()) { return true; } exit(); return true;
         }
+        return true;
+    }
+    // Settings › Playback › Player screen › BACK: twice: the first BACK only says so (the bar
+    // shown), a second one within BACK_AGAIN_MS leaves. A trailer, a notice or a video that
+    // didn't start leaves at once.
+    var BACK_AGAIN_MS = 3000, _backAt = 0;
+    function backAsks() {
+        if (playerCfg().back !== 'twice' || !S.ctx || S.ctx.trailer || !S.playStarted || (P.isNotice && P.isNotice())) { return false; }
+        if (_backAt && Date.now() - _backAt < BACK_AGAIN_MS) { _backAt = 0; return false; }
+        _backAt = Date.now();
+        showOSD(false);
+        U.toast(U.t('Press BACK again to leave'), BACK_AGAIN_MS);
         return true;
     }
 

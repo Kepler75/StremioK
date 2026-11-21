@@ -14,6 +14,7 @@ var Keys = (function () {
         417: 'FF',
         412: 'REW',
         427: 'CHUP', 428: 'CHDOWN',
+        457: 'INFO',    // the remote's INFO: in the player, the stream info (as the blue key)
         458: 'GUIDE',   // the remote's GUIDE: StremioK's Guide tab, not the TV's own (App.guideKey)
         10232: 'PREV', 10233: 'NEXT',   // ⏮ / ⏭ (MediaTrackPrevious / MediaTrackNext)
         403: 'RED', 404: 'GREEN', 405: 'YELLOW', 406: 'BLUE',   // the colored keys (the player's audio, subtitles, sources, stream info)
@@ -26,7 +27,7 @@ var Keys = (function () {
         'MediaRewind', 'MediaFastForward',
         'MediaTrackPrevious', 'MediaTrackNext',
         'ChannelUp', 'ChannelDown',   // CH+/CH− switch live channels in the player
-        'Guide',
+        'Guide', 'Info',
         'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue',
         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'   // (Home's tabs, the player's subtitles, a channel's number)
     ];

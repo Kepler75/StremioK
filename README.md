@@ -4,9 +4,8 @@ StremioK is a from-scratch Stremio-addon streaming client for Samsung Tizen TVs.
 It was originally built for a 2017 UN50MU6100 running Tizen 3.0
 (~Chromium 47) and is also tested on a 2021 QN55Q80AAG running Tizen 6.0. A user reports it working on Tizen 4 too.
 
-Old Samsung Tizen TVs run web applications rather than Android APKs. StremioK is
-therefore written in old-Chromium-compatible HTML, JavaScript (ES5) and CSS, and plays
-video through Samsung's AVPlay API.
+Tizen TVs run web apps, not Android APKs: StremioK is ES5 JavaScript, HTML and CSS for
+their old Chromium, playing video through Samsung's AVPlay API.
 
 - **[Installation guide](docs/INSTALL.md)**: the three ways to put it on your TV.
 - **[User guide](docs/USER-GUIDE.md)**: how to use it, task by task.
@@ -26,7 +25,7 @@ video through Samsung's AVPlay API.
   Series, IPTV, Guide, Radio, Sports, YouTube and Local tabs; **Discover** to browse any catalog in full;
   **Search** across every addon that can search, and people by name.
 - **Title pages:** ranked sources with **▶ Play best**, trailers, ratings (IMDb, Rotten
-  Tomatoes, Metacritic… with your own API keys), seasons and episodes with their own pages,
+  Tomatoes… with your own API keys), seasons and episodes with their own pages,
   *Cast & more*, *More like this* and collections.
 - **The player:** resume where you stopped, skip intros, recaps and credits, next episode,
   subtitles (addons', the file's own, and your own files) with your choice of look, audio
@@ -40,18 +39,16 @@ video through Samsung's AVPlay API.
 - **17 languages** ([translating](docs/TRANSLATING.md)).
 - **Nuvio plugins** (2017+ TVs): plugins made for the Nuvio apps as sources
   ([what they are, and the risks](docs/PLUGINS.md)).
-- **Torrents**, through Stremio's streaming server or a TorrServer you run on your network.
+- **Torrents**, through Stremio's streaming server or a TorrServer you run.
 - **Made for the remote:** D-pad navigation throughout; ▶ Play on a movie, episode or channel plays
-  its top source at once; hold OK for more where offered; zoom up to 140% for reading from
-  further away.
+  its top source at once; hold OK for more where offered; zoom up to 140%.
 
 ## Install
 
 Three ways, all covered step by step in the **[installation guide](docs/INSTALL.md)**:
 
 - **TizenBrew** (Tizen 3.0 to 6.0): add the NPM module `stremiok`. No certificate needed, but
-  [Web Player is limited](docs/INSTALL.md#tizenbrew-has-no-tv-player) (ie: no audio switching), and
-  storage shared with other modules.
+  [its player is limited](docs/INSTALL.md#tizenbrew-has-no-tv-player) (no audio switching).
 - **Apps2Samsung:** installs a [release](https://github.com/Kepler75/StremioK/releases)'s
   `.wgt`, signing it with your own Samsung certificate. No Tizen Studio needed.
 - **Tizen Studio:** build the `.wgt` from this repository and sideload it.
@@ -75,8 +72,8 @@ The user guide's [Getting started](docs/USER-GUIDE.md#getting-started) covers ea
 ## Content / legal note
 
 This app hosts **no** media. It is a client for the open Stremio addon protocol: catalogs and
-metadata come from the addons you install (**Cinemeta**, the official one, by default), and
-playable sources come from whatever **stream addons you add yourself** in Settings. Streams
+metadata come from the addons you install (**Cinemeta** by default), and playable sources from
+the **stream addons you add yourself**. Streams
 that only expose a torrent `infoHash` play only through a streaming server you run (Stremio's
 or TorrServer): this app embeds no torrent or debrid engine. Nuvio plugins are third-party code
 you add; StremioK neither hosts nor checks what they find.
@@ -102,14 +99,19 @@ responsibility.
 - No StremioK account: settings, addons and progress stay on the TV, in a profile per person if
   you like. The only syncs are optional: Trakt and your Stremio account.
 - Subtitles use an HTML overlay; gzipped (`.gz`) subtitle files aren't decoded.
-- No playback speed control (the TV's player mutes audio at other speeds), and no
+- Faster playback (2×, 4×) has no sound (the TV's player mutes it), and there's no
   HDR / frame-rate mode switching (not available to web apps on Tizen 3).
 - Text fields use the TV's keyboard, or **your phone**: a QR code opens a one-time page on your
   home network, over plain HTTP, so use it only on a network you trust (links carry tokens).
 - "Where to watch" sources open the app on its home screen, or on the title only where an
   addon you added gives the app's own link and the app takes it.
-- YouTube channels and trailers depend on the bundled service and on YouTube's
-  undocumented behavior, so YouTube changes may need resolver updates.
+- YouTube depends on YouTube's undocumented behavior: its changes may need updates.
+
+## Thanks
+
+Much of the IPTV side (the channel list in the player, live TV behind the menus, catch-up, the
+channel browser, guides by country, fixes for big Xtream playlists) comes from
+[ediziks' fork](https://github.com/ediziks/StremioK). Thank you, ediziks!
 
 ## License
 

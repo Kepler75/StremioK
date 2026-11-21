@@ -2119,7 +2119,10 @@
         var zap = (_d && _d.channels && _d.channels.list.length > 1) ? zapChannel : null;
         var lists = (_d && _d.live && /^iptv:/.test(videoId || '')) ? zapList : null;   // (the player's channel list)
         var behindOk = !!(exitToBack && _d && _d.live) || undefined;   // (BACK: it can play on behind the menus, Settings › Playback › Live TV)
-        if (lists) { U.store.set('stremiok.iptv.last', { id: videoId, type: _d.type, name: label }); }   // (Settings › Home › Start on › Last IPTV channel)
+        if (lists) {
+            U.store.set('stremiok.iptv.last', { id: videoId, type: _d.type, name: label });   // (Settings › Home › Start on › Last IPTV channel)
+            if (typeof IPTV !== 'undefined' && IPTV.noteRecent) { IPTV.noteRecent(videoId); }   // (the IPTV tab's ⟲ Recent)
+        }
         // Once it plays (or fails to): Formats learn from it; Played before and the series'
         // preferred source (Next episode) remember it, or forget it.
         var titleId = _d && _d.id, series = _d && _d.type === 'series', vtype = _d && _d.type;
@@ -2197,7 +2200,8 @@
             poster: _d.meta.poster, background: _d.meta.background, streams: playableSources(), _headers: U.sanitizeHeaders(stream._headers) || undefined, zap: zap, zapTo: zap ? zapToChannel : null, zapList: lists, behindOk: behindOk,
             localSubs: stream._localSubs, localFile: stream._localFile,
             subExtra: fileHintsOf(stream), sourceSubs: sourceSubsOf(stream), formatInfo: Stremio.streamInfo(stream), fromStart: !!(how && how.fromStart) || undefined, viaService: !!(how && how.viaService) || undefined,
-            titleIds: titleIdsOf(_d.meta, videoId), stream: stream, nextSource: nextSourceFor, liveFallbacks: !!_d.fallbacks || undefined, downloadAs: typeof Downloads !== 'undefined' ? downloadTitle(videoId) : undefined,
+            titleIds: titleIdsOf(_d.meta, videoId), stream: stream, nextSource: nextSourceFor, liveFallbacks: !!(_d.fallbacks || (lists && (_d.streams || []).filter(Stremio.isPlayable).length > 1)) || undefined,   // (an IPTV channel's other copies, if this one doesn't play)
+            downloadAs: typeof Downloads !== 'undefined' ? downloadTitle(videoId) : undefined,
             onStarted: learn.onStarted, onFailed: learn.onFailed, learnFor: learnFor };
         if (_d.type === 'series' && _d.meta.videos) {
             // (only episodes that are out: Previous / Next, the near-the-end preload and the next
@@ -2312,6 +2316,7 @@
         ch.tuning = idx;
         var m = ch.list[idx].meta, type = m.type || page.type, name = m.name || m.title || U.t('Live');
         U.spinner(true, U.t('Tuning to {name}…', { name: name }));
+        if (typeof IPTV !== 'undefined' && IPTV.zapping) { IPTV.zapping(); }   // (where its link leads may be looked at: the channel playing is closed anyway)
         Stremio.getStreams(type, m.id).then(function (list) {
             if (gen !== _tuneGen) { return; }   // (a later channel was chosen: its own answer handles the spinner)
             ch.tuning = null;
@@ -2321,6 +2326,7 @@
             ch.idx = idx;
             page.id = m.id; page.type = type; page.meta = m; page.preview = m;
             page.streamId = m.id; page.streamLabel = name; page.streams = list;
+            page.fallbacks = playable[0]._fallbacks && playable[0]._fallbacks.length ? [playable[0]].concat(playable[0]._fallbacks) : null;   // (this channel's own copies, not the one before's)
             startPlayback(playable[0], m.id, name);
         }, function () {
             if (gen !== _tuneGen) { return; }

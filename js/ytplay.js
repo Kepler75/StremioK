@@ -238,7 +238,8 @@ var YTPlay = (function () {
     function iptvRead(src, force, full) {
         var t0 = Date.now(), more = full ? '&full=1' : '';
         function step(r) {
-            if (!r || r.state !== 'loading' || Date.now() - t0 > IPTV_READ_MS) { return r; }
+            // (asked to read it again: the new copy waited for — the old one answers meanwhile, refreshing)
+            if (!r || !(r.state === 'loading' || (force && r.refreshing)) || Date.now() - t0 > IPTV_READ_MS) { return r; }
             return new Promise(function (ok) { setTimeout(ok, IPTV_POLL_MS); }).then(function () { return iptvAsk('/iptv/read', src, more, 20000, 4194304); }).then(step);
         }
         return iptvAsk('/iptv/read', src, more + (force ? '&force=1' : ''), 20000, 4194304).then(step);

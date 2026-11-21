@@ -60,6 +60,7 @@ var PlayerParts = {};
         dur: 0,              // seconds
         cur: 0,              // seconds
         isLive: false,       // live stream (sports/IPTV): no fixed duration
+        speed: 1,            // the menu's Speed (this title; see setSpeed)
         playStarted: false,  // this AVPlay attempt was prepared (opened, ready to play)
         playing: false,      // ...and actually played: its position moved for a second (see oncurrentplaytime)
         // seek robustness (AVPlay can error if you seek mid-buffer)
@@ -308,6 +309,7 @@ var PlayerParts = {};
             if (S.playStarted && !S.actual) { S.actual = playerFormats(); }
             t = Stremio.formatTags(S.ctx.formatInfo || (Stremio.streamInfo ? Stremio.streamInfo({ url: S.ctx.url, name: S.ctx.name }) : null), S.actual);
         }
+        if ((S.speed || 1) !== 1) { t = (t ? t + '   ' : '') + speedName(S.speed); }   // (not at 1×: the speed)
         if (el.textContent !== t) { el.textContent = t; }
     }
     function playerFormats() {
@@ -317,16 +319,40 @@ var PlayerParts = {};
             (avplay.getCurrentStreamInfo() || []).forEach(function (x) {
                 var t = ('' + x.type).toUpperCase(), e = {};
                 try { e = typeof x.extra_info === 'string' ? JSON.parse(x.extra_info) : (x.extra_info || {}); } catch (er) {}
-                if (t === 'VIDEO') { out.height = +(e.Height || e.height) || 0; out.codec = e.fourCC || e.codec || ''; }
+                if (t === 'VIDEO') { out.height = +(e.Height || e.height) || 0; out.codec = e.fourCC || e.codec || ''; out.fps = parseFps(e.FrameRate || e.frameRate || e.fps || e.framerate); }
                 if (t === 'AUDIO') { out.audio = e.fourCC || e.codec || ''; out.channels = +(e.channels || e.Channels) || 0; }
             });
         } catch (er2) {}
         return out;
     }
+    // The TV's frame rate ("50", "25000/1000", "29.97"): frames a second, or 0 when it says none
+    // that makes sense.
+    function parseFps(raw) {
+        if (raw === undefined || raw === null || raw === '') { return 0; }
+        var s = ('' + raw).trim(), frac = /^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/.exec(s);
+        var v = frac ? (+frac[2] > 0 ? +frac[1] / +frac[2] : 0) : (parseFloat(s) || 0);
+        if (!isFinite(v) || v < 10 || v > 120) { return 0; }
+        return Math.abs(v - Math.round(v)) < 0.02 ? Math.round(v) : Math.round(v * 100) / 100;
+    }
+    P.parseFps = parseFps;
+    // A live IPTV channel, LIVE_MEASURE_MS after it starts: what its link really plays as (the
+    // TV's report), shown in the tags and kept for ranking its channel's copies (IPTV.noteMeasured).
+    var LIVE_MEASURE_MS = 3000;
+    function measureLive(token) {
+        if (!S.isLive) { return; }
+        setTimeout(function () {
+            if (!S.active || token !== _playToken || !S.isLive) { return; }
+            S.actual = playerFormats();
+            renderTags();
+            var st = S.ctx && S.ctx.stream;
+            if (st && st.url && /^iptv:/.test(S.ctx.id || '') && typeof IPTV !== 'undefined' && IPTV.noteMeasured) { IPTV.noteMeasured(st.url, S.actual); }
+        }, LIVE_MEASURE_MS);
+    }
     // An IPTV channel's TV guide (js/epg.js): { now, next } or null.
     function guideNow() { return (typeof EPG !== 'undefined' && S.ctx && /^iptv:/.test(S.ctx.id || '')) ? EPG.now(S.ctx.id) : null; }
     function clock(sec) { var d = new Date(sec * 1000); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); }
     if (typeof EPG !== 'undefined' && EPG.onChange) { EPG.onChange(function () { if (S.active && S.isLive) { renderOSD(); } }); }
+    function timeShown() { return P.playerCfg ? P.playerCfg().time : 'ends'; }
     function renderOSD() {
         U.byId('osd-title').textContent = S.ctx ? S.ctx.name : '';
         var ck = U.byId('osd-clock');   // (the time of day, top right while the bar is on screen)
@@ -334,7 +360,7 @@ var PlayerParts = {};
             ck.textContent = clock(Date.now() / 1000);
             // (under it, when what plays has a length: when it ends, at this pace — later while paused)
             var left = !S.isLive && S.dur > 0 ? S.dur - S.cur : 0;
-            if (left > 30) { ck.appendChild(U.el('div', 'osd-ends', U.t('Ends {time}', { time: clock(Date.now() / 1000 + left) }))); }
+            if (left > 30 && timeShown() !== 'left') { ck.appendChild(U.el('div', 'osd-ends', U.t('Ends {time}', { time: clock(Date.now() / 1000 + left / (S.speed || 1)) }))); }
         }
         renderTags();
         renderChapters();
@@ -359,7 +385,8 @@ var PlayerParts = {};
         var pct = S.dur > 0 ? (S.cur / S.dur * 100) : 0;
         U.byId('osd-progress').style.width = pct + '%';
         U.byId('osd-cur').textContent = U.fmtTime(S.cur);
-        U.byId('osd-dur').textContent = U.fmtTime(S.dur);
+        // (Settings › Playback › Player screen › Time shown: the length, or what's left as −mm:ss)
+        U.byId('osd-dur').textContent = timeShown() === 'ends' || !(S.dur > 0) ? U.fmtTime(S.dur) : '−' + U.fmtTime(Math.max(0, S.dur - S.cur));
         if (scrubbing()) { renderScrub(); }
     }
 
@@ -415,12 +442,13 @@ var PlayerParts = {};
     // is what's learned from it (s.stream, through ctx.learnFor); the title, its episodes and
     // whether it's private stay.
     var SOURCE_FIELDS = ['url', 'variantUrl', 'initialQualityHeight', 'yt', 'ytLang', '_headers', 'localSubs', 'localFile', 'subExtra', 'sourceSubs', 'formatInfo', 'onStarted', 'onFailed', 'stream',
-        '_reported', 'fromStart', 'resumeSec', 'switching', 'viaService', '_relay', '_relayFor', '_relayCc', '_relayFix'];
+        '_reported', 'fromStart', 'resumeSec', 'switching', 'viaService', '_relay', '_relayFor', '_relayCc', '_relayFix', '_ownUrl', '_av'];   // (_ownUrl: each copy its own link, see formatStart)
     // keep: a source that didn't start gives way to the next (nextSourceOnFail): the same place to
     // resume, and Play from the start as it was.
     function replaceSource(s, keep) {
         if (!S.active || !S.ctx || !s || !s.url) { return; }
         var old = S.ctx, ctx = {};
+        if (S.behind) { _stayBehind = Date.now() + 20000; }   // (live TV behind the menus: the next copy stays behind them)
         Object.keys(old).forEach(function (k) { if (SOURCE_FIELDS.indexOf(k) === -1) { ctx[k] = old[k]; } });
         ctx.url = s.url; ctx.variantUrl = s.variantUrl; ctx.initialQualityHeight = s.initialQualityHeight;
         ctx.yt = s.yt || undefined;
@@ -500,7 +528,7 @@ var PlayerParts = {};
     function play(ctx, onExit) {
         // Replacing a YouTube stream that's playing (CH+/CH− to the next channel): the TV's
         // player can freeze on an open straight after closing it, so settle first (startAV).
-        var settle = !!(S.active && S.ctx && S.ctx.yt);
+        var settle = (S.active && S.ctx && S.ctx.yt) ? true : (S.active && S.isLive && S.ctx && !S.ctx.trailer) ? LIVE_SETTLE_MS : 0;   // (a live channel replaced, CH+/CH−: stopped, then a short wait, or this TV can freeze the picture)
         // (CH+ / CH− from behind the menus: the next channel stays behind them; anything else full screen)
         var stayBehind = !!(S.active && S.behind && _stayBehind > Date.now());
         _stayBehind = 0;
@@ -515,6 +543,10 @@ var PlayerParts = {};
         if (_exitTimer) { clearTimeout(_exitTimer); _exitTimer = null; }
         if (U.crumb) { U.crumb('play ' + (ctx.type || '') + ' ' + (ctx.private ? '(private)' : /^file:/i.test(ctx.url || '') ? 'file .' + ('' + ctx.url).split('.').pop() : ('' + (ctx.url || '')).replace(/^https?:\/\/([^\/?#]+).*$/i, '$1'))); }   // (Diagnostics, after an unexpected close)
         S.active = true; S.cur = 0; S.dur = 0; _bg = null; S.actual = null;
+        if (!ctx.switching) {   // (another source of the same title: its speed kept)
+            S.speed = 1;
+            if (S.videoEl) { try { S.videoEl.defaultPlaybackRate = 1; S.videoEl.playbackRate = 1; } catch (eS) {} }
+        }
         // Stremio "tv" and "radio" types are strong live hints; refined after prepare.
         S.isLive = !(ctx.stream && ctx.stream._vod) && ((ctx.type === 'tv' || ctx.type === 'radio') || /^iptv:/.test(ctx.id || '') || !!ctx.isLive);   // (an IPTV channel: live, a sports one too; a film in a playlist isn't)
         if (S.isLive) { vodCheck(ctx); }   // (one whose manifest says it's a film: not live after all)
@@ -538,7 +570,7 @@ var PlayerParts = {};
         recoReset();
         _prefetchedNext = false; S.playStarted = false; S.playing = false;
         _segments = null; _creditsSec = null; _creditsHandled = false; _segmentsFor = null;
-        S.buffering = false; S.pendingSeek = null; S.lastSeekAt = 0; S.settleFrom = 0; _seekRecovering = false; _jumpUndone = null; _pausedOnce = false; _pausedSince = 0; _jumpBack = null; _asked = null;
+        S.buffering = false; S.pendingSeek = null; S.lastSeekAt = 0; S.settleFrom = 0; S.avCheckFrom = 0; _seekRecovering = false; _jumpUndone = null; _pausedOnce = false; _pausedSince = 0; _jumpBack = null; _asked = null;
         updateHint();
 
         if (stayBehind && S.isLive && ctx.behindOk) { S.behind = true; _onExit = null; behindLook(true); }   // (its way back is to where you are already)
@@ -691,7 +723,7 @@ var PlayerParts = {};
     // Decides live vs VOD from the reported duration (0 / non-finite = live).
     function markLiveFromDuration() {
         if (S.ctx && !(S.ctx.stream && S.ctx.stream._vod) && !S.ctx._vodManifest && (S.ctx.type === 'tv' || S.ctx.type === 'radio' || /^iptv:/.test(S.ctx.id || ''))) { S.isLive = true; }
-        if (!S.dur || S.dur <= 0 || !isFinite(S.dur)) { S.isLive = true; }
+        if ((!S.dur || S.dur <= 0 || !isFinite(S.dur)) && !(S.ctx && S.ctx.stream && S.ctx.stream._vod)) { S.isLive = true; }   // (a catch-up recording is never live)
         else if (S.ctx && S.ctx._vodManifest) { S.isLive = false; }   // (its manifest said it's a film before it was ready: see vodCheck)
     }
 
@@ -734,7 +766,7 @@ var PlayerParts = {};
     // settle: a re-open of what's playing (a quality switch, or its retry). This TV's player
     // tends to fail the first open straight after closing a playing stream (YouTube
     // especially), so stop it properly and give it a moment before opening again.
-    var SETTLE_MS = 300;
+    var SETTLE_MS = 300, LIVE_SETTLE_MS = 120;
     // A file on a USB drive over 2 GB: through StremioK's service (LocalMedia.openUrl), the
     // only way the 2017 TV's player jumps in one.
     function opened(url) {
@@ -748,12 +780,12 @@ var PlayerParts = {};
         _lastTickMs = null; _playedMs = 0;
         _tick = null; _pausedOnce = false;   // (a new open: the jump watch starts over, see checkJump)
         subsBeforeOpen();   // a built-in subtitle track is selected again once this attempt plays
-        if (settle) { try { avplay.stop(); } catch (e0) {} }
+        try { avplay.stop(); } catch (e0) {}   // (always stopped before it's closed)
         try {
             avplay.close();
         } catch (e) {}
         if (settle) {
-            setTimeout(function () { if (S.active && token === _playToken) { openAV(url, token); } }, SETTLE_MS);
+            setTimeout(function () { if (S.active && token === _playToken) { openAV(url, token); } }, typeof settle === 'number' ? settle : SETTLE_MS);
             return;
         }
         openAV(url, token);
@@ -801,6 +833,8 @@ var PlayerParts = {};
     }
     function drmName(d) { return { clearkey: 'ClearKey', widevine: 'Widevine', playready: 'PlayReady' }[d.sys] || U.t('its DRM'); }
     var BUFFERS = { more: [8, 10], most: [15, 20] };
+    // An IPTV channel played straight from its server (not through StremioK's service, which asks with its own)
+    function iptvLive(url) { return !!(S.ctx && /^iptv:/.test(S.ctx.id || '') && !(S.ctx.stream && S.ctx.stream._vod) && !/^https?:\/\/(localhost|127\.0\.0\.1)[:\/]/i.test(url || '')); }
     function openAV(url, token) {
         var drm = S.ctx && S.ctx.stream && S.ctx.stream._drm;
         if (drm && !drm.ok) {   // (ClearKey, or a license StremioK can't ask for)
@@ -815,7 +849,10 @@ var PlayerParts = {};
             // Guarded: unsupported properties simply throw and are ignored.
             try {
                 var h = U.sanitizeHeaders(S.ctx && S.ctx._headers);
-                if (h && h.ua) { avplay.setStreamingProperty('USER_AGENT', h.ua); }
+                // (none given, an IPTV channel's: the TV's browser's, not the player's own
+                // "samsung-agent/1.1", which some channels' servers refuse their video to)
+                var ua = h && h.ua ? h.ua : (iptvLive(url) ? (typeof navigator !== 'undefined' && navigator.userAgent) || '' : '');
+                if (ua) { avplay.setStreamingProperty('USER_AGENT', ua); }
                 if (h && h.ref) { avplay.setStreamingProperty('CUSTOM_MESSAGE', 'Referer:' + h.ref); }
                 if (h && h.cookie) { avplay.setStreamingProperty('COOKIE', h.cookie); }
             } catch (eh) {}
@@ -910,12 +947,14 @@ var PlayerParts = {};
                 if (!S.isLive && S.ctx.resumeSec > 5) { try { avplay.seekTo(S.ctx.resumeSec * 1000); } catch (e4) {} }
                 else if (picked) { try { avplay.seekTo(0); } catch (e5) {} }
                 avplay.play();
+                if ((S.speed || 1) !== 1) { applySpeed(true); }   // (a reload or another source: the speed it had)
                 S.settleFrom = Date.now();   // (counted again from here: on the 2017 TV the resume jump above takes seconds to return)
                 liveCheck();
                 screenSaver(false);
                 renderOSD();
                 startTicker();
                 showOSD(false);
+                measureLive(token);
             }, function (err) {
                 if (!S.active || token !== _playToken) { return; }
                 U.spinner(false);
@@ -1074,6 +1113,7 @@ var PlayerParts = {};
             // (the page's player says little: its code, and a message where the engine has one)
             U.log('player', (loaded ? 'Stopped' : 'Not played') + ' (the page’s video player): ' + (['', 'aborted', 'a network error', 'the file couldn’t be decoded', 'a format or link it can’t play'][mcode] || 'an error') +
                 (me && me.message ? ' (' + me.message + ')' : '') + ' (' + where(url) + ')');
+            if (!loaded && nextSourceOnFail()) { return; }   // (one that never started: the next source, as with the TV's player)
             U.toast(U.t('Playback error')); exitLater();
         };
         if (drm) {
@@ -1268,6 +1308,7 @@ var PlayerParts = {};
             if (_pausedSince && Date.now() - _pausedSince >= LONG_PAUSE_MS && !S.isLive && S.cur > 0) { doAVSeek(S.cur, 0); }
             _pausedSince = 0;
             try { avplay.play(); } catch (e) {}
+            if ((S.speed || 1) !== 1) { applySpeed(true); }   // (the TV's player can go back to 1× after a pause)
         } else { S.videoEl.play(); }
         screenSaver(false);
     }
@@ -1442,7 +1483,7 @@ var PlayerParts = {};
             else if (pos >= ak.to - JUMP_SLACK_SECS - 5 && pos <= ak.to + late + JUMP_SLACK_SECS + 5) { _asked = null; _jumpUndone = null; return false; }
         }
         if (!t || !_pausedOnce || S.isLive || !useAV || scrubbing() || S.pendingSeek != null || S.lastSeekAt >= t.wall) { return false; }
-        var ahead = (pos - t.pos) - (now - t.wall) / 1000;
+        var ahead = (pos - t.pos) - (now - t.wall) / 1000 * (S.speed || 1);   // (at 1.5×, 1.5 s a second isn't a jump)
         if (ahead <= JUMP_SLACK_SECS) { return false; }
         if (_jumpUndone !== null && Math.abs(_jumpUndone - t.pos) < 3) {   // (the same one again)
             U.log('player', 'Playback jumped ahead ' + Math.round(ahead) + ' s again from ' + U.fmtTime(t.pos) + ': let through (a gap in the file?)');
@@ -1464,12 +1505,13 @@ var PlayerParts = {};
     // Refused by the TV, or not started after AV_START_MS: with Settings › Source ranking › The
     // next source on (the default), the next best one this playback hasn't tried (the title's
     // page picks it: ctx.nextSource), at the same place, NEXT_TRIES more at most. Not for live
-    // channels (but a merged IPTV channel's other copies: ctx.liveFallbacks), YouTube or a USB file.
+    // channels (but an IPTV channel's other copies: ctx.liveFallbacks), YouTube or a USB file.
+    // playing: one that plays but without its sound or picture (checkLiveAV) gives way too.
     var NEXT_TRIES = 3, AV_START_MS = 45000, _openedAt = 0;
-    function nextSourceOnFail(notice) {
+    function nextSourceOnFail(notice, playing) {
         var c = S.ctx;
-        if (!c || !S.active || S.playing || (S.isLive && !c.liveFallbacks) || c.trailer || c.yt || c.localFile || !c.stream || typeof c.nextSource !== 'function') { return false; }
-        if (typeof Stremio === 'undefined' || !Stremio.getPrefs || !Stremio.getPrefs().nextOnFail) { return false; }
+        if (!c || !S.active || (S.playing && !playing) || (S.isLive && !c.liveFallbacks) || c.trailer || c.yt || c.localFile || !c.stream || typeof c.nextSource !== 'function') { return false; }
+        if (typeof Stremio === 'undefined' || !Stremio.getPrefs || (!Stremio.getPrefs().nextOnFail && !(S.isLive && c.liveFallbacks))) { return false; }   // (a live channel's own copies: always)
         var tried = (c._tried || []).concat([Stremio.sourceId(c.stream)]);
         if (tried.length > NEXT_TRIES) { return false; }
         var n = null;
@@ -1560,8 +1602,11 @@ var PlayerParts = {};
     // next source when there's one; else it stops and says so (not while you've paused it). A
     // torrent through a streaming server has longer (Settings › Content › Streaming server: finding
     // people sharing it takes a while).
+    // A live channel with other copies gives way sooner (LIVE_START_MS).
+    var LIVE_START_MS = 15000;
     function startMs() {
         var st = S.ctx && S.ctx.stream;
+        if (S.isLive && !_reco.tries && S.ctx && S.ctx.liveFallbacks) { return LIVE_START_MS; }
         return (st && st._torrent && typeof Stremio !== 'undefined' && Stremio.server) ? Stremio.server().wait * 1000 : AV_START_MS;
     }
     function startCheck() {
@@ -1645,7 +1690,9 @@ var PlayerParts = {};
         if (!S.active || !ctx || !liveFixable(ctx)) { return null; }
         var known = liveKnown(ctx.url);
         var hls = known && known.hls !== undefined ? known.hls === 1 : (HLS_LINK.test(ctx.url) || !!(ctx.formatInfo && ctx.formatInfo.container === 'hls'));
-        if (!hls) { return null; }
+        // (an Xtream channel's MPEG-TS isn't looked at — a second connection, see liveCheck — so
+        // its choice is offered unlooked, repacked as the raw stream it is)
+        if (!hls && !(!known && liveFormat(ctx.url) === 'ts')) { return null; }
         return { repacked: !!(ctx._relay && ctx._relayFix), mine: !!(known && known.mine) };
     }
     // Your choice: the channel again, its sound repacked by the service's relay or straight from
@@ -1653,7 +1700,7 @@ var PlayerParts = {};
     function setLiveSound(repack) {
         var ctx = S.ctx;
         if (!S.active || !ctx || !liveFixable(ctx)) { return; }
-        var known = liveKnown(ctx.url), cc = ctx._relayCc || null, raw = !!(known && known.raw);
+        var known = liveKnown(ctx.url), cc = ctx._relayCc || null, raw = known ? !!known.raw : liveFormat(ctx.url) === 'ts';
         liveKeep(ctx.url, repack, known ? ccOf(known) : null, true);   // (its hls answer kept)
         U.log('player', 'Live sound ' + (repack ? 'repacked by StremioK\'s service' : 'straight from the server') + ': your choice for this channel');
         var msg = repack ? U.t('Repacking this channel’s sound…') : U.t('Playing the sound straight from the server…');
@@ -1741,6 +1788,7 @@ var PlayerParts = {};
     function liveCheck() {
         var ctx = S.ctx;
         if (!ctx || ctx._liveChecked || !liveFixable(ctx)) { return; }
+        if (liveFormat(ctx.url) === 'ts') { return; }   // (an Xtream channel's MPEG-TS: the look is a second connection, which a one-connection account drops the picture for; Red › repack still works)
         ctx._liveChecked = true;
         var known = liveKnown(ctx.url);
         if (known && ccOf(known) && known.lv === LIVE_LOOK) { return; }   // (one kept by an older look: looked at again, once)
@@ -1801,9 +1849,61 @@ var PlayerParts = {};
             return;
         }
         _stall.bufSince = 0;
-        if (isPaused() || S.cur !== _stall.t) { _stall.t = S.cur; _stall.since = now; return; }
+        if (isPaused() || S.cur !== _stall.t) { _stall.t = S.cur; _stall.since = now; checkLiveAV(now); return; }
         if (_stall.since && now - _stall.since > STALL_SECS * 1000) { recoverStall(U.t('Playback stalled')); }
     }
+
+    // ---------- a live channel without its sound or picture ----------
+    // Playing (time moving), LIVE_AV_GRACE_MS after it settled, a live channel's link the TV plays
+    // with a picture but no sound: its first audio track (where another was picked), then the
+    // channel's next copy (nextSourceOnFail), then its sound repacked by StremioK's service, each
+    // once. Sound but no picture, where the stream lists a video track (not a radio-like channel):
+    // the next copy. ctx._av: what was tried, for this link (ctx.url) only.
+    var LIVE_AV_GRACE_MS = 5000;
+    function streamTracksSummary() {
+        var out = { hasVideo: false, hasAudio: false, listsVideo: false };
+        try {
+            (avplay.getCurrentStreamInfo() || []).forEach(function (x) {
+                var t = ('' + x.type).toUpperCase(), e = {};
+                try { e = typeof x.extra_info === 'string' ? JSON.parse(x.extra_info) : (x.extra_info || {}); } catch (er) {}
+                if (t === 'VIDEO' && (+(e.Width || e.width) > 0 || !!(e.fourCC || e.codec))) { out.hasVideo = true; }
+                if (t === 'AUDIO') { out.hasAudio = true; }
+            });
+        } catch (er2) {}
+        try { out.listsVideo = (avplay.getTotalTrackInfo() || []).some(function (x) { return ('' + x.type).toUpperCase() === 'VIDEO'; }); } catch (er3) {}
+        return out;
+    }
+    function checkLiveAV(now) {
+        var ctx = S.ctx;
+        if (!S.active || !S.playStarted || !S.playing || !ctx || !S.isLive || !useAV || ctx.trailer || ctx.yt || ctx.type === 'radio' || isPaused() || S.buffering) { return; }
+        now = now || Date.now();
+        if (now - Math.max(_openedAt || 0, S.settleFrom || 0, S.avCheckFrom || 0) < LIVE_AV_GRACE_MS) { return; }
+        if (!ctx._av || ctx._av.url !== ctx.url) { ctx._av = { url: ctx.url }; }
+        var av = ctx._av, sum = streamTracksSummary();
+        if (sum.hasVideo && !sum.hasAudio) {
+            if (!av.firstAudio) {
+                av.firstAudio = true;
+                if (P.fallbackDefaultAudio && P.fallbackDefaultAudio()) { S.avCheckFrom = now; return; }
+            }
+            if (av.noAudio) { return; }
+            av.noAudio = true;
+            U.log('player', 'Live channel with a picture but no sound (' + where(ctx.url) + ')');
+            if (nextSourceOnFail({ text: U.t('No sound on this copy') }, true)) { return; }
+            if (!ctx._liveFixed && !ctx._relay && liveFixable(ctx)) {
+                ctx._liveFixed = true;
+                var known = liveKnown(ctx.url);
+                YTPlay.liveOpen(ctx.url, ctx._headers, true, { fix: true, raw: !!(known && known.raw) }).then(function (r) {
+                    if (S.ctx === ctx && S.active && relayed(ctx, r, null, true)) { reopen(U.t('No sound: repacking it through StremioK’s service…')); }
+                }, function () {});
+            }
+        } else if (!sum.hasVideo && sum.hasAudio && sum.listsVideo && !av.noVideo) {
+            av.noVideo = true;
+            U.log('player', 'Live channel with sound but no picture (' + where(ctx.url) + ')');
+            nextSourceOnFail({ text: U.t('No picture on this copy') }, true);
+        }
+    }
+    P.checkLiveAV = checkLiveAV;
+    P.streamTracksSummary = streamTracksSummary;
     function recoverStall(why) {
         if (liveReconnects()) { liveDropped(why); return; }
         var now = Date.now();
@@ -1841,6 +1941,7 @@ var PlayerParts = {};
             return;
         }
         _stall.recoveries = _stall.recoveries.filter(function (t) { return now - t < STALL_WINDOW_MS; });
+        if ((_reco.tries >= 2 || _stall.recoveries.length >= STALL_MAX - 1) && S.ctx && S.ctx.liveFallbacks && nextSourceOnFail({ text: why }, true)) { _stall.recoveries = []; return; }   // (the channel's next copy, before more tries of this one)
         if (mode !== 'always' && _stall.recoveries.length >= STALL_MAX) {
             U.log('player', 'Live channel: ' + why + '; dropped ' + STALL_MAX + ' times in ' + (STALL_WINDOW_MS / 60000) + ' minutes, given up');
             U.spinner(false); U.toast(U.t('This channel keeps dropping — try it again later'), 5000);
@@ -1862,6 +1963,33 @@ var PlayerParts = {};
         _reco.timer = setTimeout(due, wait);
     }
     // The stream opened again in place: VOD at the same position, live at the edge.
+    // ---------- playback speed (the menu's Speed: this title, kept through a reload or another source) ----------
+    // AVPlay: setSpeed, whole speeds only (it takes an integer: 1.5 played as 1×, seen on the 2020 TV),
+    // so 1×, 2× and 4×, both without sound (the TV mutes it off 1×); the web player (TizenBrew, a browser): playbackRate, 0.5× to 2×. A speed the TV
+    // refuses: false, and it stays as it was. Not for live channels.
+    var SPEEDS_AV = [1, 2, 4], SPEEDS_WEB = [0.5, 0.75, 1, 1.25, 1.5, 2];
+    function speeds() { return useAV ? SPEEDS_AV : SPEEDS_WEB; }
+    function speedName(n) { return n + '×'; }
+    function applySpeed(quiet) {
+        var n = S.speed || 1;
+        if (useAV) {
+            try { avplay.setSpeed(n); return true; } catch (e) { if (!quiet) { U.log('player', 'The TV\'s player refused speed ' + n + '×: ' + (e && (e.name || e.message) || e)); } return false; }
+        }
+        if (!S.videoEl) { return false; }
+        try { S.videoEl.defaultPlaybackRate = n; S.videoEl.playbackRate = n; return true; } catch (e2) { return false; }
+    }
+    function setSpeed(n) {
+        if (!S.active || S.isLive || speeds().indexOf(n) === -1) { return false; }
+        var was = S.speed || 1;
+        S.speed = n;
+        if (!applySpeed()) { S.speed = was; applySpeed(true); return false; }
+        _tick = null;   // (the jump watch starts over at the new pace: see checkJump)
+        renderOSD();
+        return true;
+    }
+    P.speedMuted = function (n) { return useAV && n !== 1; };   // (the TV's player: no sound off 1×)
+    P.speeds = speeds; P.setSpeed = setSpeed; P.speedName = speedName; P.speed = function () { return S.speed || 1; };
+
     function reopen(message) {
         _stall.t = -1; _stall.since = 0; _stall.bufSince = 0;
         S.ctx.resumeSec = S.isLive ? 0 : S.cur;
@@ -1973,6 +2101,6 @@ var PlayerParts = {};
     P.handleCredits = handleCredits; P.isPaused = isPaused; P.play_ = play_; P.pause_ = pause_;
     P.sponsorHighlight = sponsorHighlight;
     P.chapters = chapters; P.chapterAt = chapterAt; P.chapterLabel = chapterLabel;
-    P.seekTo = seekTo; P.doAVSeek = doAVSeek; P.seekBy = seekBy; P.exit = exit;
+    P.seekTo = seekTo; P.doAVSeek = doAVSeek; P.seekBy = seekBy; P.exit = exit; P.isNotice = isNotice;
     P.reload = function () { if (S.active && S.ctx) { reopen(S.isLive ? U.t('Reloading the channel…') : U.t('Reloading…')); } };   // (the menu's Reload)
 })(PlayerParts);

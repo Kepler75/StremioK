@@ -34,6 +34,13 @@
     ];
     function hasLocal() { return typeof LocalMedia !== 'undefined' && LocalMedia.present(); }
     function hasGuide() { return typeof EPG !== 'undefined' && !!EPG.hasAny && EPG.hasAny(); }
+    // IPTV channels read (the IPTV tab shows then, its rows coming: they're read after your
+    // addons, and Home builds them only when it's drawn)
+    function hasIptvTv() {
+        var l = typeof IPTV !== 'undefined' && IPTV.channels ? IPTV.channels() : [];
+        for (var i = 0; i < l.length; i++) { if (!l[i].guideOnly && l[i].type === 'tv') { return true; } }
+        return false;
+    }
 
     // The top menu's order (Settings › Home › Menu): Watching first and Settings last, the
     // rest (the tabs, Discover, Search) in yours. A saved order is kept as far as it goes: an
@@ -80,7 +87,7 @@
             return HOME_TABS.filter(function (t) { return shown(t) && (t.key !== 'local' || hasLocal()); });
         }
         return HOME_TABS.filter(function (t) {
-            return shown(t) && (t.key === 'continue' || t.key === 'calendar' || t.key === 'guide' || (t.key === 'local' ? hasLocal() : catsForTab(t.key).length > 0));
+            return shown(t) && (t.key === 'continue' || t.key === 'calendar' || t.key === 'guide' || (t.key === 'local' ? hasLocal() : catsForTab(t.key).length > 0 || (t.key === 'tv' && hasIptvTv())));
         });
     }
 
@@ -172,7 +179,8 @@
         _reloadOnly = _reloadOnly || {};
         if (url) { _reloadOnly[url] = 1; }
         _homeDirty = true;
-        if (_current() === scr('home') && !isModalOpen() && !Player.isActive()) { loadHomeCatalogs(); }
+        // (on Home; or the IPTV rows, none yet, read whatever's on screen, so the tab has them)
+        if (!Player.isActive() && ((_current() === scr('home') && !isModalOpen()) || (url === 'local:iptv' && !catsForTab('tv').length))) { loadHomeCatalogs(); }
     }
 
     // Auto-refresh (Settings › Content › IPTV): every minute, whether the playlists are due —
@@ -1728,7 +1736,7 @@
             }
             var row = buildRow(c.name, c.metas.slice(0, ROW_FIRST).map(function (m) { return posterCard(m, c.type); }));
             if (c.metas.length > ROW_FIRST) { lateCards(row, c); }
-            if (c.loading) { row.className += ' row-loading'; row.appendChild(U.el('div', 'row-empty', U.t('Loading…'))); }   // (its place kept: nothing to focus)
+            if (c.loading) { row.className += ' row-loading'; placeholders(row); }   // (its place kept: grey cards, nothing to focus)
             rows.appendChild(row);
             built.push(row);
         }
@@ -1756,6 +1764,15 @@
         return row;
     }
 
+    // A row still loading: grey cards the shape of its posters (as many as fit), "Loading…" on the
+    // first; not focusable, nor .card (nothing counts them as titles). Its own cards replace them.
+    var PH_CARDS = { portrait: 8, landscape: 5 };
+    function placeholders(row) {
+        var land = Stremio.getPrefs().posterShape === 'landscape', sc = row.querySelector('.row-scroller');
+        for (var i = 0; i < PH_CARDS[land ? 'landscape' : 'portrait']; i++) {
+            sc.appendChild(U.el('div', 'card-ph' + (land ? ' landscape' : ''), i ? '' : U.t('Loading…')));
+        }
+    }
     function buildRow(title, cards) {
         var row = U.el('div', 'row');
         row.appendChild(U.el('div', 'row-title', title));

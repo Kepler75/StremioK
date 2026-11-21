@@ -875,9 +875,18 @@ var U = (function () {
                             if (!db2) { return null; }
                             var ks = Object.keys(all);
                             return tx(db2, 'readwrite', function (os) { ks.forEach(function (k) { os.put(all[k], k); }); }).then(function (ok) {
+                                if (ok) { return []; }
+                                // (all at once refused: each item on its own, so one the database won't take
+                                // doesn't lose the rest: Nuvio plugins' code, a media server's marks…; #31)
+                                var lost = [];
+                                return ks.reduce(function (chain, k) {
+                                    return chain.then(function () { return tx(db2, 'readwrite', function (os) { os.put(all[k], k); }).then(function (ok1) { if (!ok1) { lost.push(k); } }); });
+                                }, Promise.resolve()).then(function () { return lost; });
+                            }).then(function (lost) {
+                                var ok = !lost.length;
                                 return quota().then(function (q2) {
                                     var r = { before: before && before.usage, after: q2 && q2.usage };
-                                    if (!ok) { log('storage', 'Tidied up the TV’s database, but couldn’t write StremioK’s data back (' + (_why || 'no reason given') + '): it’s made again as needed'); }
+                                    if (!ok) { log('storage', 'Tidied up the TV’s database, but couldn’t write ' + lost.length + ' of ' + ks.length + ' items back (' + (_why || 'no reason given') + '): ' + lost.join(', ')); }
                                     else { log('storage', 'Tidied up the TV’s database: ' + (r.before != null ? fmtSize(r.before) : '?') + ' → ' + (r.after != null ? fmtSize(r.after) : '?') + ' (old versions of what StremioK saved, cleared out; its data kept)'); }
                                     return r;
                                 });

@@ -488,9 +488,12 @@ the one before, the next), each with its picture (`<icon>`). A channel's `<icon>
 - **Answers:** kept to 2 MB; the Guide tab asks 20 channels at a time. A channel whose programs
   don't come (no answer, or past the 2 MB) stays on the Guide tab and is asked again 30 seconds
   later.
-- **Saved guides:** on the sideloaded app they're saved in its folder (written whole, then
-  swapped in) and read again after 6 hours (a playlist's ↻: its guide at once,
-  `&force=1`); under TizenBrew, kept in memory.
+- **Saved guides:** saved in the service's folder (written whole, then swapped in) and read
+  again after 6 hours (a playlist's ↻: its guide at once, `&force=1`).
+- **The service's folder** (guides, playlists, Xtream lists): the first a file can be written
+  in: the package's data folder, the app's own under `apps_rw` (on a 2024 TV the package's is
+  read-only), then one in the system's temporary folder (emptied on a restart), which TizenBrew
+  gets too. Its USB token stays in the package's folder. (From ediziks' fork.)
 - **How many:** four guides are kept: a fifth's arrival deletes the oldest's file, a file older
   than 2 days is deleted, one over 32 MB isn't read. *Clear saved copies* (Storage) deletes the
   saved guides too.

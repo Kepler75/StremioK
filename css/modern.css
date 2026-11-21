@@ -101,6 +101,8 @@ body.look-modern.bg-light .btn-row .pill:first-child { background: rgba(0,0,0,0.
 body.look-modern.bg-light .btn-row .pill.focusable.focused, body.look-modern.bg-light .tab-pill.focusable.focused, body.look-modern.bg-light .header .hchip.focusable.focused,
 body.look-modern.bg-light .season-bar .pill.focusable.focused, body.look-modern.bg-light .stream.focusable.focused, body.look-modern.bg-light .ep.focusable.focused { background: #111111; color: #f5f5f5; border-color: #111111; }
 body.look-modern.bg-light .card { background: rgba(0,0,0,0.06); }
+body.look-modern .card-ph { border: 0; border-radius: 16px; background: rgba(255,255,255,0.07); margin-right: 26px; }   /* (a row still loading: as its cards) */
+body.look-modern.bg-light .card-ph { background: rgba(0,0,0,0.06); color: #5b6270; }
 body.look-modern.bg-light .card.focusable.focused { box-shadow: 0 0 0 4px #111111; }
 body.look-modern.bg-light .home-info.on:not(.hero) { background: rgba(0,0,0,0.05); }
 

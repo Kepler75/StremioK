@@ -153,7 +153,7 @@ where it came from.
 | BACK | Back. On a main page (Home's tabs, Discover, Search, Settings) it goes to the top menu first (DOWN comes back to where you were); from the menu, to the page before, or *Exit StremioK?* on Home (OK exits, BACK stays). |
 | 0–9 | The top menu's items (see below); in the player, the subtitles' [timing, position and size](#keys-while-it-plays); on a live channel, a [channel number](#iptv-and-radio). |
 | UP / DOWN in the player | The quick bar / the menu ([While it plays](#while-it-plays)). |
-| Red / Green / Yellow / Blue in the player | Audio tracks / subtitles / sources / stream info. |
+| Red / Green / Yellow / Blue in the player | Audio tracks / subtitles / sources / stream info (also the INFO key). |
 | CH+ / CH− | The next / previous channel while one plays (LEFT: the [channel list](#iptv-and-radio)). |
 | Guide | The Guide tab (instead of the TV's own guide). |
 
@@ -466,7 +466,7 @@ without a key.
   playing, from that moment (see [Private viewing](PRIVACY.md#private-viewing)).
 - **Cast & more** (with a TMDB key): who's in it, with photos and roles, on a see-through strip
   over the video, which keeps playing. LEFT / RIGHT look through it; OK on a person shows
-  their movies and series, OK on one of those its Cast & more, and so on. BACK goes up a level
+  their movies and series (with the character they played, or their job), OK on one of those its Cast & more, and so on. BACK goes up a level
   at a time; UP or DOWN close it. **Hold OK on a title** there for the poster menu: *Add to /
   Remove from Continue Watching* and *Mark watched / unwatched* happen right away; *Details*
   stops playing (your place kept) and opens its page.
@@ -479,13 +479,14 @@ without a key.
 - *Video quality* (HLS streams: YouTube, and links to an `.m3u8`); it says so when a stream's
   qualities can't be read.
 - *Playback* (restart, rewind / forward).
+- *Speed*: 1×, or 2× and 4× without sound (the TV mutes them); under TizenBrew 0.5× to 2×. For this title; another source keeps it.
 - *Picture*: Fit, Zoom or Stretch, remembered (a live channel keeps its own).
 - *Format* (an Xtream channel): MPEG-TS or HLS, kept for that channel.
 - *Stream info*.
 - *Reload*: opened again (a live channel at the live edge, a video where it is).
 - *Sleep timer*: Off, 30, 60 or 90 minutes, then playback stops (the menu shows what's left).
 
-With the progress bar, the time of day shows at the top right, and when it ends (*Ends 21:47*).
+With the progress bar, the time of day shows at the top right, and when it ends (*Ends 21:47*, at the speed playing). [Player screen](SETTINGS.md#player-screen) can show what's left instead (−42:10), and make BACK ask before leaving.
 
 ### Keys while it plays
 
@@ -497,7 +498,7 @@ With the progress bar, the time of day shows at the top right, and when it ends 
 | Red | The audio tracks (a YouTube video's: its audio languages). |
 | Green | The subtitle languages. |
 | Yellow | The sources (*Select source*). |
-| Blue | The stream info (see below). |
+| Blue or INFO | The stream info (see below). |
 | 1 / 2 / 3 | Subtitles 0.1 s earlier / back to the file's timing / 0.1 s later (kept for the title). |
 | 4 / 5 / 6 | Subtitle position: Lower / Bottom / Raised. |
 | 7 / 8 / 9 | Subtitle size: Medium / Large / Extra Large. |
@@ -506,7 +507,7 @@ On a live channel the number keys pick a channel instead (see [IPTV and radio](#
 A colored key's list closes with BACK or the same key again.
 
 **The stream info** (blue) shows the source (addon, name, file, size, description), what it is
-in short, the video and audio as the player has them, the subtitles, quality, bandwidth, server
+in short, the video and audio as the player has them, the subtitles, quality, bandwidth, bitrate (the player's, else the HLS quality's or the file's average), speed, server
 name, how it plays (from the server, through StremioK's service or YouTube's), the buffer and
 the position. A file's start is read too: its codec, HDR, what its Dolby Vision plays as here,
 and each track's own name (also in the colored keys' lists).
@@ -609,6 +610,10 @@ moves up above it.
 
 ## IPTV and radio
 
+Much of what's here comes from [ediziks' fork](https://github.com/ediziks/StremioK): the channel
+list, live TV behind the menus, catch-up, the channel browser, guides by country and the fixes for
+big Xtream playlists. Thanks, ediziks!
+
 ### Your playlists
 
 Settings › Content › **IPTV** › *Add playlist*, or a configuration file. A playlist is named
@@ -629,6 +634,8 @@ counts, last download and any error (a failed refresh keeps the saved copy).
   up to 250 MB. Xtream: *Live TV only* drops its films and series.
 - **Tidier lists** (each off until set): *Merge duplicate channels* (one tile: each copy a
   source, the best quality first, or the best played at once and the next if it doesn't start), *Countries first* and *Hide channels with these words*.
+  Copies rank by what the TV measured once played (resolution, frame rate) ahead of their names,
+  and stay apart across countries, +1 channels and other-language feeds; backups go last.
   A playlist's divider lines ("-----", "#### UK ####") never show.
 - **Auto-refresh** (*Off* by default): every hour, 3, 6 or 12 hours, all playlists and their
   TV guides are downloaded again, as ↻ does, so a channel whose guide came late is back
@@ -655,7 +662,8 @@ An Xtream account's films and series come with its channels, as do a Stalker por
 ### Watching
 
 - **★ Favorites:** hold OK on a channel card, then *Add to favorites*. They're a row of their
-  own, first on the IPTV tab (all of them, up to 300) and on the Guide tab.
+  own, first on the IPTV tab (all of them, up to 300) and on the Guide tab. **⟲ Recent**, after
+  them: the last 25 channels you played.
 - **IPTV** and **Radio** rows, a row per group; a channel's details name its playlist.
 - **Films in a playlist:** a file's link (`.mkv`, `.mp4`…, an Xtream `/movie/` or `/series/`
   one), or a DASH or HLS film, can be scrubbed through; Continue Watching doesn't keep it.
@@ -663,6 +671,9 @@ An Xtream account's films and series come with its channels, as do a Stalker por
   **Sports** tab.
 - **Guide only:** channels marked `tvg-type="guide"` show on the Guide tab
   alone; OK on a program finds that film in your addons (else Search).
+- **A copy that doesn't play right:** no start within 15 seconds, a picture without sound (after
+  its first audio track is tried), or sound without a picture: the channel's next copy (an Xtream
+  `.ts` link's `.m3u8` too), whatever *The next source* says; the last one's sound repacked.
 - **CH+ / CH−** switch through the row a channel came from; the one you stop on starts after a
   short pause; BACK lands on its card.
 - **The channel list:** LEFT while a channel plays (or *≡ Channels* on the quick bar). Your

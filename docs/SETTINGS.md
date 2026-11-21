@@ -15,7 +15,7 @@ In a list you order, ▲ / ▼ move an item one place and ⇈ / ⇊ move it to t
   [Streaming apps](#streaming-apps), [USB drive](#usb-drive), [Media servers](#media-servers),
   [Import configuration file](#import-configuration-file), [Export configuration](#export-configuration)
 - [Playback](#playback): [Audio](#audio), [Subtitles](#subtitles), [Skipping](#skipping),
-  [Seeking & buffering](#seeking--buffering), [Live TV](#live-tv), [Source ranking](#source-ranking),
+  [Seeking & buffering](#seeking--buffering), [Player screen](#player-screen), [Live TV](#live-tv), [Source ranking](#source-ranking),
   [Formats](#formats), [Private viewing](#private-viewing)
 - [Appearance](#appearance)
 - [Home](#home)
@@ -37,7 +37,7 @@ Adding, ordering and managing addons: the user guide's
 | *Import addons from Nuvio* | | The same for a Nuvio profile's addons (badged N). |
 | *AIOManager* | | Its own page: see [AIOManager](#aiomanager). |
 | Each addon | ⇈ ▲ ▼ ⇊ ↻; OK: *Turn off* / *Turn on*, *Remove*, *Share*, *Configure* | ↻ reloads it; switches off (kept, not asked) or on, removes, shows its link's QR code (with your tokens: your devices only) or setup page. Higher addons describe titles first. |
-| *Wait for addons* | **Normal** (12 s; sources 15, search 25), 20, 30, 45, 60 seconds | How long StremioK waits for an addon. Longer helps one that sleeps when unused. |
+| *Wait for addons* | **Normal** (12 s; sources 15, search 25), 20, 30, 45, 60 seconds | Longer helps an addon that sleeps when unused. |
 | *Local-network links from internet addons* | **Blocked**, Allowed | Blocked, internet addons can't point links into your home network; your own network's addons and your playlists still can. See [Privacy](PRIVACY.md#your-home-network). |
 
 ### AIOManager
@@ -120,7 +120,7 @@ to add (OK adds one; hidden system apps on request). On the TV only.
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | Each drive | *Index again* | Its index: videos, how many are matched, when. |
-| *Match videos to titles* | **Off (not asked yet)**, On, Off | Whether file names are looked up with your search addons; asked the first time a folder has videos to match. |
+| *Match videos to titles* | **Off (not asked yet)**, On, Off | File names looked up with your search addons; asked the first time a folder has videos. |
 | *Show hidden files* | **Off**, On | Lists files starting with "." and the system folders. |
 | *Clear the USB index* | | Title pages stop offering the drive's files; Local still browses it. |
 | *Forget matches* | | Every video is matched again from its name, yours too. |
@@ -208,16 +208,23 @@ Addons (in order), playlists, portals, API keys, settings and, if ticked, your h
 |---------|---------|--------------|
 | *Seek step* | 5, **10**, 15, 30 seconds | How far LEFT / RIGHT jump; FF / REW three steps; holding speeds up. |
 | *Buffer* | **Normal (the TV's own)**, More, Most | Loaded before starting and after running dry (More: 8 and 10 s; Most: 15 and 20): slower to start, dry less often. |
-| *Read the file's details* | **USB drives only**, All files, Off | Its codec, HDR and tracks, read from its start for Stream info. Links, network folders: more requests as it starts. |
+| *Read the file's details* | **USB drives only**, All files, Off | Its codec, HDR and tracks, for Stream info. Links, network folders: more requests as it starts. |
 | *Leave out other subtitle tracks* | Always, More than 5, **After a jump**, Never | MKVs with many can stutter after jumps: through the service, your languages' only. |
-| *HLS through StremioK's service* | **Off**, Sources that need headers, All HLS sources | Fetched by the service with the source's own headers (the TV's player can't always send them): a step more to start. Hold OK on a source: once. |
+| *HLS through StremioK's service* | **Off**, Sources that need headers, All HLS sources | Fetched by the service with the source's headers, which the TV's player can't always send. Hold OK on a source: once. |
+
+### Player screen
+
+| Setting | Choices | What it does |
+|---------|---------|--------------|
+| *BACK while a video plays* | **Leave at once**, Press twice | Twice: the first BACK asks; a second within 3 s leaves. |
+| *Time shown* | **The length, and when it ends**, What's left, Both | What's left: −42:10 on the bar. |
 
 ### Live TV
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Live TV behind the menus* | **Off**, On | BACK keeps a live channel playing behind Home. |
-| *Reconnect live channels* | Off, **A few times**, Keep trying | A channel that drops opens again at the live edge: 3 times in 5 minutes, or always, up to a minute apart (BACK stops it). Off: it closes. |
+| *Reconnect live channels* | Off, **A few times**, Keep trying | A channel that drops opens again: 3 times in 5 minutes, or always (BACK stops it). Off: it closes. |
 
 ### Source ranking
 
@@ -236,7 +243,7 @@ for what's left out and what *▶ Play* does. Their rows sum up what's set.
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Sources the TV can't play* | **Shown**, Hidden | Shown: dimmed at the bottom. Hidden: torrents and links it can't open are left out (a line says how many); where-to-watch apps stay. |
+| *Sources the TV can't play* | **Shown**, Hidden | Shown: dimmed at the bottom. Hidden: left out (a line says how many); where-to-watch apps stay. |
 | *Movies' sizes* / *Series' sizes (an episode)* | *Smallest* (100 MB to 2 GB), *Largest* (2 GB to 80 GB), *Most per hour* (1 GB to 10 GB an hour); **no limits** | Sources outside a limit move to the bottom, never picked on their own ([Size limits](#size-limits)). |
 | *Hide sources with these words* | **none**, your words, separated by commas | Sources with one in their name, description or file name (whole words, capitals or not: CAM, HDTS, a language) move to the bottom, never picked on their own. |
 
@@ -244,7 +251,7 @@ for what's left out and what *▶ Play* does. Their rows sum up what's set.
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Skip the source list* | **Off**, On | On, *▶ Play* on a movie, OK on an episode and *▶ Play SxEx* play the top source once the addons have answered (nothing playable: the list). The remote's ▶ Play key does this whichever you choose. |
+| *Skip the source list* | **Off**, On | On: *▶ Play* on a movie, OK on an episode and *▶ Play SxEx* play the top source once the addons answer (none playable: the list). The remote's ▶ Play key always does. |
 | *The next source if one doesn't start* | **On**, Off | A source the TV refuses, or not started after 45 seconds, gives way to the next (up to 3 more); Off: back to the list. Not live channels, YouTube or USB files. |
 
 #### Size limits
@@ -279,7 +286,7 @@ them.
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| Each row | **Working**, Not working | *Working* once a source with it has played a couple of seconds, *Not working* after failing with two different files. OK switches it by hand. |
+| Each row | **Working**, Not working | *Working* once a source with it has played a few seconds, *Not working* after failing with two different files. OK switches it by hand. |
 | *Mark "Not working" automatically* | **On**, Off | Off, failed starts aren't recorded; what's marked stays. |
 | *Resolutions* | 4K, 1440p, 1080p, 720p, SD, Unknown: **Allowed**, Not allowed | A resolution not allowed sends its sources to the bottom at once. |
 | *Forget all formats* | | Starts over (the resolutions stay as you set them). |
@@ -311,7 +318,7 @@ them.
 |---------|---------|--------------|
 | *Start on* | **Watching** (Continue Watching), any Home tab, Last IPTV / Guide channel | The tab StremioK opens on (the Guide once its guide is read; Watching for a hidden tab), or the last channel playing. |
 | *IPTV tab* | **Rows**, Channel browser | The IPTV tab as rows, or a browser: groups, channels, now and next. |
-| *Titles in a Home row* | **30**, 50, 100, 200, Unlimited | How many titles a Home row holds (catalogs, IPTV groups). More load slower, *Unlimited* much slower (an addon may refuse so many requests). ★ Favorites shows all. |
+| *Titles in a Home row* | **30**, 50, 100, 200, Unlimited | Per Home row (catalogs, IPTV groups). More load slower; with *Unlimited* an addon may refuse so many requests. ★ Favorites shows all. |
 | *Home bar preview* | **Most recent first**, As in Watching, Off | Continue Watching on the TV's home bar (StremioK on it: Apps › StremioK › *Add to Home*): up to 8 playable tiles. Sideloaded app, Tizen 4 and later. |
 | *Menu ›* | ⇈ ▲ ▼ ⇊, OK to show or hide | The top menu's order between Watching (first) and Settings (last), and which Home tabs show. Discover and Search always show. |
 | *Home feeds ›* | ▲ / ▼, OK to show or hide | The order of the Home rows, and which show. |
@@ -336,7 +343,7 @@ with its last steps. *Startup* shows how long this launch and the one before too
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Use the TV's database* | **On**, Off | The database holds StremioK's big copies (Home's saved rows, playlists, USB indexes, watched histories). Off: in the settings storage (about 5 MB), the database deleted. |
+| *Use the TV's database* | **On**, Off | It holds StremioK's big copies (Home's saved rows, playlists, USB indexes, watched histories). Off: in the settings storage (about 5 MB), the database deleted. |
 | *TV storage* | | What StremioK keeps, item by item, with sizes (its saved TV guides too), and the TV's free disk space. |
 | *Tidy up the TV's database* | | Gives back the space of old versions the TV hasn't cleared out. |
 | *Clear saved copies* | | Gives up the copies that can be made again (Home's saved rows, IPTV playlist copies, saved TV guides and Xtream lists, the USB index). |

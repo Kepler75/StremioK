@@ -229,6 +229,7 @@ See [Nuvio plugins](PLUGINS.md); only a plugin's author can fix it.
 | No *Nuvio plugins* in Settings › Content | Plugins need a 2017 or newer TV and the sideloaded app (not TizenBrew). |
 | *Couldn’t add it: not valid JSON*, *HTTP 404*, or *not a plugin repository* | Not a repository's `manifest.json` (directory sites hide it behind *Copy*), or one that's gone. |
 | A title shows no plugin sources | *Nuvio plugins: On*, the plugin ticked (✓, not ○), and a TMDB key (Settings › Content › Integrations): most plugins find nothing without it (Logs: *No TMDB number*). |
+| *its code isn’t on the TV, and downloading it again failed* | The TV didn't keep the plugin's code, and its address didn't answer. *↻ Refresh* the repository. |
 | Still none | *No sources found* names each plugin that failed and why (Logs too). Its site may have changed or block your region. |
 | A plugin is *too slow* | Plugins get the time addons do (*Wait for addons*); slower ones are left out. Keep only a few on, above all on 2017–2020 TVs. |
 | A plugin's source doesn't play | Often HEVC, which 2017–2020 TVs can't play. Or hold OK › *Play through StremioK's service*. |
