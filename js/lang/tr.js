@@ -1638,6 +1638,7 @@ I18N.add("tr", {
     "This stream didn't start": "Bu yayın başlamadı",
     "This stream’s qualities couldn’t be read: it plays on Auto": "Bu yayının kaliteleri okunamadı: Otomatik oynatılıyor",
     "Thriller": "Gerilim",
+    "Through StremioK’s service": "StremioK hizmeti üzerinden",
     "Through StremioK’s service: the sound repacked": "StremioK hizmeti üzerinden: ses yeniden paketlendi",
     "Through StremioK’s service: {n} subtitle tracks left out": "StremioK hizmeti üzerinden: {n} altyazı parçası dışarıda bırakıldı",
     "Through YouTube’s service (on the TV)": "YouTube hizmeti üzerinden (TV’de)",

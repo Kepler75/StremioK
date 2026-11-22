@@ -169,7 +169,13 @@ var PlayerParts = {};
     // fromTicker: the save while it plays, at most every SAVE_EVERY_MS: skipped when nothing moved
     // since the last one (paused); a stop, a leave or a jump always saves.
     var _savedSig = '', _savedAt = 0, SAVE_EVERY_MS = 60000;
+    // Opened at a place to resume and not moved yet: the TV says 0:00, which isn't where you are.
+    function stuckAtStart() { return !!(useAV && S.ctx && !S.ctx._played && S.cur < 1 && S.ctx.resumeSec > 5); }
+    // Where to open again (a reload, a retry, another source): where it is, else where it was to open.
+    function placeNow() { return stuckAtStart() ? S.ctx.resumeSec : S.cur; }
+    P.placeNow = placeNow;
     function saveProgress(fromTicker) {
+        if (stuckAtStart()) { return; }   // (0:00 would delete the place saved)
         if (!S.ctx || typeof S.ctx.id !== 'string' || !S.ctx.id || !S.dur || S.isLive || S.ctx.trailer || S.ctx.private || isNotice() || /^iptv:/.test(S.ctx.id || '')) { return; }   // (a notice clip, private viewing, a film in a playlist: nothing saved, nothing removed)
         var sig = progressKey(S.ctx) + '|' + Math.floor(S.cur) + '|' + Math.floor(S.dur);
         if (fromTicker && (sig === _savedSig || Date.now() - _savedAt < SAVE_EVERY_MS)) { return; }
@@ -442,7 +448,7 @@ var PlayerParts = {};
     // is what's learned from it (s.stream, through ctx.learnFor); the title, its episodes and
     // whether it's private stay.
     var SOURCE_FIELDS = ['url', 'variantUrl', 'initialQualityHeight', 'yt', 'ytLang', '_headers', 'localSubs', 'localFile', 'subExtra', 'sourceSubs', 'formatInfo', 'onStarted', 'onFailed', 'stream',
-        '_reported', 'fromStart', 'resumeSec', 'switching', 'viaService', '_relay', '_relayFor', '_relayCc', '_relayFix', '_ownUrl', '_av'];   // (_ownUrl: each copy its own link, see formatStart)
+        '_reported', 'fromStart', 'resumeSec', 'switching', 'viaService', '_relay', '_relayFor', '_relayCc', '_relayFix', '_ownUrl', '_av', '_played'];   // (_ownUrl: each copy its own link, see formatStart; _played: this source has played a second, reloads or not)
     // keep: a source that didn't start gives way to the next (nextSourceOnFail): the same place to
     // resume, and Play from the start as it was.
     function replaceSource(s, keep) {
@@ -459,7 +465,7 @@ var PlayerParts = {};
         ctx.stream = s.stream;   // (the addon's source: ⬇ Download, player-controls)
         var learn = (old.learnFor && s.stream) ? old.learnFor(s.stream, { converted: !!s.converted }) : {};   // (converted: not what the TV plays itself)
         ctx.onStarted = learn.onStarted; ctx.onFailed = learn.onFailed;
-        ctx.resumeSec = keep ? old.resumeSec : (S.isLive ? 0 : S.cur);
+        ctx.resumeSec = keep ? old.resumeSec : (S.isLive ? 0 : placeNow());
         if (keep) { ctx.fromStart = old.fromStart; }
         ctx.private = !!old.private;
         ctx.switching = true;
@@ -884,9 +890,9 @@ var PlayerParts = {};
                     if (checkJump(ms / 1000)) { return; }
                     S.cur = ms / 1000; onProgress();
                     // Played, not just opened: a file can open and then fail (or show nothing)
-                    if (_lastTickMs !== null && ms > _lastTickMs && ms - _lastTickMs < 1500) { _playedMs += ms - _lastTickMs; }
+                    if (_lastTickMs !== null && ms > _lastTickMs && ms - _lastTickMs < 1500 * (S.speed || 1)) { _playedMs += ms - _lastTickMs; }
                     _lastTickMs = ms;
-                    if (!S.playing && _playedMs >= 1000) { S.playing = true; _reco.tries = 0; }   // (started: playing, not just opened; a reconnect's tries start over)
+                    if (!S.playing && _playedMs >= 1000) { S.playing = true; S.ctx._played = true; _reco.tries = 0; }   // (started: playing, not just opened; a reconnect's tries start over)
                     if (_playedMs >= 2000 && !isNotice()) { reportStart(true); }   // (a notice clip proves nothing about the format)
                     audioOnTick();
                     subsOnTick();
@@ -947,6 +953,7 @@ var PlayerParts = {};
                 if (!S.isLive && S.ctx.resumeSec > 5) { try { avplay.seekTo(S.ctx.resumeSec * 1000); } catch (e4) {} }
                 else if (picked) { try { avplay.seekTo(0); } catch (e5) {} }
                 avplay.play();
+                _pausedSince = 0;   // (it plays: a pause from before a reload, or pressed as it opened, is over)
                 if ((S.speed || 1) !== 1) { applySpeed(true); }   // (a reload or another source: the speed it had)
                 S.settleFrom = Date.now();   // (counted again from here: on the 2017 TV the resume jump above takes seconds to return)
                 liveCheck();
@@ -1298,6 +1305,8 @@ var PlayerParts = {};
         if (useAV) { return state() !== 'PLAYING'; }
         return S.videoEl.paused;
     }
+    // Paused by you (or on the way to the background), once open: not a start that failed, nor a stall.
+    function userPaused() { return !!(S.playStarted && _pausedSince && isPaused()); }
     // After a pause of LONG_PAUSE_MS or more the TV's player can jump ahead at its next buffering,
     // to where it would be had it never paused (its clock ran on: seen 115 s and 501 s on the Tizen
     // 6 TV): so it's set again at the paused place first (a jump to where it is), and plays on from
@@ -1305,6 +1314,7 @@ var PlayerParts = {};
     var LONG_PAUSE_MS = 20000;
     function play_() {
         if (useAV) {
+            if (!S.playing && userPaused()) { _openedAt = Date.now(); setTimeout(startCheck, startMs() + 500); }   // (paused before it had played a second: its time to start, again from here)
             if (_pausedSince && Date.now() - _pausedSince >= LONG_PAUSE_MS && !S.isLive && S.cur > 0) { doAVSeek(S.cur, 0); }
             _pausedSince = 0;
             try { avplay.play(); } catch (e) {}
@@ -1368,7 +1378,7 @@ var PlayerParts = {};
     // default: more than BLANK_MIN, from the first jump, which reads them and reopens there);
     // Never. A file whose tracks are known plays through it from the start in the first three.
     // Kept: your subtitle languages' tracks (a choice made for the title first), BLANK_KEEP at
-    // most. Not USB files, network folders, YouTube, DRM or live.
+    // most; with none to keep, the file plays with all of them. Not USB files, network folders, YouTube, DRM or live.
     var BLANK_MIN = 5, BLANK_KEEP = 4, BLANK_ASK_MS = 6000, _blankAsk = null;
     function blankKeep(ctx, mi) {
         var cfg = P.getSubCfg(), mine = P.recallSub ? P.recallSub(ctx.id) : null;
@@ -1390,7 +1400,8 @@ var PlayerParts = {};
         if (ctx.localFile || ctx.yt || ctx.trailer || S.isLive || (ctx.stream && ctx.stream._drm)) { return false; }
         var url = ctx.url || '';
         if (!/^https?:\/\//i.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)[:\/]/i.test(url)) { return false; }
-        if (blankKeep(ctx, mi).length >= mi.subs.length) { return false; }   // (every one kept: nothing to leave out)
+        var kept = blankKeep(ctx, mi).length;
+        if (!kept || kept >= mi.subs.length) { return false; }   // (none of your languages' in it, or none set: every track stays, never all left out; every one kept: nothing to leave out)
         return typeof YTPlay !== 'undefined' && !!YTPlay.fileOpen && YTPlay.installMode() !== 'browser';
     }
     // The audio tracks in the order wanted (a choice made for the title, your language, your second
@@ -1599,7 +1610,8 @@ var PlayerParts = {};
         return n;
     }
     // Not playing after AV_START_MS (no answer from the server, or opened and nothing shown): the
-    // next source when there's one; else it stops and says so (not while you've paused it). A
+    // next source when there's one; else it stops and says so. Neither while you've paused it: played
+    // on, it has that long again (see play_). A
     // torrent through a streaming server has longer (Settings › Content › Streaming server: finding
     // people sharing it takes a while).
     // A live channel with other copies gives way sooner (LIVE_START_MS).
@@ -1611,6 +1623,7 @@ var PlayerParts = {};
     }
     function startCheck() {
         if (!S.active || S.playing || !useAV || !_openedAt || Date.now() - _openedAt < startMs()) { return; }
+        if (userPaused()) { return; }   // (first: a pause doesn't move on to the next source)
         if (_reco.tries) { liveDropped(U.t('Couldn’t reconnect')); return; }   // (a reconnect's try: the next one)
         if (nextSourceOnFail()) { return; }
         if (S.playStarted && isPaused()) { return; }
@@ -1838,11 +1851,13 @@ var PlayerParts = {};
     // Time not moving while playing (not paused or buffering) for STALL_SECS, or buffering
     // that never finishes, reloads the stream in place: VOD at the same position, live at
     // the edge. A source that stalls STALL_MAX times within STALL_WINDOW_MS is given up on
-    // (VOD lands back on its source list). Checked from the 5 s ticker.
+    // (VOD lands back on its source list); one that never played a second gives way to the next
+    // source sooner (see recoverStall). Checked from the 5 s ticker.
     var STALL_SECS = 12, BUFFER_STALL_SECS = 30, STALL_MAX = 3, STALL_WINDOW_MS = 5 * 60 * 1000;
     function checkStall() {
         if (!S.active || !S.playStarted || scrubbing()) { _stall.since = 0; _stall.bufSince = 0; return; }
         var now = Date.now();
+        if (userPaused()) { _stall.bufSince = 0; _stall.t = S.cur; _stall.since = now; return; }   // (loading or not: a reload would play it, or lose it)
         if (S.buffering) {
             if (!_stall.bufSince) { _stall.bufSince = now; }
             else if (now - _stall.bufSince > BUFFER_STALL_SECS * 1000) { recoverStall(U.t('Stream stopped loading')); }
@@ -1908,6 +1923,10 @@ var PlayerParts = {};
         if (liveReconnects()) { liveDropped(why); return; }
         var now = Date.now();
         _stall.recoveries = _stall.recoveries.filter(function (t) { return now - t < STALL_WINDOW_MS; });
+        // (never played, and still nothing after a reload: a start that failed, so the next source. A
+        // torrent, given longer to start: only once its reloads are used up)
+        var c = S.ctx, reloads = c && c.stream && c.stream._torrent ? STALL_MAX : 1;
+        if (c && !c._played && _stall.recoveries.length >= reloads && nextSourceOnFail()) { return; }
         if (_stall.recoveries.length >= STALL_MAX) {
             U.spinner(false);
             U.toast(U.t('This source keeps stalling — try another one'), 4000);
@@ -1992,7 +2011,7 @@ var PlayerParts = {};
 
     function reopen(message) {
         _stall.t = -1; _stall.since = 0; _stall.bufSince = 0;
-        S.ctx.resumeSec = S.isLive ? 0 : S.cur;
+        S.ctx.resumeSec = S.isLive ? 0 : placeNow();
         if (S.ctx.yt && typeof YTPlay !== 'undefined') { S.ctx.url = YTPlay.resolverUrl(S.ctx.yt, qualityHeight(), true, S.ctx.ytLang); }
         clearStartNote();
         U.spinner(true, message);

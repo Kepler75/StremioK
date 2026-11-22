@@ -1638,6 +1638,7 @@ I18N.add("fi", {
     "This stream didn't start": "Lähde ei käynnistynyt",
     "This stream’s qualities couldn’t be read: it plays on Auto": "Lähteen laatuja ei voitu lukea: toistetaan automaattisella",
     "Thriller": "Trilleri",
+    "Through StremioK’s service": "StremioKin palvelun kautta",
     "Through StremioK’s service: the sound repacked": "StremioKin palvelun kautta: ääni pakattu uudelleen",
     "Through StremioK’s service: {n} subtitle tracks left out": "StremioKin palvelun kautta: {n} tekstitysraitaa jätetty pois",
     "Through YouTube’s service (on the TV)": "YouTuben palvelun kautta (TV:ssä)",

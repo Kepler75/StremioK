@@ -1,7 +1,7 @@
 # Privacy and data
 
 What StremioK keeps, what it sends and to whom, and how to keep things to yourself. StremioK has
-no account and no server of its own: it talks directly to the services below, from your TV.
+no account or server of its own: it talks directly to the services below, from your TV.
 
 - [What stays on the TV](#what-stays-on-the-tv)
 - [What leaves the TV, and where it goes](#what-leaves-the-tv-and-where-it-goes)
@@ -16,7 +16,7 @@ no account and no server of its own: it talks directly to the services below, fr
 
 ## What stays on the TV
 
-Kept on the TV, in StremioK's own storage:
+In StremioK's own storage:
 
 - your addons and playlists (their links, with any tokens in them; a Stalker portal's MAC
   address), API keys, settings;
@@ -57,7 +57,7 @@ is shown or appears in an error message, and in the logs.
 | Media servers (debrid services, the hosts in a source's link) | Requests for the video itself, with whatever the link carries (debrid tokens) and the headers an addon asks for | As something plays or downloads |
 | IPTV providers, extra TV guides you add | Requests for your playlists, guides and channels, with the username and password in their links and a channel's own headers; a Stalker portal gets your MAC address, through StremioK's service. Xtream and Stalker ones are also asked for films and series (a portal, by title) | As you load playlists and watch |
 | Subtitle-file hosts | Requests for the subtitle files your addons list | As something plays |
-| Image hosts | Posters, pictures, addon logos, profile picture links | As you browse |
+| Image hosts | Posters, pictures, addon logos, profile picture links; episodes' IMDb ids for missing stills (`episodes.metahub.space`) | As you browse |
 
 StremioK has no analytics and sends nothing to its developers.
 
@@ -130,12 +130,12 @@ refuses requests from web pages: a request must name its local address and carry
 header, and the USB, download and other sensitive endpoints also need a token only StremioK can
 read (or, where it can't, a header a web page can't send). These checks keep web pages out; they
 don't prove who's calling, and under TizenBrew every module shares StremioK's address. It reads
-only USB drives (`/opt/media/…`), never a path elsewhere. Details in the
+only USB drives (`/opt/media/…`), never a path elsewhere. Details:
 [technical reference](TECHNICAL-REFERENCE.md#who-it-answers).
 
 ## TizenBrew shares storage
 
-TizenBrew serves every module from the same address, so they all share one storage. Another
+TizenBrew serves every module from the same address, so they share one storage. Another
 TizenBrew module you install can read what StremioK keeps (API keys, addon links with their
 tokens, playlist links with any username and password, network folders' sign-ins, the stream links of what you're watching
 with their request headers, which can carry debrid tokens, remembered subtitle links, the

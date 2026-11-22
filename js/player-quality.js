@@ -107,7 +107,7 @@
         _userPicked = true;
         var label = bw == null ? U.t('Auto quality') : (labelForBw(bw) || U.t('new quality'));
         _startNote = bw == null ? U.t('Playing with Auto quality') : U.t('Playing at {quality}', { quality: label });
-        S.ctx.resumeSec = S.isLive ? 0 : S.cur;
+        S.ctx.resumeSec = S.isLive ? 0 : P.placeNow();
         _switchNote = message || U.t('Switching to {quality}…', { quality: label });
         U.spinner(true, _switchNote);
         // YouTube: don't re-open the same (cached, now-stale) master and lean on an AVPlay cap.
@@ -131,7 +131,7 @@
         _ytRetried = true;
         var v = variantByBw(_qualityBw);
         var retryHeight = v ? v.h : (S.ctx.initialQualityHeight || 0);
-        S.ctx.resumeSec = S.isLive ? 0 : S.cur;
+        S.ctx.resumeSec = S.isLive ? 0 : P.placeNow();
         S.ctx.url = YTPlay.resolverUrl(S.ctx.yt, retryHeight, true, S.ctx.ytLang);
         // Right after a switch this retry is routine: keep saying "Switching to …"
         U.spinner(true, _switchNote || (retryHeight ? U.t('{quality} didn\'t start — retrying…', { quality: retryHeight + 'p' }) : U.t('The stream didn\'t start — retrying…')));
@@ -160,7 +160,7 @@
         _autoRetried = true;
         _qualityBw = null;
         S.ctx.initialQualityHeight = 0;
-        S.ctx.resumeSec = S.isLive ? 0 : S.cur;
+        S.ctx.resumeSec = S.isLive ? 0 : P.placeNow();
         if (S.ctx.yt && typeof YTPlay !== 'undefined') { S.ctx.url = YTPlay.resolverUrl(S.ctx.yt, 0, true, S.ctx.ytLang); }
         _startNote = wasAuto ? '' : U.t('Playing with Auto quality');
         U.spinner(true, wasAuto ? U.t('Stream didn\'t start — retrying…') : U.t('Retrying with Auto quality…'));
@@ -286,7 +286,7 @@
         S.ctx.ytLang = lang;
         if (!S.ctx.private) { YTPlay.setAudioLang(S.ctx.yt, lang); }   // (private: not kept for the video)
         _ytRetried = false; _autoRetried = false;
-        S.ctx.resumeSec = S.cur;
+        S.ctx.resumeSec = P.placeNow();
         var v = variantByBw(_qualityBw);
         S.ctx.url = YTPlay.resolverUrl(S.ctx.yt, v ? v.h : (S.ctx.initialQualityHeight || 0), true, lang);
         _switchNote = U.t('Switching to {quality}…', { quality: ytLangLabel(a) });

@@ -208,9 +208,9 @@ Addons (in order), playlists, portals, API keys, settings and, if ticked, your h
 |---------|---------|--------------|
 | *Seek step* | 5, **10**, 15, 30 seconds | How far LEFT / RIGHT jump; FF / REW three steps; holding speeds up. |
 | *Buffer* | **Normal (the TV's own)**, More, Most | Loaded before starting and after running dry (More: 8 and 10 s; Most: 15 and 20): slower to start, dry less often. |
-| *Read the file's details* | **USB drives only**, All files, Off | Its codec, HDR and tracks, for Stream info. Links, network folders: more requests as it starts. |
-| *Leave out other subtitle tracks* | Always, More than 5, **After a jump**, Never | MKVs with many can stutter after jumps: through the service, your languages' only. |
-| *HLS through StremioK's service* | **Off**, Sources that need headers, All HLS sources | Fetched by the service with the source's headers, which the TV's player can't always send. Hold OK on a source: once. |
+| *Read the file's details* | **USB drives only**, All files, Off | Its codec, HDR and tracks, for Stream info. Links, network folders: more requests at start. |
+| *Leave out other subtitle tracks* | Always, More than 5, **After a jump**, Never | MKVs with many can stutter after jumps: through the service, your languages' only (none: all stay). |
+| *HLS through StremioK's service* | **Off**, Sources that need headers, All HLS sources | Fetched by the service with the source's headers, which the player can't always send. Hold OK on a source: once. |
 
 ### Player screen
 

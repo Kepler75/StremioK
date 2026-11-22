@@ -1645,6 +1645,7 @@
     "This stream didn't start": "このストリームは始まりませんでした",
     "This stream’s qualities couldn’t be read: it plays on Auto": "このストリームの画質を読み取れませんでした: 自動で再生します",
     "Thriller": "スリラー",
+    "Through StremioK’s service": "StremioK のサービス経由",
     "Through StremioK’s service: the sound repacked": "StremioK のサービス経由: 音声を変換",
     "Through StremioK’s service: {n} subtitle tracks left out": "StremioK のサービス経由: 字幕トラック {n} 本を除外",
     "Through YouTube’s service (on the TV)": "YouTube のサービス経由 (テレビ上)",

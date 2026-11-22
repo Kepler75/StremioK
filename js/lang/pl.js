@@ -1638,6 +1638,7 @@ I18N.add("pl", {
     "This stream didn't start": "Ten strumień się nie uruchomił",
     "This stream’s qualities couldn’t be read: it plays on Auto": "Nie udało się odczytać jakości tego strumienia: odtwarzanie w trybie Auto",
     "Thriller": "Thriller",
+    "Through StremioK’s service": "Przez usługę StremioK",
     "Through StremioK’s service: the sound repacked": "Przez usługę StremioK: dźwięk przepakowany",
     "Through StremioK’s service: {n} subtitle tracks left out": "Przez usługę StremioK: pominięto ścieżki napisów: {n}",
     "Through YouTube’s service (on the TV)": "Przez usługę YouTube (na telewizorze)",

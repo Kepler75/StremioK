@@ -115,12 +115,12 @@ sources. Try again later.
 | What you see | Why, and what to do |
 |--------------|---------------------|
 | Nothing plays; the screen stays black | A source not playing after 45 seconds gives way to the next; with none left, StremioK says so. |
-| It stalls | A stalled stream reloads where it was; if it keeps stalling, you're back on the source list. Try another source, or *Buffer: More* / *Most* (Settings › Playback › Seeking & buffering) on a slow connection. |
+| It stalls | A stalled stream reloads where it was; if it keeps stalling, you're back on the source list (one that never played: the next source). Try another source, or *Buffer: More* / *Most* (Settings › Playback › Seeking & buffering) on a slow connection. |
 | An HLS quality won't start | It steps down a quality, then falls back to *Auto*. |
 | An HLS source stays on "Opening stream…" while direct ones play | Its host may want a Referer (or User-Agent, Cookie) on every piece, which the TV's player can't always send. Hold OK on it › *Play through StremioK's service*; for all such sources, *HLS through StremioK's service* (Settings › Playback › Seeking & buffering). |
 | A live channel keeps reconnecting | Its connection drops, or its server stops the stream; StremioK opens it again ("Connection lost — reconnecting…"). How often is up to *Reconnect live channels* (Settings › Playback › Live TV). |
 | A live channel closes when it drops | *Reconnect live channels* is Off, or it dropped 3 times in 5 minutes ("This channel keeps dropping"). *Keep trying* never gives up. |
-| After jumping forward, the picture stutters or breaks into blocks | Files with dozens of subtitle tracks; see *Leave out other subtitle tracks* (Settings › Playback › Seeking & buffering). |
+| After jumping forward, the picture stutters or breaks into blocks | Files with dozens of subtitle tracks: set a subtitle language the file has; see *Leave out other subtitle tracks* (Settings › Playback › Seeking & buffering). |
 | After a pause, it jumps ahead | The TV's player sometimes does this. StremioK takes it back on its own and notes it in Diagnostics (see the [technical reference](TECHNICAL-REFERENCE.md#starting-and-recovering)). |
 | No speed control, no HDR / frame-rate switching | Not available: the TV's player mutes audio at other speeds, and web apps can't switch modes on Tizen 3. |
 

@@ -123,8 +123,9 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
 - **A series by its details:** a title whose details say it's a series, or list numbered
   episodes (season and episode) without files of their own, opens on its seasons and
   episodes, whatever its card or row called it (a film, *anime*, *other*).
-- **Episode stills:** the addon's; with a TMDB key, TMDB's where it has none or its picture
-  doesn't load (some long shows' are missing past their first seasons).
+- **Episode stills:** the addon's; where it has none or its picture doesn't load (some long
+  shows' are missing past their first seasons), TMDB's with a key, else Cinemeta's (by IMDb id;
+  not for episodes to come).
 - **Anime ids and IMDb ids:** a movie known by an anime database's id (`mal:32281`) whose
   details also give its IMDb id (AIOMetadata's do) has its sources asked for by both: addons
   that gather from others (AIOStreams) ask only their anime sources by the anime id (Your Name.:
@@ -215,7 +216,9 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
 - **Started means playing:** a source counts as started once its position has moved for a
   second; being opened isn't enough. A failure before that goes to the next source.
 - **Nothing playing after 45 seconds:** the next source, or, with none left, it stops and says
-  so (not while you've paused it).
+  so. A pause is neither that nor a stall: played on, it has its 45 seconds again.
+- **Opened but not moving:** reloaded once, then the next source (a torrent: after 3 reloads).
+  Until it moves, the place saved stays, and reloads and the next source open at it.
 - **Jumps after pauses:** after pauses, the TV's player sometimes jumps ahead at the next
   buffering, to where it would be had it never paused. A jump ahead you didn't ask for (more than
   the time that has passed) is taken back to where you were and noted in Diagnostics; the same
@@ -1065,7 +1068,8 @@ asked for by hold OK. Each request goes on with its headers and byte range; redi
 home network follow *Local-network links from internet addons*.
 
 **Many subtitle tracks** (`&blank=1&keep=`): an MKV goes through the file relay as *Leave out
-other subtitle tracks* says, others' IDs Void, yours and your audio first, nothing moved.
+other subtitle tracks* says, others' IDs Void, yours and your audio first, nothing moved. None of
+yours in it: as it is.
 
 Closed captions (CEA-608 in H.264, HEVC or MPEG-2 pictures) at a segment's start: the look reads
 the whole segment, up to 8 MB. Asked for (`&cc=CC1-en`; `&fix=0`: sound as it is), the relay adds

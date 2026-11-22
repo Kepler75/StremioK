@@ -1638,6 +1638,7 @@ I18N.add("it", {
     "This stream didn't start": "Questo stream non è partito",
     "This stream’s qualities couldn’t be read: it plays on Auto": "Impossibile leggere le qualità di questo stream: si riproduce in Auto",
     "Thriller": "Thriller",
+    "Through StremioK’s service": "Tramite il servizio di StremioK",
     "Through StremioK’s service: the sound repacked": "Tramite il servizio di StremioK: audio riconfezionato",
     "Through StremioK’s service: {n} subtitle tracks left out": "Tramite il servizio di StremioK: {n} tracce di sottotitoli escluse",
     "Through YouTube’s service (on the TV)": "Tramite il servizio di YouTube (sulla TV)",

@@ -1638,6 +1638,7 @@ I18N.add("hi", {
     "This stream didn't start": "यह स्ट्रीम शुरू नहीं हुई",
     "This stream’s qualities couldn’t be read: it plays on Auto": "इस स्ट्रीम की क्वालिटी पढ़ी नहीं जा सकी: यह ऑटो पर चलेगी",
     "Thriller": "थ्रिलर",
+    "Through StremioK’s service": "StremioK की सर्विस के ज़रिए",
     "Through StremioK’s service: the sound repacked": "StremioK की सर्विस के ज़रिए: आवाज़ रीपैक की गई",
     "Through StremioK’s service: {n} subtitle tracks left out": "StremioK की सर्विस के ज़रिए: {n} सबटाइटल ट्रैक छोड़े गए",
     "Through YouTube’s service (on the TV)": "YouTube की सर्विस के ज़रिए (TV पर)",

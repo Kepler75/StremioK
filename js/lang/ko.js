@@ -1638,6 +1638,7 @@ I18N.add("ko", {
     "This stream didn't start": "이 스트림이 시작되지 않았습니다",
     "This stream’s qualities couldn’t be read: it plays on Auto": "이 스트림의 화질을 읽을 수 없어 자동으로 재생됩니다",
     "Thriller": "스릴러",
+    "Through StremioK’s service": "StremioK 서비스 경유",
     "Through StremioK’s service: the sound repacked": "StremioK 서비스 경유: 소리 재포장",
     "Through StremioK’s service: {n} subtitle tracks left out": "StremioK 서비스 경유: 자막 트랙 {n}개 제외",
     "Through YouTube’s service (on the TV)": "YouTube 서비스 경유(TV에서)",

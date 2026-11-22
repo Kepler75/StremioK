@@ -393,6 +393,7 @@
     // level: { kind: 'cast' | 'works', name, load: fn -> Promise of items, items (null while
     // loading), note, idx }
     var CAST_W = 196;        // a card and the gap after it (px)
+    var CAST_SIDES = 120;    // the strip's padding, both sides (#cast-strip in style.css)
     var CAST_DEPTH = 30;     // levels kept (the oldest go first)
     function castTitle() {
         var c = S.ctx, id = c && (c.parent || c.id);
@@ -485,8 +486,9 @@
         if (!lv || !lv.items) { return; }
         var cards = _cast.strip.children, n = lv.items.length;
         for (var i = 0; i < cards.length; i++) { cards[i].className = 'cs-card' + (i === lv.idx ? ' sel' : ''); }
-        // keep the selected card in view (1800 px wide): centered, not past either end
-        var view = 1800, total = n * CAST_W;
+        // keep the selected card in view: centered, not past either end. In the page's pixels: 1800
+        // of room, less under a zoom (the page is 1920 / zoom wide, scaled up: see U.setZoom)
+        var view = Math.ceil(1920 / U.zoom()) - CAST_SIDES, total = n * CAST_W;
         var off = Math.max(0, Math.min(total - view, lv.idx * CAST_W - (view - CAST_W) / 2));
         _cast.strip.style.marginLeft = (total > view ? -Math.round(off) : 0) + 'px';
     }
@@ -930,7 +932,8 @@
         var c = S.ctx;
         if (c.yt) { return U.t('Through YouTube’s service (on the TV)'); }
         if (c._relay && c._blank) { return U.t('Through StremioK’s service: {n} subtitle tracks left out', { n: c._blankOf - c._blank.length }); }
-        if (c._relay) { return U.t('Through StremioK’s service: the sound repacked'); }
+        if (c._relay && c._relayFix) { return U.t('Through StremioK’s service: the sound repacked'); }
+        if (c._relay) { return U.t('Through StremioK’s service'); }   // (as it is: its headers or captions, or asked for)
         if (c.localFile && c.localFile.dav) { return U.t('From your network folder'); }
         if (c.localFile) { return /^http:\/\/localhost/.test(typeof LocalMedia !== 'undefined' && LocalMedia.openUrl ? LocalMedia.openUrl(c.url, c.localFile.size) : '') ? U.t('From the USB drive, through StremioK’s service (over 2 GB)') : U.t('From the USB drive'); }
         return U.t('Straight from the server');

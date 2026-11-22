@@ -1254,6 +1254,35 @@
         return out;
     }
 
+    // An episode row's picture, the first of these that loads: the addon's; TMDB's, with a key;
+    // Cinemeta's (by the show's IMDb id), once TMDB has answered or without a key.
+    function stillFor(ref, own, fallback) {
+        var tried = [], showing = false;
+        ref.nextStill = function () {
+            if (showing) { return; }
+            var list = [own, ref.still, ref.waitTmdb ? '' : fallback];
+            for (var i = 0; i < list.length; i++) {
+                var src = list[i] ? U.cardImage(list[i], 'still') : null;
+                if (!src || tried.indexOf(src) !== -1) { continue; }
+                tried.push(src); showing = true;
+                U.deferBg(ref.thumb, src);   // (may say it failed at once: see __bgFail)
+                return;
+            }
+        };
+        ref.thumb.__bgFail = function () { showing = false; ref.nextStill(); };
+        ref.nextStill();
+    }
+    // Cinemeta's still of an episode, or '': only where its numbering is IMDb's (the episode's own
+    // id, else the show's), never an anime database's. No such picture: that host says 404.
+    function cinemetaStill(v) {
+        if (_d.collection || _d.addonType) { return ''; }
+        var m = /^(tt\d{5,10}):(\d+):(\d+)$/.exec('' + (v.id || ''));
+        var show = m ? m[1] : (/^tt\d{5,10}$/.test('' + _d.id) ? '' + _d.id : '');
+        var s = m ? +m[2] : +seasonOf(v), e = m ? +m[3] : +v.episode;
+        if (!show || !(s >= 0 && s % 1 === 0) || !(e > 0 && e % 1 === 0)) { return ''; }
+        return 'https://episodes.metahub.space/' + show + '/' + s + '/' + e + '/w300.jpg';
+    }
+
     function seriesPanel() {
         var meta = _d.meta;
         var ss = seasons(meta);
@@ -1283,6 +1312,7 @@
         eps.sort(function (a, b) { return (a.episode || 0) - (b.episode || 0); });
         var epRefs = [];
         var now = Date.now();
+        var integ = Stremio.getIntegrations();
         eps.forEach(function (v) {
             var watched = episodeWatched(v);
             // not out yet: when it airs, where the rating goes once it's out
@@ -1294,14 +1324,8 @@
             var hide = spoilerFor(v);   // (Hide spoilers: an episode not watched yet)
             var thumb = U.el('div', 'ep-thumb' + (hide ? ' spoiler' : ''));
             // through the poster queue: a season's thumbnails don't all download at once
-            var ref = { num: v.episode, thumb: thumb, hasThumb: !!v.thumbnail, hideOv: hide === 'all', still: null };
-            // (the addon's picture doesn't load, now or earlier: TMDB's, with a key, once known; see below)
-            thumb.__bgFail = function () {
-                thumb.__bgFail = null;   // (once: TMDB's failing too is the end of it)
-                ref.hasThumb = false;
-                if (ref.still) { ref.hasThumb = true; U.deferBg(thumb, U.cardImage(ref.still, 'still')); }
-            };
-            if (v.thumbnail) { U.deferBg(thumb, U.cardImage(v.thumbnail, 'still')); }
+            var ref = { num: v.episode, thumb: thumb, hideOv: hide === 'all', still: null, waitTmdb: !!integ.tmdb };
+            stillFor(ref, v.thumbnail, unaired ? '' : cinemetaStill(v));
             var pr = !watched && Player.progressFor(_d.collection ? 'movie' : 'series', v.id);
             if (pr && pr.duration && pr.position > 0) {   // partly watched: progress stripe
                 var stripe = U.el('div', 'ep-prog');
@@ -1341,7 +1365,6 @@
 
         // Enrich episodes (one request per season each). Rating source priority:
         // OMDb (real IMDb) when its key is set, else TMDB vote_average. Images come from TMDB.
-        var integ = Stremio.getIntegrations();
         var seasonAtFetch = _d.season;
 
         if (integ.omdb) {
@@ -1355,6 +1378,7 @@
         }
         if (integ.tmdb) {
             var epCancel = pageCancel();
+            var tmdbDone = function () { epRefs.forEach(function (r) { r.waitTmdb = false; r.nextStill(); }); };
             Stremio.tmdbFindTvId(_d.id, epCancel).then(function (tvId) {
                 if (!tvId || _d.season !== seasonAtFetch) { return; }
                 return Stremio.tmdbSeasonEpisodes(tvId, seasonAtFetch, epCancel).then(function (map) {
@@ -1362,15 +1386,14 @@
                     epRefs.forEach(function (r) {
                         var ep = map[r.num];
                         if (!ep) { return; }
-                        if (ep.still) { r.still = ep.still; }   // (kept: for the addon's picture, should it fail)
-                        if (ep.still && !r.hasThumb) { r.hasThumb = true; U.deferBg(r.thumb, U.cardImage(ep.still, 'still')); }
+                        if (ep.still) { r.still = ep.still; r.nextStill(); }   // (shown where there's no picture; else kept, should the addon's fail)
                         // Fill the rating only if OMDb didn't provide one for this episode
                         // (OMDb's dataset is missing IMDb ratings for some episodes).
                         if (ep.rating && !r.rating.textContent) { r.rating.textContent = '★ ' + (Math.round(ep.rating * 10) / 10) + ' TMDb'; }
                         if (ep.overview && !r.ov.textContent && !r.hideOv) { r.ov.textContent = ep.overview; }
                     });
                 });
-            });
+            }).then(tmdbDone, tmdbDone);   // (however it ends: Cinemeta's where it gave none)
         }
         return panel;
     }

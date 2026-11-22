@@ -1638,6 +1638,7 @@ I18N.add("he", {
     "This stream didn't start": "הזרם הזה לא התחיל",
     "This stream’s qualities couldn’t be read: it plays on Auto": "לא ניתן היה לקרוא את האיכויות של זרם זה: הוא מתנגן באוטומטי",
     "Thriller": "מתח",
+    "Through StremioK’s service": "דרך השירות של StremioK",
     "Through StremioK’s service: the sound repacked": "דרך השירות של StremioK: הקול נארז מחדש",
     "Through StremioK’s service: {n} subtitle tracks left out": "דרך השירות של StremioK: הושמטו {n} רצועות כתוביות",
     "Through YouTube’s service (on the TV)": "דרך שירות ה-YouTube (בטלוויזיה)",

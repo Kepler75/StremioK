@@ -1638,6 +1638,7 @@ I18N.add("zh-CN", {
     "This stream didn't start": "此视频流未开始",
     "This stream’s qualities couldn’t be read: it plays on Auto": "无法读取此视频流的画质：将以自动画质播放",
     "Thriller": "惊悚",
+    "Through StremioK’s service": "经由 StremioK 服务",
     "Through StremioK’s service: the sound repacked": "经由 StremioK 服务：重新封装声音",
     "Through StremioK’s service: {n} subtitle tracks left out": "经由 StremioK 服务：已略去 {n} 条字幕轨道",
     "Through YouTube’s service (on the TV)": "经由 YouTube 服务（在电视上）",

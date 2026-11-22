@@ -3,6 +3,22 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.4.8 — 2026-11-22
+- **Episode pictures without a TMDB key:** where the addon has none, or its picture doesn't
+  load, Cinemeta's are shown (shows with IMDb ids, episodes already out).
+- **Fixed: a paused video could jump to the next source** ("Didn't start: trying the next
+  source") when paused just as it started, or reload when paused while buffering.
+- **Fixed: a title could lose its place in Continue Watching** when resumed on a source that
+  never started moving. Such a source now gets one reload, then the next source is tried at
+  the same place (a torrent gets 3 reloads).
+- **Fixed: every built-in subtitle could disappear after a jump** in an MKV with many, when no
+  subtitle language was set or the file had none of yours. Now they all stay. Set a language
+  the file has to have the others left out (#26).
+- **Fixed: the player's Cast & more with Zoom on** (110% to 140%) didn't scroll to its last
+  people.
+- **Fixed:** Stream info said "the sound repacked" for anything played through StremioK's
+  service (#26); a video reopened at 4× didn't count as started.
+
 ## 2.4.7 — 2026-11-21
 More of ediziks' IPTV work (#29), ported: thank you again!
 - **IPTV:** a live channel with no sound or picture recovers (its first audio track, the next

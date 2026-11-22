@@ -1638,6 +1638,7 @@ I18N.add("ru", {
     "This stream didn't start": "Этот поток не запустился",
     "This stream’s qualities couldn’t be read: it plays on Auto": "Не удалось прочитать качества потока: воспроизводится в режиме «Авто»",
     "Thriller": "Триллер",
+    "Through StremioK’s service": "Через сервис StremioK",
     "Through StremioK’s service: the sound repacked": "Через сервис StremioK: звук перепакован",
     "Through StremioK’s service: {n} subtitle tracks left out": "Через сервис StremioK: исключено дорожек субтитров: {n}",
     "Through YouTube’s service (on the TV)": "Через YouTube-сервис (на телевизоре)",
