@@ -186,7 +186,7 @@ var Stremio = (function () {
             menuOrder: wordList(p.menuOrder, 20, 20),     // ...and the menu's order (see ViewParts.menuOrder)
             startTab: /^[a-z]{1,20}$/.test(p.startTab || '') ? p.startTab : 'continue',   // Settings > Home > Start on: the Home tab a launch opens on
             liveBehind: p.liveBehind === true,   // Settings › Playback › Live TV: BACK on a live channel plays it on behind the menus
-            iptvLayout: p.iptvLayout === 'browser' ? 'browser' : 'rows',   // Settings › Home › IPTV tab: rows, or the channel browser (js/view-iptv.js)
+            iptvLayout: p.iptvLayout === 'browser' || p.iptvLayout === 'preview' ? p.iptvLayout : 'rows',   // Settings › Home › IPTV tab: rows, the channel browser, or the browser with a preview of the focused channel (js/view-iptv.js)
             hideWords: wordList(p.hideWords, 30, 40),     // Settings > Source ranking: sources with these words at the bottom
             watchRegion: /^[A-Z]{2}$/.test(p.watchRegion || '') ? p.watchRegion : '' };   // Settings > Integrations ('' = automatic)
     }
@@ -1080,7 +1080,7 @@ var Stremio = (function () {
         if (/^px[ms]\./.test(id) && typeof Plex !== 'undefined') {
             return Plex.meta(type, id).then(function (m) { if (!m) { throw new Error(U.t('Not found on the Plex server')); } return m; });
         }
-        if (/^iptv:/.test(id)) {
+        if (/^iptv:/.test(id) && IPTV.owns(id)) {   // (your playlists'; an addon's iptv:… is its addon's)
             return IPTV.meta(id).then(function (m) {
                 if (!m) { throw new Error(U.t('IPTV channel not found')); }
                 return m;
@@ -1144,7 +1144,7 @@ var Stremio = (function () {
         if (/^ytk:/.test(id) && typeof YouTube !== 'undefined') {
             return YouTube.streams(id).then(function (l) { l = l.map(youTubeSource); l.forEach(function (s) { s._addon = 'YouTube'; }); if (onUpdate) { onUpdate(l, 0); } return l; });
         }
-        if (/^iptv:/.test(id)) {
+        if (/^iptv:/.test(id) && IPTV.owns(id)) {
             return IPTV.streams(id).then(function (l) { if (onUpdate) { onUpdate(l, 0); } return l; });
         }
         if (/^xv[ms]\./.test(id) && typeof XtVod !== 'undefined') {   // (an Xtream account's own film or episode)

@@ -38,7 +38,7 @@ Adding, ordering and managing addons: the user guide's
 | *AIOManager* | | Its own page: see [AIOManager](#aiomanager). |
 | Each addon | ⇈ ▲ ▼ ⇊ ↻; OK: *Turn off* / *Turn on*, *Remove*, *Share*, *Configure* | ↻ reloads it; switches off (kept, not asked) or on, removes, shows its link's QR code (with your tokens: your devices only) or setup page. Higher addons describe titles first. |
 | *Wait for addons* | **Normal** (12 s; sources 15, search 25), 20, 30, 45, 60 seconds | Longer helps an addon that sleeps when unused. |
-| *Local-network links from internet addons* | **Blocked**, Allowed | Blocked, internet addons can't point links into your home network; your own network's addons and your playlists still can. See [Privacy](PRIVACY.md#your-home-network). |
+| *Local-network links from internet addons* | **Blocked**, Allowed | Blocked, internet addons can't point links into your home network; your network's addons and playlists still can. See [Privacy](PRIVACY.md#your-home-network). |
 
 ### AIOManager
 
@@ -58,7 +58,7 @@ sources that are only torrents; Stremio's can also convert a video the TV can't 
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Server* | **Off**, Stremio server, TorrServer | The one you run. Stremio's comes with the Stremio app for computers (port 11470) or on its own; TorrServer's usual port is 8090. |
+| *Server* | **Off**, Stremio server, TorrServer | The one you run. Stremio's comes with its app for computers (port 11470) or alone; TorrServer's usual port is 8090. |
 | *Address* | its link, e.g. `http://192.168.0.10:11470` | *Test* says whether it answers. |
 | *Wait for a torrent to start* | 45 seconds, 1, **2**, 3, 5 minutes | How long a torrent source gets to start (finding people sharing it) before the next. |
 | *Convert videos the TV can't play* | **Off**, On | Stremio's server only: a source that doesn't start is tried once more, converted, before the next. The 2017 TV can't play what it converts. |
@@ -233,7 +233,7 @@ for what's left out and what *▶ Play* does. Their rows sum up what's set.
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Played before first* | **On**, Off | Sources that played for this title (or, for a series, like its recent episodes') come first; Off, they rank like others. |
+| *Played before first* | **On**, Off | Sources that played for this title (or, for a series, like its recent episodes') come first. |
 | *Filters ›* | a page (below) | What's left out, or sent to the bottom. |
 | *When you press Play ›* | a page (below) | Whether the list shows, and what happens when a source doesn't start. |
 | The criteria, in order | ▲ / ▼ to move, OK to turn on or off | What orders the sources (see [The criteria](#the-criteria)). *Restore defaults* puts them back. |
@@ -252,7 +252,7 @@ for what's left out and what *▶ Play* does. Their rows sum up what's set.
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Skip the source list* | **Off**, On | On: *▶ Play* on a movie, OK on an episode and *▶ Play SxEx* play the top source once the addons answer (none playable: the list). The remote's ▶ Play key always does. |
-| *The next source if one doesn't start* | **On**, Off | A source the TV refuses, or not started after 45 seconds, gives way to the next (up to 3 more); Off: back to the list. Not live channels, YouTube or USB files. |
+| *The next source if one doesn't start* | **On**, Off | A source refused, or not started in 45 seconds, gives way to the next (up to 3 more); Off: back to the list. Not live channels, YouTube or USB files. |
 
 #### Size limits
 
@@ -295,7 +295,7 @@ them.
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *Private viewing* | **Off**, On | On, what you play isn't recorded (see [Privacy](PRIVACY.md#private-viewing)) until turned off; StremioK's name shows in outline. UP › *◐ Private*: for what's playing. |
+| *Private viewing* | **Off**, On | On, what you play isn't recorded (see [Privacy](PRIVACY.md#private-viewing)); StremioK's name shows in outline. UP › *◐ Private*: for what's playing. |
 
 ## Appearance
 
@@ -317,7 +317,7 @@ them.
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Start on* | **Watching** (Continue Watching), any Home tab, Last IPTV / Guide channel | The tab StremioK opens on (the Guide once its guide is read; Watching for a hidden tab), or the last channel playing. |
-| *IPTV tab* | **Rows**, Channel browser | The IPTV tab as rows, or a browser: groups, channels, now and next. |
+| *IPTV tab* | **Rows**, Channel browser, with preview | The IPTV tab as rows, or a browser: groups, channels, now and next; with preview, the focused channel plays in a box. |
 | *Titles in a Home row* | **30**, 50, 100, 200, Unlimited | Per Home row (catalogs, IPTV groups). More load slower; with *Unlimited* an addon may refuse so many requests. ★ Favorites shows all. |
 | *Home bar preview* | **Most recent first**, As in Watching, Off | Continue Watching on the TV's home bar (StremioK on it: Apps › StremioK › *Add to Home*): up to 8 playable tiles. Sideloaded app, Tizen 4 and later. |
 | *Menu ›* | ⇈ ▲ ▼ ⇊, OK to show or hide | The top menu's order between Watching (first) and Settings (last), and which Home tabs show. Discover and Search always show. |
@@ -346,7 +346,7 @@ with its last steps. *Startup* shows how long this launch and the one before too
 | *Use the TV's database* | **On**, Off | It holds StremioK's big copies (Home's saved rows, playlists, USB indexes, watched histories). Off: in the settings storage (about 5 MB), the database deleted. |
 | *TV storage* | | What StremioK keeps, item by item, with sizes (its saved TV guides too), and the TV's free disk space. |
 | *Tidy up the TV's database* | | Gives back the space of old versions the TV hasn't cleared out. |
-| *Clear saved copies* | | Gives up the copies that can be made again (Home's saved rows, IPTV playlist copies, saved TV guides and Xtream lists, the USB index). |
+| *Clear saved copies* | | Deletes copies that can be made again (Home's saved rows, IPTV playlist copies, saved TV guides and Xtream lists, the USB index). |
 
 ### Installed apps
 

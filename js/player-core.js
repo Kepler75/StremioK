@@ -47,6 +47,11 @@ var PlayerParts = {};
     function subsPosPx() { return P.subsPosPx.apply(null, arguments); }   // store
     function skipShown() { return P.skipShown.apply(null, arguments); }   // controls
 
+    // A channel's preview (the IPTV tab's channel browser: S.pip) says nothing over the menus:
+    // no toast, no spinner; one that doesn't play just stops (pipEnd).
+    function toast() { if (S.pip) { return; } return U.toast.apply(U, arguments); }
+    function spinner(on) { if (S.pip && on) { return; } return U.spinner.apply(U, arguments); }
+
     var avplay = (window.webapis && webapis.avplay) ? webapis.avplay : null;
     // useAV: this playback is the TV's player's (everything but a ClearKey channel: see startShaka);
     // the page's own <video> otherwise, and in a desktop browser. P.useAV says which, as it is now.
@@ -149,8 +154,8 @@ var PlayerParts = {};
         if (bg.suspended) {
             try {
                 avplay.restore();
-                try { avplay.setDisplayRect(0, 0, 1920, 1080); } catch (e1) {}
-                applyAspect(true);
+                try { var vr = videoRect(); avplay.setDisplayRect(vr.x, vr.y, vr.w, vr.h); } catch (e1) {}
+                applyAspect(true); pipFit();
             } catch (e) {
                 U.log('player', 'The TV\'s player couldn\'t be restored after the background: opening the stream again');
                 reopen(U.t('Opening the stream again…'));
@@ -437,7 +442,7 @@ var PlayerParts = {};
         Object.keys(old).forEach(function (k) { if (!/^_(relay|relayFor|relayCc|ccOffer|liveChecked)$/.test(k)) { ctx[k] = old[k]; } });
         ctx.switching = true;
         play(ctx, _onExit);
-        U.spinner(true, U.t('Opening it as {format}…', { format: fmt === 'hls' ? 'HLS' : 'MPEG-TS' }));
+        spinner(true, U.t('Opening it as {format}…', { format: fmt === 'hls' ? 'HLS' : 'MPEG-TS' }));
     }
     P.liveFormat = function () { return S.active && S.ctx && S.isLive && S.ctx._ownUrl ? liveFormat(S.ctx.url) : ''; };
     P.setLiveFormat = setLiveFormat;
@@ -539,13 +544,14 @@ var PlayerParts = {};
         var stayBehind = !!(S.active && S.behind && _stayBehind > Date.now());
         _stayBehind = 0;
         if (S.behind) { S.behind = false; behindLook(false); }
+        if (S.pip) { pipClosed(false); }   // (a preview replaced: by another, or by what's opened)
         if (S.ctx !== ctx) { stopLiveLook(); }   // (another channel: the look at the one before stopped)
         stopFileLook();
         S.ctx = ctx; _onExit = onExit;
         // (private viewing, a link played as it is, or one started from a private playback —
         // a video followed from it, another source: nothing recorded, see player-store)
         ctx.private = !ctx.trailer && (ctx.private === true || !!ctx.link || isPrivate());
-        if (ctx.private && !ctx.switching) { U.toast(U.t('Private viewing: not tracked'), 2500); }
+        if (ctx.private && !ctx.switching && !ctx.preview) { toast(U.t('Private viewing: not tracked'), 2500); }
         if (_exitTimer) { clearTimeout(_exitTimer); _exitTimer = null; }
         if (U.crumb) { U.crumb('play ' + (ctx.type || '') + ' ' + (ctx.private ? '(private)' : /^file:/i.test(ctx.url || '') ? 'file .' + ('' + ctx.url).split('.').pop() : ('' + (ctx.url || '')).replace(/^https?:\/\/([^\/?#]+).*$/i, '$1'))); }   // (Diagnostics, after an unexpected close)
         S.active = true; S.cur = 0; S.dur = 0; _bg = null; S.actual = null;
@@ -563,7 +569,7 @@ var PlayerParts = {};
             var jfAt = Jellyfin.resumeFor(ctx.stream._jf, P.progressFor ? P.progressFor(ctx.type, ctx.id) : null, S.ctx.resumeSec);
             if (jfAt !== S.ctx.resumeSec) {
                 S.ctx.resumeSec = jfAt;
-                if (jfAt > 5) { U.toast(U.t('Carrying on from where {server} had it: {at}', { server: Jellyfin.sourceKind ? Jellyfin.sourceKind(ctx.stream._jf) : 'Jellyfin', at: U.fmtTime(jfAt) }), 3500); }
+                if (jfAt > 5) { toast(U.t('Carrying on from where {server} had it: {at}', { server: Jellyfin.sourceKind ? Jellyfin.sourceKind(ctx.stream._jf) : 'Jellyfin', at: U.fmtTime(jfAt) }), 3500); }
             }
         }
 
@@ -580,11 +586,12 @@ var PlayerParts = {};
         updateHint();
 
         if (stayBehind && S.isLive && ctx.behindOk) { S.behind = true; _onExit = null; behindLook(true); }   // (its way back is to where you are already)
+        if (ctx.preview) { S.behind = true; S.pip = ctx.preview; _onExit = null; pipLook(true); }   // (a channel's preview: in its box, the menus in use)
         U.byId('app').className = S.behind ? '' : 'hidden';
         document.body.style.background = 'transparent';
         showOSD(true);
         renderOSD();   // show the NEW title immediately (not the previous item's)
-        if (!S.behind) U.spinner(true, ctx.switching ? U.t('Switching source…') : ctx.initialQualityHeight ? U.t('Opening stream at {height}p…', { height: ctx.initialQualityHeight }) : U.t('Opening stream…'));
+        if (!S.behind) spinner(true, ctx.switching ? U.t('Switching source…') : ctx.initialQualityHeight ? U.t('Opening stream at {height}p…', { height: ctx.initialQualityHeight }) : U.t('Opening stream…'));
 
         engineFor(ctx);   // (the TV's player, or a ClearKey channel's own: see startShaka)
         // (a TorrServer torrent that doesn't say which of its files: its file list asked for first)
@@ -606,7 +613,7 @@ var PlayerParts = {};
             ++_playToken; _openedAt = 0;
             if (useAV) { try { avplay.stop(); } catch (e0) {} try { avplay.close(); } catch (e1) {} }
             else if (S.videoEl) { try { S.videoEl.pause(); S.videoEl.removeAttribute('src'); } catch (e2) {} }
-            U.spinner(true, U.t('Asking your streaming server for the torrent’s files…'));
+            spinner(true, U.t('Asking your streaming server for the torrent’s files…'));
             var ep = /:(\d+):(\d+)$/.exec(ctx.id || ''), look = _fileLook = U.cancelToken();
             Stremio.torrentFile(ctx.stream, ep ? +ep[1] : 0, ep ? +ep[2] : 0, look).then(function (url) {
                 if (look.cancelled || S.ctx !== ctx || !S.active) { return; }
@@ -614,9 +621,9 @@ var PlayerParts = {};
                 if (url) { ctx.url = url; go(); return; }
                 var why = U.t('The torrent has no file for {ep}', { ep: 'S' + ep[1] + 'E' + ep[2] });   // (another episode isn't played in its place)
                 U.log('player', why);
-                U.spinner(false);
+                spinner(false);
                 if (nextSourceOnFail({ text: why })) { return; }
-                U.toast(why + '. Try another source.', 6000);
+                toast(why + '. Try another source.', 6000);
                 exitLater();
             });
         } else { go(); }
@@ -651,10 +658,12 @@ var PlayerParts = {};
                     .filter(function (g) { return g.mode !== 'off'; });
                 S.sponsor = segs;
                 var whole = segs.filter(function (g) { return g.action === 'full'; })[0];
-                if (whole) { U.toast(U.t('SponsorBlock: this whole video is marked “{what}”', { what: YouTube.SB_NAMES[whole.cat] }), 5000); }
+                if (whole) { toast(U.t('SponsorBlock: this whole video is marked “{what}”', { what: YouTube.SB_NAMES[whole.cat] }), 5000); }
                 if (!osdHidden()) { renderOSD(); }
             }, function () {});
         }
+
+        if (ctx.preview) { return; }   // (a preview: the picture and its sound, nothing else)
 
         // Subtitle tracks from the addons, and the remembered or preferred one turned on.
         startSubtitles(ctx);
@@ -845,7 +854,7 @@ var PlayerParts = {};
         var drm = S.ctx && S.ctx.stream && S.ctx.stream._drm;
         if (drm && !drm.ok) {   // (ClearKey, or a license StremioK can't ask for)
             U.log('player', 'Not played: ' + drmName(drm) + (drm.sys === 'clearkey' ? '' : ' without a license server StremioK can use') + ' (' + where(url) + ')');
-            U.spinner(false);
+            spinner(false);
             failedStart(drm.sys === 'clearkey' ? U.t('This ClearKey channel’s keys can’t be read (its playlist’s #KODIPROP lines)') : U.t('This channel’s DRM can’t be played on the TV ({drm})', { drm: drmName(drm) }));
             return;
         }
@@ -874,11 +883,11 @@ var PlayerParts = {};
             avplay.setListener({
                 onbufferingstart: function () {
                     if (!S.active || token !== _playToken) { return; }
-                    S.buffering = true; U.spinner(true, S.playStarted ? U.t('Buffering…') : undefined);
+                    S.buffering = true; spinner(true, S.playStarted ? U.t('Buffering…') : undefined);
                 },
                 onbufferingcomplete: function () {
                     if (!S.active || token !== _playToken) { return; }
-                    S.buffering = false; U.spinner(false);
+                    S.buffering = false; spinner(false);
                     if (S.pendingSeek != null) { var pt = S.pendingSeek; S.pendingSeek = null; doAVSeek(pt, 0); }
                 },
                 onstreamcompleted: function () {
@@ -910,7 +919,7 @@ var PlayerParts = {};
                     // session that played successfully. Ignore callbacks after exit or
                     // after another quality/retry attempt has replaced this session.
                     if (!S.active || token !== _playToken) { return; }
-                    U.spinner(false);
+                    spinner(false);
                     // A seek can throw a transient error on some HLS streams. If we just
                     // sought, try to recover (resume) instead of ending playback.
                     if (Date.now() - S.lastSeekAt < 6000 && !_seekRecovering) {
@@ -928,7 +937,7 @@ var PlayerParts = {};
                     reportStart(false, err);   // (unless it had already played)
                     U.log('player', 'Playback error: ' + err + ' (' + where(S.ctx && S.ctx.url) + ')');
                     if (!S.playing) { failedStart(formatFailText(U.t('Playback error: {why}', { why: err }), err)); return; }
-                    U.toast(U.t('Playback error: {why}', { why: err }));
+                    toast(U.t('Playback error: {why}', { why: err }));
                     exitLater();
                 }
             });
@@ -938,11 +947,11 @@ var PlayerParts = {};
             setTimeout(startCheck, startMs() + 500);
             avplay.prepareAsync(function () {
                 if (!S.active || token !== _playToken) { return; }
-                U.spinner(false);
+                spinner(false);
                 S.playStarted = true;
                 qualityOnStart();
-                try { avplay.setDisplayRect(0, 0, 1920, 1080); } catch (e1) {}
-                applyAspect(true);
+                try { var vr = videoRect(); avplay.setDisplayRect(vr.x, vr.y, vr.w, vr.h); } catch (e1) {}
+                applyAspect(true); pipFit();
                 try { S.dur = avplay.getDuration() / 1000; } catch (e3) { S.dur = 0; }
                 markLiveFromDuration();
                 askSegments();
@@ -964,7 +973,7 @@ var PlayerParts = {};
                 measureLive(token);
             }, function (err) {
                 if (!S.active || token !== _playToken) { return; }
-                U.spinner(false);
+                spinner(false);
                 if (relayFailed()) { return; }
                 if (_reco.tries) { liveDropped(U.t('Couldn’t reconnect')); return; }   // (a reconnect's try: the next one)
                 // Prepare failed → retry / step down / Auto.
@@ -976,7 +985,7 @@ var PlayerParts = {};
         } catch (e) {
             U.log('player', 'AVPlay failed: ' + (e && e.message));
             reportStart(false, e && e.message);
-            U.spinner(false); U.toast(U.t('AVPlay failed: {why}', { why: e.message })); exitLater();
+            spinner(false); toast(U.t('AVPlay failed: {why}', { why: e.message })); exitLater();
         }
     }
     // What a log entry names: the link, or, playing privately, nothing that says what.
@@ -985,6 +994,7 @@ var PlayerParts = {};
     // (another title, another source, a retry of this one): only the playback that failed.
     var _exitTimer = null;
     function exitLater() {
+        if (S.pip) { pipEnd(true); return; }
         var ctx = S.ctx, token = _playToken;
         if (_exitTimer) { clearTimeout(_exitTimer); }
         _exitTimer = setTimeout(function () {
@@ -1090,9 +1100,9 @@ var PlayerParts = {};
         setTimeout(function () {
             if (loaded || !S.active || token !== _playToken) { return; }
             reportStart(false, 'TIMEOUT');
-            U.spinner(false);
+            spinner(false);
             if (!drm) { U.log('player', 'Not played (the page’s video player): no start in ' + Math.round(HTML5_START_MS / 1000) + ' s (' + where(url) + ')'); }
-            U.toast(U.t('This stream didn\'t start')); exitLater();
+            toast(U.t('This stream didn\'t start')); exitLater();
         }, drm ? SHAKA_START_MS : HTML5_START_MS);
         S.videoEl.onloadedmetadata = function () {
             if (!S.active || token !== _playToken) { return; }
@@ -1104,7 +1114,7 @@ var PlayerParts = {};
             try { applyPreferredAudio(); } catch (eA) {}
             if (!S.isLive && S.ctx.resumeSec > 5) { try { S.videoEl.currentTime = S.ctx.resumeSec; } catch (e) {} }
             reportStart(true);
-            U.spinner(false); showOSD(false);
+            spinner(false); showOSD(false);
         };
         S.videoEl.ontimeupdate = function () {
             if (!S.active || token !== _playToken) { return; }
@@ -1121,13 +1131,13 @@ var PlayerParts = {};
             U.log('player', (loaded ? 'Stopped' : 'Not played') + ' (the page’s video player): ' + (['', 'aborted', 'a network error', 'the file couldn’t be decoded', 'a format or link it can’t play'][mcode] || 'an error') +
                 (me && me.message ? ' (' + me.message + ')' : '') + ' (' + where(url) + ')');
             if (!loaded && nextSourceOnFail()) { return; }   // (one that never started: the next source, as with the TV's player)
-            U.toast(U.t('Playback error')); exitLater();
+            toast(U.t('Playback error')); exitLater();
         };
         if (drm) {
             shakaLoadInto(url, drm, token, function (why) {
-                if (loaded) { U.log('player', 'ClearKey channel: ' + why); U.toast('Playback error: ' + why); exitLater(); return; }
+                if (loaded) { U.log('player', 'ClearKey channel: ' + why); toast('Playback error: ' + why); exitLater(); return; }
                 U.log('player', 'ClearKey channel didn’t play (' + why + ')');
-                U.spinner(false);
+                spinner(false);
                 failedStart(U.t('This ClearKey channel didn’t play ({why})', { why: why }));
             });
         } else {
@@ -1159,7 +1169,7 @@ var PlayerParts = {};
         // a live channel whose stream ended (its server stopped it): opened again (liveDropped)
         if (liveReconnects()) { liveDropped(U.t('The stream ended')); return; }
         if (isNotice()) {   // (back to its sources: another one, or this one later)
-            U.toast(U.t('That source isn\'t ready yet (the debrid service is still getting it): try another, or this one later'), 6000);
+            toast(U.t('That source isn\'t ready yet (the debrid service is still getting it): try another, or this one later'), 6000);
             exit();
             return;
         }
@@ -1247,7 +1257,7 @@ var PlayerParts = {};
             var name = YouTube.SB_NAMES[g.cat] || 'section';
             if (g.mode === 'skip') {
                 seekTo(g.end);
-                U.toast(U.t('Skipped: {what}  ({length})', { what: name, length: U.fmtTime(g.end - g.start) }), 3000);
+                toast(U.t('Skipped: {what}  ({length})', { what: name, length: U.fmtTime(g.end - g.start) }), 3000);
             } else {
                 showSkip('sb', { end: g.end, label: U.t('Skip {what}', { what: name }) });
             }
@@ -1336,7 +1346,7 @@ var PlayerParts = {};
     }
 
     function seekTo(sec) {
-        if (S.isLive) { showOSD(false); U.toast(U.t('Live — seeking unavailable'), 1500); return; }
+        if (S.isLive) { showOSD(false); toast(U.t('Live — seeking unavailable'), 1500); return; }
         // keep a small margin from the very end (seeking to EOF can error)
         var maxT = S.dur ? Math.max(0, S.dur - 2) : 1e9;
         var target = Math.max(0, Math.min(maxT, sec));
@@ -1346,7 +1356,7 @@ var PlayerParts = {};
         showOSD(false);
         if (useAV) {
             // Don't seek while buffering — queue it until buffering completes.
-            if (S.buffering) { S.pendingSeek = target; U.spinner(true); return; }
+            if (S.buffering) { S.pendingSeek = target; spinner(true); return; }
             if (!blankFirst(target)) { doAVSeek(target, 0); }
         } else {
             try { S.videoEl.currentTime = target; } catch (e2) {}
@@ -1441,13 +1451,13 @@ var PlayerParts = {};
         var job = fileInfoAsk(ctx, true), mi = S.mi || (job && _miSeen.get(job.key)) || null;
         if (mi || !job) { ctx._blankChecked = true; if (mi && blankFits(ctx, mi)) { reopenBlank(ctx, mi, target); return true; } return false; }
         var ask = _blankAsk = { target: target, done: false }, tok = _playToken, look = U.cancelToken();
-        U.spinner(true);
+        spinner(true);
         function finish(m) {
             if (ask.done) { return; }
             ask.done = true; _blankAsk = null; ctx._blankChecked = true;
             if (!S.active || S.ctx !== ctx || tok !== _playToken) { return; }
             if (m && blankFits(ctx, m)) { reopenBlank(ctx, m, ask.target); return; }
-            U.spinner(false); doAVSeek(ask.target, 0);
+            spinner(false); doAVSeek(ask.target, 0);
         }
         job.ask(look).then(function (m) {
             if (m && typeof m === 'object' && m.container) { _miSeen.set(job.key, m); if (!S.mi && S.ctx === ctx) { fileInfoIn(ctx, m); } finish(m); } else { finish(null); }
@@ -1461,7 +1471,7 @@ var PlayerParts = {};
         ctx.resumeSec = Math.floor(target); S.cur = target;
         _stall.t = -1; _stall.since = 0; _stall.bufSince = 0;
         clearStartNote();
-        U.spinner(true);
+        spinner(true);
         startFileRelay(ctx, false);
     }
 
@@ -1533,7 +1543,7 @@ var PlayerParts = {};
         var msg = notice ? notice.text + '  ·  ' + U.t('trying the next source ({n} of {of})…', next) : U.t('Didn’t start: trying the next source ({n} of {of})…', next);
         U.log('player', 'Source didn’t start: trying the next one (' + (tried.length + 1) + ')');
         replaceSource(n.source, true);
-        U.spinner(true, msg); U.toast(msg, notice ? 7000 : 4000);
+        spinner(true, msg); toast(msg, notice ? 7000 : 4000);
         return true;
     }
     // With Stremio's streaming server (Settings › Content › Streaming server, Convert on): a source
@@ -1548,7 +1558,7 @@ var PlayerParts = {};
         var msg = U.t('Didn’t start: converting it on your streaming server…');
         U.log('player', 'Source didn’t start: converting it on the streaming server');
         replaceSource({ url: u, stream: c.stream, subExtra: c.subExtra, sourceSubs: c.sourceSubs, localSubs: c.localSubs, converted: true }, true);
-        U.spinner(true, msg); U.toast(msg, 5000);
+        spinner(true, msg); toast(msg, 5000);
         return true;
     }
     // A start that failed: is the link a debrid addon's notice video (Torrentio's failed_access,
@@ -1561,7 +1571,7 @@ var PlayerParts = {};
             // (a catch-up recording the provider won't give: said so, not a playback error)
             if (!notice && st && st._catchup && status >= 400 && status < 500) {
                 U.log('player', 'Catch-up refused by the provider: HTTP ' + status + ' (' + where(String(st.url).replace(/^(https?:\/\/[^\/?#]+).*$/i, '$1')) + ')');
-                U.toast(U.t('Your provider refused this recording ({code}): catch-up may not be part of your account', { code: status }), 8000);
+                toast(U.t('Your provider refused this recording ({code}): catch-up may not be part of your account', { code: status }), 8000);
                 exitLater();
                 return;
             }
@@ -1571,7 +1581,7 @@ var PlayerParts = {};
             }
             if (!notice && convertOnFail()) { return; }
             if (nextSourceOnFail(notice)) { return; }
-            U.toast(notice ? notice.text : why, notice ? 8000 : undefined);
+            toast(notice ? notice.text : why, notice ? 8000 : undefined);
             exitLater();
         }
         if (!c || !st || c.yt || c.localFile || (S.isLive && !st._catchup) || !/^https?:\/\//i.test(st.url || '')) { finish(null); return; }
@@ -1628,8 +1638,8 @@ var PlayerParts = {};
         if (nextSourceOnFail()) { return; }
         if (S.playStarted && isPaused()) { return; }
         U.log('player', 'Didn’t start: nothing played in ' + (startMs() / 1000) + ' s (' + where(S.ctx && S.ctx.url) + ')');
-        U.spinner(false);
-        U.toast(U.t('Didn’t start: nothing played in {n} seconds. Try another source.', { n: startMs() / 1000 }), 6000);
+        spinner(false);
+        toast(U.t('Didn’t start: nothing played in {n} seconds. Try another source.', { n: startMs() / 1000 }), 6000);
         exitLater();
     }
     P.startCheck = startCheck;
@@ -1718,7 +1728,7 @@ var PlayerParts = {};
         U.log('player', 'Live sound ' + (repack ? 'repacked by StremioK\'s service' : 'straight from the server') + ': your choice for this channel');
         var msg = repack ? U.t('Repacking this channel’s sound…') : U.t('Playing the sound straight from the server…');
         if (!repack && !cc) { ctx._relay = null; ctx._relayFor = null; ctx._relayFix = false; reopen(msg); return; }
-        function failed() { if (S.ctx === ctx && S.active) { U.toast(U.t('StremioK’s service didn’t answer: the sound stays as it was'), 5000); } }
+        function failed() { if (S.ctx === ctx && S.active) { toast(U.t('StremioK’s service didn’t answer: the sound stays as it was'), 5000); } }
         YTPlay.liveOpen(ctx.url, ctx._headers, true, { fix: !!repack, cc: raw ? null : cc, raw: raw }).then(function (r) {
             if (S.ctx !== ctx || !S.active) { return; }
             if (!relayed(ctx, r, cc, repack)) { failed(); return; }
@@ -1920,6 +1930,7 @@ var PlayerParts = {};
     P.checkLiveAV = checkLiveAV;
     P.streamTracksSummary = streamTracksSummary;
     function recoverStall(why) {
+        if (S.pip) { pipEnd(true); return; }   // (a preview isn't reloaded: it stops)
         if (liveReconnects()) { liveDropped(why); return; }
         var now = Date.now();
         _stall.recoveries = _stall.recoveries.filter(function (t) { return now - t < STALL_WINDOW_MS; });
@@ -1928,8 +1939,8 @@ var PlayerParts = {};
         var c = S.ctx, reloads = c && c.stream && c.stream._torrent ? STALL_MAX : 1;
         if (c && !c._played && _stall.recoveries.length >= reloads && nextSourceOnFail()) { return; }
         if (_stall.recoveries.length >= STALL_MAX) {
-            U.spinner(false);
-            U.toast(U.t('This source keeps stalling — try another one'), 4000);
+            spinner(false);
+            toast(U.t('This source keeps stalling — try another one'), 4000);
             exit();
             return;
         }
@@ -1951,11 +1962,12 @@ var PlayerParts = {};
         _reco = { tries: 0, timer: null };
     }
     function liveDropped(why) {
+        if (S.pip) { pipEnd(true); return; }
         if (_reco.timer) { return; }   // (a try already waiting)
         var mode = P.playerCfg().reconnect, now = Date.now();
         if (mode === 'off') {
             U.log('player', 'Live channel: ' + why + '; reconnecting is off');
-            U.spinner(false); U.toast(U.t('{why}: the channel stopped (reconnecting is off)', { why: why }), 5000);
+            spinner(false); toast(U.t('{why}: the channel stopped (reconnecting is off)', { why: why }), 5000);
             exitLater();
             return;
         }
@@ -1963,7 +1975,7 @@ var PlayerParts = {};
         if ((_reco.tries >= 2 || _stall.recoveries.length >= STALL_MAX - 1) && S.ctx && S.ctx.liveFallbacks && nextSourceOnFail({ text: why }, true)) { _stall.recoveries = []; return; }   // (the channel's next copy, before more tries of this one)
         if (mode !== 'always' && _stall.recoveries.length >= STALL_MAX) {
             U.log('player', 'Live channel: ' + why + '; dropped ' + STALL_MAX + ' times in ' + (STALL_WINDOW_MS / 60000) + ' minutes, given up');
-            U.spinner(false); U.toast(U.t('This channel keeps dropping — try it again later'), 5000);
+            spinner(false); toast(U.t('This channel keeps dropping — try it again later'), 5000);
             exit();
             return;
         }
@@ -1972,7 +1984,7 @@ var PlayerParts = {};
         var msg = n > 1 ? U.t('{why} — reconnecting (try {n})…', { why: why, n: n }) : U.t('{why} — reconnecting…', { why: why });
         U.log('player', 'Live channel: ' + why + ', reconnecting (try ' + n + (wait ? ', in ' + (wait / 1000) + ' s' : '') + ')');
         if (!wait) { reopen(msg); return; }
-        U.spinner(true, msg);
+        spinner(true, msg);
         function due() {
             _reco.timer = null;
             if (!S.active || S.ctx !== ctx) { return; }
@@ -2014,7 +2026,7 @@ var PlayerParts = {};
         S.ctx.resumeSec = S.isLive ? 0 : placeNow();
         if (S.ctx.yt && typeof YTPlay !== 'undefined') { S.ctx.url = YTPlay.resolverUrl(S.ctx.yt, qualityHeight(), true, S.ctx.ytLang); }
         clearStartNote();
-        U.spinner(true, message);
+        spinner(true, message);
         if (useAV) { startAV(S.ctx.url); } else { startHTML5(S.ctx.url); }
     }
 
@@ -2035,10 +2047,54 @@ var PlayerParts = {};
         chip.appendChild(U.el('span', 'lb-keys', U.t('▶ full screen   ■ stop   CH+/− channel')));
         chip.className = '';
     }
+    // ---------- a channel's preview (the IPTV tab's channel browser, js/view-iptv.js) ----------
+    // Player.play(ctx with preview: { x, y, w, h }, the box on screen, in the screen's 1920×1080
+    // pixels): played behind the menus in that box, the rest of the page drawn around it
+    // (#pip-mask: a see-through box whose shadow is the page's background), silently (pipEnd).
+    // Opened, the page's own player (TizenBrew, a browser) is moved and sized to it.
+    function videoRect() { var r = S.pip; return r ? { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) } : { x: 0, y: 0, w: 1920, h: 1080 }; }
+    function pipLook(on) {
+        var b = document.body, z = U.zoom ? U.zoom() : 1, r = S.pip, mask = U.byId('pip-mask');
+        function see(through) { if (b) { b.className = (' ' + (b.className || '') + ' ').replace(/ iptv-pip /g, ' ').replace(/^\s+|\s+$/g, '') + (through ? ' iptv-pip' : ''); } }
+        see(!!(on && r));
+        if (S.videoEl) { var vs = S.videoEl.style; vs.left = on && r ? Math.round(r.x / z) + 'px' : ''; vs.top = on && r ? Math.round(r.y / z) + 'px' : ''; vs.width = on && r ? Math.round(r.w / z) + 'px' : ''; vs.height = on && r ? Math.round(r.h / z) + 'px' : ''; }
+        if (!on || !r) { if (mask) { mask.className = 'hidden'; } return; }
+        if (!mask) { mask = U.el('div', 'hidden'); mask.id = 'pip-mask'; b.appendChild(mask); }
+        var page = U.byId('screen-home'), bg = '';
+        try { see(false); bg = window.getComputedStyle(page || b).backgroundColor; } catch (e) {}
+        see(true);
+        if (!bg || /rgba\(0, 0, 0, 0\)|transparent/.test(bg)) { try { bg = window.getComputedStyle(b).backgroundColor; } catch (e2) {} }
+        var ms = mask.style;
+        ms.left = Math.round(r.x / z) + 'px'; ms.top = Math.round(r.y / z) + 'px'; ms.width = Math.round(r.w / z) + 'px'; ms.height = Math.round(r.h / z) + 'px';
+        ms.boxShadow = '0 0 0 4000px ' + (bg && !/rgba\(0, 0, 0, 0\)|transparent/.test(bg) ? bg : '#0e1117');
+        mask.className = '';
+    }
+    // A preview ended, however (it stopped by itself: failed; closed, replaced: not): its box put
+    // back, and its page told, once the player is done with it (ctx.onPreviewEnd(failed)).
+    var _pipFailed = false;
+    function pipClosed(failed) {
+        var cb = S.ctx && S.ctx.onPreviewEnd;
+        S.pip = null; pipLook(false);
+        if (typeof cb === 'function') { setTimeout(function () { try { cb(!!failed); } catch (e) {} }, 0); }
+        return cb;
+    }
+    // One that stopped by itself (didn't start, dropped): closed quietly.
+    function pipEnd(failed) { _pipFailed = !!failed; exit(); }
+    // In its box the TV's player scales with Fill, set before the box: with Letterbox the 2017 TV
+    // drew a YouTube channel's picture as repeated strips, or copies with the last channel's frame
+    // left around them (an Xtream one was fine either way). The box is 16:9, as the channels are.
+    function pipFit() {
+        if (!S.pip || !useAV) { return; }
+        var vr = videoRect();
+        try { avplay.setDisplayMethod('PLAYER_DISPLAY_MODE_FULL_SCREEN'); } catch (e) {}
+        try { avplay.setDisplayRect(vr.x, vr.y, vr.w, vr.h); } catch (e2) {}
+    }
+    function isPreview() { return !!(S.active && S.pip); }
+
     function toBehind() {
         if (!behindOk() || S.behind) { return false; }
         S.behind = true;
-        closeControls(); hideOSD(); U.spinner(false);
+        closeControls(); hideOSD(); spinner(false);
         U.byId('app').className = '';
         behindLook(true);
         var cb = _onExit; _onExit = null;   // (where it came from, once: later its way back is where you are)
@@ -2055,6 +2111,7 @@ var PlayerParts = {};
     // A key while it plays behind the menus: true when it's the player's.
     function behindKey(action) {
         if (!S.behind) { return false; }
+        if (S.pip) { if (action === 'STOP') { exit(); return true; } return false; }   // (a preview: its page's keys, ■ stops it)
         if (action === 'PLAY' || action === 'PLAYPAUSE') { fromBehind(); return true; }
         if (action === 'STOP') { exit(); return true; }
         if (action === 'PAUSE') { fromBehind(); P.handleKey('PAUSE'); return true; }
@@ -2067,6 +2124,8 @@ var PlayerParts = {};
 
     function exit() {
         if (!S.active) { return; }
+        if (S.pip) { pipClosed(_pipFailed); }
+        _pipFailed = false;
         stopLiveLook(); stopFileLook();
         if (U.crumb) { U.crumb('player closed'); }
         if (P.sleepClear) { P.sleepClear(); }   // (the sleep timer: this playback's)
@@ -2108,14 +2167,14 @@ var PlayerParts = {};
         useAV = hasAV; P.useAV = hasAV;   // (the next playback the TV's player's, unless it's ClearKey too)
         document.body.style.background = '';
         U.byId('app').className = '';
-        U.spinner(false);
+        spinner(false);
         // finished: this playback reached the credits/end (and so marked the item watched)
         var cb = _onExit, finished = _creditsHandled; _onExit = null; S.ctx = null;
         if (cb) { cb({ finished: finished }); }
     }
 
     // ----- for the other parts (and js/player.js) -----
-    P.init = init; P.isActive = isActive; P.inUse = inUse; P.isBehind = isBehind; P.toBehind = toBehind; P.fromBehind = fromBehind; P.behindKey = behindKey; P.showOSD = showOSD; P.hideOSD = hideOSD; P.renderOSD = renderOSD; P.play = play; P.playLinked = playLinked; P.replaceSource = replaceSource;
+    P.isPreview = isPreview; P.init = init; P.isActive = isActive; P.inUse = inUse; P.isBehind = isBehind; P.toBehind = toBehind; P.fromBehind = fromBehind; P.behindKey = behindKey; P.showOSD = showOSD; P.hideOSD = hideOSD; P.renderOSD = renderOSD; P.play = play; P.playLinked = playLinked; P.replaceSource = replaceSource;
     P.updateHint = updateHint; P.startAV = startAV; P.startHTML5 = startHTML5;
     P.handleCredits = handleCredits; P.isPaused = isPaused; P.play_ = play_; P.pause_ = pause_;
     P.sponsorHighlight = sponsorHighlight;

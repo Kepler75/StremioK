@@ -195,12 +195,21 @@ var ViewParts = {};
     function onModalClose(fn) { _modalOnClose = fn; }
 
     var _modalOnClose = null;
+    // Where focus goes back to: the node it was on, or, drawn again meanwhile (the IPTV tab's
+    // channel browser redraws as a guide arrives), the one for the same title or channel.
+    function stillThere(scope, node) {
+        if (!node || !scope || scope.contains(node) || !node.__meta || !node.__meta.id) { return node; }
+        var all = scope.querySelectorAll('.focusable');
+        for (var i = 0; i < all.length; i++) { if (all[i].__meta && all[i].__meta.id === node.__meta.id && all[i].className === node.className.replace(/ ?focused/, '')) { return all[i]; } }
+        for (var k = 0; k < all.length; k++) { if (all[k].__meta && all[k].__meta.id === node.__meta.id) { return all[k]; } }
+        return node;
+    }
     function closeModal() {
         var o = document.querySelector('.modal-overlay');
         if (o) { document.body.removeChild(o); }
         _modalOpen = false;
         if (_modalOnClose) { var f = _modalOnClose; _modalOnClose = null; try { f(); } catch (e) {} }
-        if (_modalScope) { Focus.setScope(_modalScope, _modalPrevFocus); }
+        if (_modalScope) { Focus.setScope(_modalScope, stillThere(_modalScope, _modalPrevFocus)); }
         _modalScope = null; _modalPrevFocus = null;
     }
 
@@ -808,7 +817,7 @@ var ViewParts = {};
         if (rating > 0 && rating <= 10 && Stremio.getPrefs().posterRatings) { c.appendChild(U.el('div', 'card-rating', '★ ' + rating.toFixed(1))); }   // (a series: marked watched whole, see setTitleWatched / the title page)
         if (kind === 'movie' || kind === 'series') { c.__onlongpress = function () { posterActions(meta, kind, c); }; }
         else if (youTubeList(meta.id)) { c.__onlongpress = function () { addYouTubeCatalog(meta); }; }   // (a channel / playlist: to your YouTube)
-        else if (/^iptv:/.test(meta.id || '') && typeof EPG !== 'undefined') {   // an IPTV channel: what's on, and its schedule
+        else if (typeof IPTV !== 'undefined' && IPTV.owns(meta.id) && typeof EPG !== 'undefined') {   // one of your IPTV channels: what's on, and its schedule
             guideOnCard(c, meta.id);
             c.__onlongpress = function () { liveSchedule(meta, c); };
         }
@@ -923,9 +932,10 @@ var ViewParts = {};
         return true;
     }
     function catchupOk(id, p) { return !!(typeof IPTV !== 'undefined' && IPTV.catchupStream && IPTV.catchupStream(id, p.start, p.stop)); }
-    // Hold OK on a channel card: ▶ Watch now, ★ Add to / Remove from favorites, and its schedule
-    // from 2 hours ago to tomorrow (what's on now marked, and picked); OK on a program says
-    // what it is. A channel without a guide: the first two.
+    // Hold OK on a channel card: ▶ Watch now, ★ Add to / Remove from favorites, 🔍 Find in your
+    // addons (what's on now, as the Guide's menu does: js/view-guide.js), and its schedule from 2
+    // hours ago to tomorrow (what's on now marked, and picked); OK on a program says what it is.
+    // A channel without a guide: the first two.
     function liveSchedule(meta, card) {
         var hold = holdNow(card);
         U.spinner(true);
@@ -935,6 +945,8 @@ var ViewParts = {};
             if (!hold.still()) { return; }   // (left meanwhile)
             var fav = IPTV.isFavorite(meta.id), t = Date.now() / 1000, at = 'play';
             var items = [['play', U.t('▶  Watch now')], ['fav', fav ? U.t('★  Remove from favorites') : U.t('★  Add to favorites')]];
+            var onNow = list.filter(function (p) { return p.start <= t && t < p.stop && p.title; })[0];
+            if (onNow && V.findInAddons) { items.push(['find', U.t('🔍  Find in your addons')]); }
             list.forEach(function (p, i) {
                 var on = p.start <= t && t < p.stop, cu = !on && p.stop <= t && catchupOk(meta.id, p);
                 if (on) { at = 'p' + i; if (catchupOk(meta.id, p)) { items.push(['s' + i, '⏮  ' + U.t('From the start: “{title}”', { title: p.title })]); } }
@@ -942,6 +954,7 @@ var ViewParts = {};
             });
             pickList((meta.name || '') + (list.length ? '  ·  ' + U.t('TV guide') : ''), items, at, function (v) {
                 if (v === 'play') { card.__onselect(); return; }
+                if (v === 'find') { var home = scr('home'); V.findInAddons(onNow, function () { return !/\bhidden\b/.test(home.className); }); return; }
                 if (v === 'fav') {
                     IPTV.setFavorite(meta.id, !fav);
                     U.toast(fav ? U.t('Removed from favorites') : U.t('Added to favorites: ★ Favorites, first on the IPTV tab'), 3000);
@@ -1153,7 +1166,9 @@ var ViewParts = {};
             _holdHint.id = 'hold-hint';
             app.appendChild(_holdHint);
         }
-        _holdHint.className = (node && typeof node.__onlongpress === 'function') ? '' : 'hidden';
+        // (the IPTV tab's channel browser says it in its own pane, where this would cover the preview)
+        var said = !!(node && node.closest && node.closest('.iptvb'));
+        _holdHint.className = (node && typeof node.__onlongpress === 'function' && !said) ? '' : 'hidden';
     });
 
     // ----- published for the other parts (and js/views.js) -----

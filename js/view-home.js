@@ -144,6 +144,11 @@
     function catsForTab(key) {
         return (_homeCatalogs || []).filter(function (c) { return tabOf(c) === key; });
     }
+    // The IPTV tab's catalogs from your addons (not your playlists': their channels are iptv:…),
+    // for the channel browser (js/view-iptv.js), which lists them after your playlists' groups.
+    V.addonLiveCatalogs = function () {
+        return catsForTab('tv').filter(function (c) { return c.metas && c.metas.length && !IPTV.owns(c.metas[0] && c.metas[0].id); });
+    };
     var _homeCatalogs = null;   // [{name,type,metas}] — fetched once per session, filtered per tab
     var _homeTab = null;        // active tab key
     var _homeDirty = false;     // set when Continue Watching / poster / addons changed

@@ -3,6 +3,28 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.4.9 — 2026-11-23
+New:
+- **Episodes in the player:** on the quick bar for a series, a strip of the season's episodes
+  with pictures and watched marks. OK resumes an episode, and hold OK gives *Play from the
+  start* or *Mark watched / unwatched*.
+- **Channel browser with a preview:** a third IPTV tab choice. Rest on a channel and it plays,
+  with sound, in a box under its details; OK watches it full screen.
+- **Your addons' live TV in the channel browser:** each catalog is a group after your
+  playlists' groups, if it's on in Home feeds.
+- **Find in your addons on the IPTV tab:** hold OK on a channel to look up what's on now, as
+  the Guide already does.
+
+Fixed:
+- **IPTV links to a YouTube channel page:** they play only what's live now, never an old upload
+  or a past stream's recording.
+- **Addons whose channels are named `iptv:...`:** they play now.
+- **Channel browser at 110% or more:** it no longer scrolls as a whole and cuts off the
+  right-hand pane.
+- **Channel browser menu:** closing it goes back to the channel you held, not the top menu.
+- **Quick bar at 110% or more:** it scrolls, so ← Back is reachable.
+- **Remembered built-in subtitles:** they no longer pick the wrong track on another source.
+
 ## 2.4.8 — 2026-11-22
 - **Episode pictures without a TMDB key:** where the addon has none, or its picture doesn't
   load, Cinemeta's are shown (shows with IMDb ids, episodes already out).

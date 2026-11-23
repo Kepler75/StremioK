@@ -789,6 +789,12 @@ var IPTV = (function () {
         return d;
     }
 
+    // One of your playlists' channels (iptv:<its playlist>:…), not an addon's that names its own
+    // channels iptv:… too (Roxxy HUB's "iptv:A24.ar"): theirs are asked of their addon.
+    function owns(id) {
+        var m = /^iptv:([^:]+):/.exec('' + (id || ''));
+        return !!m && getPlaylists().some(function (p) { return p.id === m[1]; });
+    }
     function tagChannels(channels, playlistId) {
         channels.forEach(function (c) {
             c.id = 'iptv:' + playlistId + ':' + c.id.slice(5);
@@ -1361,7 +1367,7 @@ var IPTV = (function () {
         catchupStream: catchupStream, catchupDays: catchupDays, hasCatchup: hasCatchup, catchupTz: catchupTz, setCatchupTz: setCatchupTz,
         isFavorite: isFavorite, setFavorite: setFavorite, noteRecent: noteRecent, noteMeasured: noteMeasured, tidyCfg: tidyCfg, setTidy: setTidy, HIDE_SUGGESTED: HIDE_SUGGESTED, countryOf: countryOf, plainName: plainName, refreshEvery: refreshEvery, setRefreshEvery: setRefreshEvery, readAt: readAt,
         sizeMb: sizeMb, setSizeMb: setSizeMb, maxChannels: maxChannels, SIZES: SIZES,
-        channels: function () { return _cache ? _cache.channels : []; }, channel: function (id) { return _cache ? _cache.byId[id] || null : null; }, isEnabled: isEnabled, reset: reset, status: status,
+        owns: owns, channels: function () { return _cache ? _cache.channels : []; }, channel: function (id) { return _cache ? _cache.byId[id] || null : null; }, isEnabled: isEnabled, reset: reset, status: status,
         load: load, reload: reload, catalog: catalog, meta: meta, zapGroups: zapGroups, zapping: zapping, streams: streams, synthAddon: synthAddon, isReady: isReady,
         onProgress: onProgress
     };

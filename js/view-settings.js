@@ -276,7 +276,7 @@
             set: function (cfg) { Stremio.setPref('startTab', cfg.startTab); }   // (the next launch: Home stays where it is now)
         }));
         if (typeof IPTV !== 'undefined' && IPTV.getPlaylists().length) {   // (the IPTV tab: rows, or the channel browser, js/view-iptv.js)
-            wrap.appendChild(subPickRow(U.t('IPTV tab'), [['rows', U.t('Rows (default)')], ['browser', U.t('Channel browser: groups, channels, what’s on')]], 'v', {
+            wrap.appendChild(subPickRow(U.t('IPTV tab'), [['rows', U.t('Rows (default)')], ['browser', U.t('Channel browser: groups, channels, what’s on')], ['preview', U.t('Channel browser: groups, channels, what’s on, preview')]], 'v', {
                 get: function () { return { v: Stremio.getPrefs().iptvLayout }; },
                 set: function (c) { Stremio.setPref('iptvLayout', c.v); if (V.homeDirty) { V.homeDirty(); } }
             }));

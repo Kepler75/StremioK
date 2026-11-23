@@ -375,18 +375,21 @@ function ytLivePages(u) {
 }
 // The page as given first; with no live stream there, the channel's others in turn (ytLivePages).
 // Which one leads to the stream on now varies: a channel's /live can point at one that isn't on
-// while its Featured tab leads with the live one, or the other way round.
+// while its Featured tab leads with the live one, or the other way round. A channel's page takes
+// only a stream that's live now (its first video can be any upload, and an ended stream's /live a
+// recording): none on, it says so. A video's page plays whatever it is.
 function resolveYtLive(page, fresh, cb) {
-    var tries = [page].concat(ytLivePages(page)), first = null;
+    var others = ytLivePages(page), live = others.length > 0, tries = [page].concat(others), first = null;
     (function next(i) {
         resolveYtMaster(tries[i], fresh, function (err, master, links) {
             if (!err) { cb(null, master, links); return; }
             first = first || err;
-            if (i + 1 < tries.length) { next(i + 1); } else { cb(first); }
-        });
+            if (i + 1 < tries.length) { next(i + 1); } else { cb(live ? Object.assign(new Error('no live stream on this channel now'), { status: 404 }) : first); }
+        }, live);
     })(0);
 }
-function resolveYtMaster(ytPage, fresh, cb) {
+// live: only a stream on now (YouTube's videoDetails.isLive), else 'not live now'.
+function resolveYtMaster(ytPage, fresh, cb, live) {
     cb = once(cb);
     var hit = _ytCache[ytPage];
     if (!fresh && hit && Date.now() < hit.exp) { cb(null, hit.master, hit.links); return; }
@@ -414,12 +417,15 @@ function resolveYtMaster(ytPage, fresh, cb) {
             'User-Agent': VISIONOS_UA, 'Content-Length': Buffer.byteLength(payload)
         }, payload, function (e2, sc2, resp) {
             if (e2 || !resp) { cb(e2 || new Error('player call failed')); return; }
+            var info = null;
+            try { info = JSON.parse(resp); } catch (eJ) { info = null; }
+            if (live && !(info && info.videoDetails && info.videoDetails.isLive === true)) { cb(new Error('not live now')); return; }
             var m = resp.match(/"hlsManifestUrl":"([^"]+)"/);
             if (!m) { cb(new Error('no hlsManifestUrl (not live / blocked?)')); return; }
             var master;
             try { master = JSON.parse('"' + m[1] + '"'); }          // decode &, \/ etc.
             catch (e3) { master = m[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/'); }
-            try { links.captions = captionTracks(JSON.parse(resp)); } catch (eC) { links.captions = []; }
+            try { links.captions = captionTracks(info || JSON.parse(resp)); } catch (eC) { links.captions = []; }
             cacheSet(ytPage, master, links);
             cb(null, master, links);
         }, youtubeHost);

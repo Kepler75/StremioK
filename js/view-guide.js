@@ -351,17 +351,20 @@
         if (_findCancel) { _findCancel.cancel(); _findCancel = null; U.spinner(false); }
     }
     function onGuide(grid) { return _g === grid && !!grid.box && document.documentElement.contains(grid.box) && !/\bhidden\b/.test(scr('home').className); }
-    function findInAddons(p) {
+    // still(): where it was asked from is still on screen (the Guide's grid, by default; the IPTV
+    // tab, from a channel's menu there: view-core's liveSchedule).
+    function findInAddons(p, still) {
         stopFinding();
         function search() { App.openSearch(); Views.searchFor(p.title); }
         if (p.kind === 'series') { search(); return; }
         var gen = _finding, grid = _g, cancel = _findCancel = U.cancelToken();
+        still = still || function () { return onGuide(grid); };
         U.spinner(true, U.t('Looking for “{title}”…', { title: p.title }));
         function done(hit) {
             if (gen !== _finding) { return; }
             _findCancel = null;
             U.spinner(false);
-            if (!onGuide(grid)) { return; }
+            if (!still()) { return; }
             if (hit) { App.openDetail(hit.type, hit.id, { name: hit.name, poster: hit.poster, type: hit.type }); } else { search(); }
         }
         Stremio.findFilm({ title: p.title, orig: p.orig, year: p.year }, cancel).then(done, function () { done(null); });
@@ -384,5 +387,5 @@
         return n;
     }
 
-    V.guideGrid = guideGrid; V.guideBackOn = guideBackOn;
+    V.guideGrid = guideGrid; V.guideBackOn = guideBackOn; V.findInAddons = findInAddons;
 })(ViewParts);

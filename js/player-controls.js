@@ -69,6 +69,7 @@
     // Playback stopped: everything closed (without bringing the progress bar back up).
     function closeControls() {
         closeCast(true);
+        closeEpisodes(true);
         resetYtLinks();
         endScrub();
         streamInfoOff();
@@ -332,6 +333,7 @@
         if (hl !== null && !S.isLive) { b.push({ label: U.t('◆ Highlight'), run: function () { closeBar(); seekTo(hl); } }); }
         if (S.ctx.hasPrev) { b.push({ label: U.t('◀◀ Previous'), run: function () { closeBar(); S.ctx.playPrev(); } }); }
         if (S.ctx.hasNext) { b.push({ label: U.t('▶▶ Next'), run: function () { closeBar(); S.ctx.playNext(); } }); }
+        if (S.ctx.episodes) { b.push({ label: U.t('≡ Episodes'), run: function () { closeBar(); openEpisodes(); } }); }
         if (castTitle()) { b.push({ label: U.t('ⓘ Cast & more'), run: function () { closeBar(); openCast(); } }); }
         // continue on phone (its QR, in the menu's panel), and private viewing from now on
         if (phoneLink()) { b.push({ label: U.t('▣ Phone'), run: function () { closeBar(); openMenu(phoneMenu()); } }); }
@@ -373,6 +375,11 @@
             S.barEl.appendChild(U.el('div', 'pb-btn' + (i === _barIdx ? ' sel' : ''), it.label));
         });
         S.barEl.className = '';
+        // (more buttons than fit, as under a zoom: the one picked kept in view, centered where it can be)
+        var bar = S.barEl, sel = bar.children[_barIdx];
+        if (sel && bar.scrollWidth > bar.clientWidth + 1) {
+            bar.scrollLeft = Math.max(0, Math.min(bar.scrollWidth - bar.clientWidth, sel.offsetLeft - (bar.clientWidth - sel.offsetWidth) / 2));
+        } else { bar.scrollLeft = 0; }
     }
     function barKey(action) {
         var b = barButtons();
@@ -406,6 +413,7 @@
     function openCast() {
         var t = castTitle();
         if (!t) { return; }
+        closeEpisodes(true);
         var el = U.byId('cast-strip');
         if (!el) { el = U.el('div', 'hidden'); el.id = 'cast-strip'; document.body.appendChild(el); }
         U.clear(el);
@@ -516,6 +524,134 @@
             });
         }, function () { U.toast(U.t('Couldn\'t reach TMDB.')); });
     }
+    // ---------- ≡ Episodes: the series' episodes over the video (quick bar) ----------
+    // The season playing, its episodes as cards (picture, code and title, ✓ or how far in, when one
+    // not out yet airs), opened on the one playing; LEFT / RIGHT the episode, UP / DOWN the season,
+    // OK plays it where you left it (as Continue Watching), hold OK: from the start, or marked
+    // watched / unwatched. In the Cast & more strip's place, moved the same way. Pictures only
+    // for the cards near the one picked (EPS_NEAR), each the first of its choices that loads:
+    // the addon's, TMDB's (with a key), Cinemeta's.
+    var EPS_W = 312, EPS_NEAR = 6;   // a card and the gap after it (px); cards each side with their picture
+    var _eps = null;   // { el, head, strip, src (ctx.episodes), seasons, s, idx, stills: { season: map } }
+    function openEpisodes() {
+        var src = S.ctx && S.ctx.episodes;
+        if (!src) { return; }
+        closeCast(true);
+        var el = U.byId('cast-strip');
+        if (!el) { el = U.el('div', 'hidden'); el.id = 'cast-strip'; document.body.appendChild(el); }
+        U.clear(el);
+        var head = U.el('div', 'cs-head'), strip = U.el('div', 'cs-strip eps-strip');
+        el.appendChild(head); el.appendChild(strip);
+        el.className = 'eps';
+        var seasons = src.seasons(), s = 0, idx = 0;
+        seasons.forEach(function (sn, i) { sn.eps.forEach(function (e, k) { if (e.id === src.current) { s = i; idx = k; } }); });
+        _eps = { el: el, head: head, strip: strip, src: src, seasons: seasons, s: s, idx: idx, stills: {} };
+        drawEpisodes();
+        showOSD(true);
+    }
+    function epsSeason() { return _eps.seasons[_eps.s]; }
+    function drawEpisodes() {
+        var e = _eps, sn = epsSeason(), me = e;
+        if (!sn) { return; }
+        U.clear(e.head);
+        e.head.appendChild(U.el('div', 'cs-title', (S.ctx.name || '').replace(/\s+S\d+E\d+\s*$/, '') + '  ·  ' + sn.name + (e.seasons.length > 1 ? '   (' + (e.s + 1) + ' / ' + e.seasons.length + ')' : '')));
+        e.head.appendChild(U.el('div', 'cs-hint', U.t('◀ ▶ episode   ▲ ▼ season   OK: play   Hold OK: more   BACK: close')));
+        U.clear(e.strip);
+        e.strip.style.marginLeft = '0px';
+        sn.eps.forEach(function (ep) { e.strip.appendChild(episodeCard(ep)); });
+        renderEpisodes();
+        // (TMDB's pictures, with a key, for this season: tried before Cinemeta's, as on the title page)
+        if (e.stills[sn.n] === undefined && !e.src.stills) { e.stills[sn.n] = {}; renderEpisodes(); }
+        if (e.stills[sn.n] === undefined && e.src.stills) {
+            e.stills[sn.n] = null;
+            e.src.stills(sn.n).then(function (map) {
+                e.stills[sn.n] = map || {};
+                if (_eps === me && epsSeason() === sn) { renderEpisodes(); }   // (the pictures, now: they waited for TMDB's answer)
+            }, function () { e.stills[sn.n] = {}; if (_eps === me && epsSeason() === sn) { renderEpisodes(); } });
+        }
+    }
+    function episodeCard(ep) {
+        var card = U.el('div', 'cs-card eps-card' + (ep.airs ? ' eps-unaired' : ''));
+        var pic = U.el('div', 'eps-pic' + (ep.blur ? ' spoiler' : ''));
+        card.appendChild(pic);
+        if (ep.watched) { pic.appendChild(U.el('div', 'eps-tick', '✓')); }
+        if (ep.progress > 0) { var bar = U.el('div', 'eps-prog'); bar.style.width = Math.round(ep.progress * 100) + '%'; pic.appendChild(bar); }
+        if (ep.id === _eps.src.current) { pic.appendChild(U.el('div', 'eps-now', U.t('▶ Playing'))); }
+        card.appendChild(U.el('div', 'cs-name', ep.code + (ep.title ? '  ·  ' + ep.title : '')));
+        if (ep.airs) { card.appendChild(U.el('div', 'cs-role', U.t('Airs {when}', { when: U.dayLabel(ep.airs) }))); }
+        card.__ep = ep; card.__pic = pic;
+        return card;
+    }
+    // A card's picture: the next of its choices, once it's near the one picked (and TMDB has
+    // answered for its season: its still comes before Cinemeta's).
+    function episodePicture(card) {
+        var ep = card.__ep;
+        if (card.__tried === undefined) {
+            var tm = (_eps.stills[epsSeason().n] || {})[ep.episode];
+            card.__tried = 0; card.__thumbs = [ep.own, tm, ep.cinemeta].filter(Boolean);
+        }
+        while (card.__tried < card.__thumbs.length) {
+            var src = U.cardImage(card.__thumbs[card.__tried++], 'still');
+            if (!src) { continue; }
+            card.__pic.__bgFail = function () { episodePicture(card); };
+            U.deferBg(card.__pic, src);
+            return;
+        }
+    }
+    function renderEpisodes() {
+        var e = _eps, cards = e.strip.children, n = cards.length;
+        for (var i = 0; i < n; i++) {
+            cards[i].className = 'cs-card eps-card' + (cards[i].__ep.airs ? ' eps-unaired' : '') + (i === e.idx ? ' sel' : '');
+            if (Math.abs(i - e.idx) <= EPS_NEAR && cards[i].__tried === undefined && e.stills[epsSeason().n]) { episodePicture(cards[i]); }
+        }
+        var view = Math.ceil(1920 / U.zoom()) - CAST_SIDES, total = n * EPS_W;
+        var off = Math.max(0, Math.min(total - view, e.idx * EPS_W - (view - EPS_W) / 2));
+        e.strip.style.marginLeft = (total > view ? -Math.round(off) : 0) + 'px';
+    }
+    function epsKey(action) {
+        var e = _eps, sn = epsSeason(), n = sn ? sn.eps.length : 0;
+        if (action === 'LEFT' || action === 'RIGHT') {
+            if (n) { e.idx = wrap(e.idx + (action === 'LEFT' ? -1 : 1), n); renderEpisodes(); }
+            showOSD(true);
+            return;
+        }
+        if (action === 'UP' || action === 'DOWN') {   // the season before / after, at the same place in it (as far as it goes)
+            if (e.seasons.length > 1) { e.s = wrap(e.s + (action === 'UP' ? -1 : 1), e.seasons.length); e.idx = Math.min(e.idx, epsSeason().eps.length - 1); drawEpisodes(); }
+            showOSD(true);
+            return;
+        }
+        var ep = n ? sn.eps[e.idx] : null;
+        if (action === 'OK') {
+            if (!ep) { return; }
+            if (ep.id === e.src.current) { closeEpisodes(); return; }   // (the one playing: back to it)
+            var src = e.src;
+            closeEpisodes(true);
+            src.play(ep.id, false);
+            return;
+        }
+        if (action === 'OK_LONG') {
+            if (!ep) { return; }
+            var items = [];
+            if (ep.resumeAt > 5 && ep.id !== e.src.current) { items.push({ label: U.t('Resume at {at}', { at: U.fmtTime(ep.resumeAt) }), run: function () { var s0 = e.src; closeMenu(); closeEpisodes(true); s0.play(ep.id, false); } }); }
+            items.push({ label: U.t('Play from the start'), run: function () { var s1 = e.src; closeMenu(); closeEpisodes(true); s1.play(ep.id, true); } });
+            items.push({ label: ep.watched ? U.t('Mark unwatched') : U.t('Mark watched'), run: function () {
+                Player.setWatched('series', ep.id, !ep.watched);
+                ep.watched = !ep.watched; if (ep.watched) { ep.progress = 0; ep.resumeAt = 0; ep.blur = false; }
+                closeMenu(); drawEpisodes();
+            } });
+            openMenu({ title: ep.code + (ep.title ? '  ·  ' + ep.title : ''), idx: 0, items: items });
+            return;
+        }
+        closeEpisodes();
+    }
+    function closeEpisodes(quiet) {
+        if (!_eps) { return; }
+        _eps.el.className = 'hidden';
+        U.clear(_eps.el);
+        _eps = null;
+        if (!quiet) { showOSD(false); }
+    }
+
     function closeCast(quiet) {   // quiet: playback is stopping (the progress bar stays down)
         if (!_cast) { return; }
         _cast.el.className = 'hidden';
@@ -1205,6 +1341,7 @@
         }
         // A held OK: a title's menu in Cast & more; anywhere else, OK.
         if (action === 'OK_LONG') {
+            if (_eps && !_menuOpen) { epsKey('OK_LONG'); return true; }
             if (_cast && !_menuOpen) { castKey('OK_LONG'); return true; }
             action = 'OK';
         }
@@ -1212,6 +1349,7 @@
         // menu over Cast & more is a title's, opened from it).
         if (_menuOpen) { menuKey(action); return true; }
         if (_chl) { channelsKey(action); return true; }
+        if (_eps) { epsKey(action); return true; }
         if (_cast) { castKey(action); return true; }
         if (_barOpen) { barKey(action); return true; }
         if ((_yl || _card) && ytLinksKey(action)) { return true; }   // (UP chooses one; BACK hides the end screen)

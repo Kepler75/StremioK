@@ -449,9 +449,8 @@ addons is shown once ("also on …").
 
 ### The quick bar (UP)
 
-Play/Pause · Restart · Previous · Next · Cast & more · Phone · Download · Private · Back, each
-where it applies. It goes round (past the last is the first) and closes after 5 seconds
-without a key.
+Play/Pause · Restart · Previous · Next · Episodes · Cast & more · Phone · Download · Private · Back, each
+where it applies. It goes round and closes after 5 seconds without a key.
 
 - **▣ Phone** (continue on phone): a QR code of what's playing, to open on a phone in **VLC**
   (the default) or **Infuse** (they play MKV, HEVC and surround sound a phone's browser would
@@ -464,6 +463,8 @@ without a key.
   video keeps playing.
 - **◐ Private: Off / On** (not for trailers or live channels): private viewing for what's
   playing, from that moment (see [Private viewing](PRIVACY.md#private-viewing)).
+- **≡ Episodes** (a series): the season playing: pictures, ✓ or how far in. ◀ ▶ episode,
+  ▲ ▼ season; OK resumes it, hold OK: *Play from the start*, *Mark watched*.
 - **Cast & more** (with a TMDB key): who's in it, with photos and roles, on a see-through strip
   over the video, which keeps playing. LEFT / RIGHT look through it; OK on a person shows
   their movies and series (with the character they played, or their job), OK on one of those its Cast & more, and so on. BACK goes up a level
@@ -679,9 +680,10 @@ An Xtream account's films and series come with its channels, as do a Stalker por
 - **The channel list:** LEFT while a channel plays (or *≡ Channels* on the quick bar). Your
   favorites, then each group; ←/→ the group, ↑/↓ the channel, with what's on now and next. OK
   watches it, and CH+ / CH− then go through that group.
-- **The channel browser** (Settings › Home › *IPTV tab*): the IPTV tab as groups, a
-  group's channels with what's on now, and the focused one's now and next. OK watches it, hold OK
-  for its menu.
+- **The channel browser** (Settings › Home › *IPTV tab*): the IPTV tab as groups (addons' TV
+  feeds last), a group's channels with what's on now, and the focused one's now and next. OK watches it, hold OK
+  for its menu. *With preview*: rest on a channel and it plays in the box below, with sound;
+  not while one plays behind the menus.
 - **Behind the menus** (Settings › Playback › Live TV, off by default): BACK keeps a channel playing
   behind Home. ▶ brings it back full screen, ■ stops it, CH+ / CH− change it; opening anything
   else stops it.
@@ -728,9 +730,9 @@ An Xtream account's films and series come with its channels, as do a Stalker por
   time. The details strip describes the focused program; OK on what's on now (or a row still *Loading…*) plays the channel
   (CH+ / CH− then go through the Guide's channels), on a later one shows its description. BACK,
   or a channel that stops, lands on the channel you ended on.
-- **Hold OK on a program** in the Guide tab: *▶ Watch now* (what's on now), *★ Add to / Remove
-  from favorites* (its channel), and *Find in your addons*: a film opens its page with your
-  sources, anything else Search.
+- **Hold OK on a program** in the Guide (or a channel on the IPTV tab): *▶ Watch now*, *★ Add to /
+  Remove from favorites*, and *Find in your addons*: a film opens its page with your sources,
+  anything else Search.
 
 ## YouTube
 

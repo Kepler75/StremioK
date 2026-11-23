@@ -2140,7 +2140,7 @@
         // Single-source live: skip the (already-skipped) source/info pages and go
         // straight back to the home grid, on the tab we came from.
         var zap = (_d && _d.channels && _d.channels.list.length > 1) ? zapChannel : null;
-        var lists = (_d && _d.live && /^iptv:/.test(videoId || '')) ? zapList : null;   // (the player's channel list)
+        var lists = (_d && _d.live && typeof IPTV !== 'undefined' && IPTV.owns(videoId)) ? zapList : null;   // (the player's channel list: your playlists' channels)
         var behindOk = !!(exitToBack && _d && _d.live) || undefined;   // (BACK: it can play on behind the menus, Settings › Playback › Live TV)
         if (lists) {
             U.store.set('stremiok.iptv.last', { id: videoId, type: _d.type, name: label });   // (Settings › Home › Start on › Last IPTV channel)
@@ -2239,6 +2239,8 @@
                 // near the end: load the next episode's sources so "Next" starts right away
                 ctx.prefetchNext = function () { Stremio.prefetchStreams(addonType(), ord[idx + 1].id); };
             }
+            // The player's ≡ Episodes (quick bar): every episode by season, as the page lists them
+            if (!_d.collection && !_d.addonType) { ctx.episodes = episodeStrip(_d, videoId); }
         }
         // A YouTube video (an addon's source that's only a YouTube id, e.g. YouTubio's): through
         // the YouTube service, like a trailer, but as the title it is (progress, Continue
@@ -2365,7 +2367,39 @@
     // last one played. An answer once you've left the page, or asked for another episode since
     // (_epGen), does nothing: no playback, no page drawn, no spinner change, no note.
     var _epGen = 0;
-    function playEpisode(v) {
+    // ≡ Episodes in the player: { seasons: [{ n, name, eps: [{ id, code, title, thumbs (the
+    // pictures to try, in turn), watched, progress (0–1), airs (not out yet: when), blur }] }],
+    // current, play(id, fromStart), stills(season) -> Promise of { episode: TMDB's still } }.
+    // Drawn from the page's episodes when it's opened (watched marks as they are then).
+    function episodeStrip(page, playingId) {
+        function list() {
+            var bySeason = {}, order = [], now = Date.now();
+            orderedEpisodes(page.meta).forEach(function (v) {
+                var sn = seasonOf(v);
+                if (!bySeason[sn]) { bySeason[sn] = []; order.push(sn); }
+                var pr = Player.progressFor('series', v.id), at = airsAt(v), watched = episodeWatched(v), hide = spoilerFor(v);
+                bySeason[sn].push({ id: v.id, code: 'S' + sn + 'E' + (v.episode || ''), title: v.title || v.name || '',
+                    own: v.thumbnail || '', cinemeta: cinemetaStill(v), episode: v.episode,
+                    watched: watched, progress: !watched && pr && pr.duration ? Math.min(1, pr.position / pr.duration) : 0, resumeAt: !watched && pr ? pr.position : 0,
+                    airs: !watched && at > now ? at : 0, blur: !!hide });
+            });
+            return order.map(function (n) { return { n: n, name: seasonName(n), eps: bySeason[n] }; });
+        }
+        return {
+            current: playingId,
+            seasons: list,
+            play: function (id, fromStart) {
+                var v = (page.meta.videos || []).filter(function (x) { return x.id === id; })[0];
+                if (v && _d === page) { playEpisode(v, fromStart ? { fromStart: true } : null); }
+            },
+            stills: function (sn) {
+                if (!Stremio.getIntegrations().tmdb || !/^tt\d+$/.test('' + page.id)) { return Promise.resolve(null); }
+                return Stremio.tmdbFindTvId(page.id).then(function (tv) { return tv ? Stremio.tmdbSeasonEpisodes(tv, sn) : null; })
+                    .then(function (map) { var out = {}; Object.keys(map || {}).forEach(function (k) { if (map[k] && map[k].still) { out[k] = map[k].still; } }); return out; }, function () { return null; });
+            }
+        };
+    }
+    function playEpisode(v, how) {
         var still = pageNow(), gen = ++_epGen;
         function current() { return still() && gen === _epGen; }
         _d.mode = 'streams';
@@ -2383,7 +2417,7 @@
                 if (!Player.isActive()) { drawDetail(); }
                 return;
             }
-            startPlayback(pick, v.id, _d.streamLabel);
+            startPlayback(pick, v.id, _d.streamLabel, how);
         }, function () { if (!current()) { return; } U.spinner(false); U.toast(U.t('Failed to load that episode')); });
     }
 

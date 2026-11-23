@@ -6,7 +6,7 @@
 var Player = (function (P) {
     'use strict';
     return {
-        init: P.init, play: P.play, handleKey: P.handleKey, isActive: P.isActive, inUse: P.inUse, isBehind: P.isBehind, behindKey: P.behindKey, fromBehind: P.fromBehind,
+        init: P.init, play: P.play, handleKey: P.handleKey, isActive: P.isActive, inUse: P.inUse, isBehind: P.isBehind, isPreview: P.isPreview, behindKey: P.behindKey, fromBehind: P.fromBehind,
         exit: P.exit, continueList: P.continueList, getResume: P.getResume, removeProgress: P.removeProgress,
         getSubCfg: P.getSubCfg, setSubCfg: P.setSubCfg, getAudioCfg: P.getAudioCfg, setAudioCfg: P.setAudioCfg,
         isWatched: P.isWatched, watchedState: P.watchedState, watchedAt: P.watchedAt, watchedSince: P.watchedSince, progressFor: P.progressFor,

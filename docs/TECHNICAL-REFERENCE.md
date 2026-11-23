@@ -445,8 +445,13 @@ channels where it gives one; the rest is read from the source's name and file.
   first (redirects followed, the answer not read; where it led is kept 5 minutes, or until the
   playlists reload, as a server can renumber its channels); one ending on YouTube plays through
   StremioK's YouTube.
-- **A YouTube channel's page** (`@handle`, `/channel/`, `/c/`, `/user/`, any tab) plays as
-  given; with no live stream there, its `/live` page, then its Featured tab.
+- **The channel browser's preview:** 1.2 s after focus rests on a channel, its first source plays
+  in the box (a YouTube channel at 480p), drawn behind the page; moving off it, or anything else
+  opening, stops it. One that doesn't start says so, silently, and isn't tried again until focus
+  comes back. Not DRM channels.
+- **A YouTube channel's page** (`@handle`, `/channel/`, `/c/`, `/user/`, any tab) plays the
+  stream that's live on it now: the page as given, its `/live` page, then its Featured tab. Not
+  an upload or an ended stream in its place; with none live, it says so.
 
 ### Xtream films and series
 

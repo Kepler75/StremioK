@@ -294,7 +294,7 @@ html, body {
 .card.watched-dim.focused .poster, .card.watched-dim.focused .fallback { opacity: 0.85; }
 
 /* --- Contextual quick-action bar (UP) --- */
-#player-bar { position: absolute; left: 0; right: 0; bottom: 250px; z-index: 22; text-align: center; white-space: nowrap; }   /* (up to ten buttons: one line, compact) */
+#player-bar { position: absolute; left: 0; right: 0; bottom: 250px; z-index: 22; text-align: center; white-space: nowrap; overflow: hidden; padding: 6px 40px; }   /* (one line; more than fit, as under a zoom: it scrolls to the one picked, see renderBar) */
 #player-bar .pb-btn { display: inline-block; margin: 0 6px; padding: 14px 22px; font-size: 24px; border-radius: 40px; background: rgba(22,27,38,0.95); border: 4px solid transparent; color: #e6e9ef; }
 #player-bar .pb-btn.sel { background: #818cf8; color: #0e1117; border-color: #fff; }
 /* live TV behind the menus (Settings › Content › IPTV): Home seen through, dimmed */
@@ -339,6 +339,18 @@ body.live-behind .home-bg { display: none !important; }
 .iptvb-ihint { position: absolute; bottom: 20px; font-size: 16px; color: #8b93a5; }
 .iptvb-info { position: relative; }
 body.live-behind .iptvb-info, body.live-behind .iptvb-group:not(.focused):not(.on), body.live-behind .iptvb-ch:not(.focused) { background-color: rgba(14,17,23,0.82); }   /* (over live TV behind the menus: readable, the focused one as it is) */
+/* the focused channel's preview, under its pane (js/view-iptv.js; the player's pipLook): the page
+   see-through, #pip-mask drawing its background around the box the TV's video plane shows in */
+.iptvb-side { width: 520px; flex: none; display: flex; flex-direction: column; }
+.iptvb-side .iptvb-info { width: auto; flex: 1; min-height: 0; }
+.iptvb-pip { flex: none; height: 293px; margin-top: 12px; border-radius: 14px; border: 3px solid rgba(255,255,255,0.12); background: #05070b; display: flex; align-items: center; justify-content: center; }
+.iptvb-pip.off { visibility: hidden; }
+.iptvb-pip.playing { background: transparent; border-color: rgba(129,140,248,0.75); }
+.iptvb-pip-note { font-size: 18px; color: #6b7385; padding: 0 20px; text-align: center; }
+.iptvb.with-pip .iptvb-idesc { max-height: 104px; }
+body.iptv-pip, body.iptv-pip #app, body.iptv-pip #screen-home, body.look-modern.iptv-pip #screen-home { background: transparent !important; }
+body.iptv-pip .home-bg { display: none !important; }
+#pip-mask { position: absolute; z-index: 5; border-radius: 11px; pointer-events: none; }
 /* the channel list in the player (a live IPTV channel: LEFT) */
 #channel-list { position: absolute; left: 0; top: 0; bottom: 0; width: 640px; z-index: 26; box-sizing: border-box; padding: 40px 28px 28px 40px; background: rgba(14,17,23,0.92); border-right: 2px solid rgba(255,255,255,0.12); }
 #channel-list .chl-head { margin-bottom: 16px; }
@@ -369,6 +381,17 @@ body.live-behind .iptvb-info, body.live-behind .iptvb-group:not(.focused):not(.o
 #cast-strip .cs-card.sel .cs-name { color: #818cf8; }
 #cast-strip .cs-as { font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #cast-strip .cs-note { font-size: 20px; color: #8b93a5; }
+/* ≡ Episodes, in the same strip: wide cards, an episode's picture (16:9) */
+#cast-strip .eps-card { width: 288px; }
+#cast-strip .eps-pic { position: relative; box-sizing: border-box; width: 288px; height: 162px; border-radius: 10px; background: #1a1f2b center / cover no-repeat; border: 4px solid transparent; overflow: hidden; }
+#cast-strip .eps-card.sel .eps-pic { border-color: #818cf8; }
+#cast-strip .eps-card.sel .cs-name { color: #818cf8; }
+#cast-strip .eps-pic.spoiler { -webkit-filter: blur(14px); filter: blur(14px); }
+#cast-strip .eps-unaired { opacity: 0.55; }
+#cast-strip .eps-tick { position: absolute; top: 6px; right: 8px; font-size: 22px; font-weight: bold; color: #34d399; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+#cast-strip .eps-prog { position: absolute; left: 0; bottom: 0; height: 6px; background: #818cf8; }
+#cast-strip .eps-now { position: absolute; left: 0; bottom: 0; right: 0; padding: 4px 8px; font-size: 16px; font-weight: bold; color: #fff; background: rgba(99,102,241,0.85); }
+#cast-strip.eps .cs-strip { height: 250px; }
 /* A YouTube video's end screen (its linked videos) and cards, over the video */
 #yt-links { position: absolute; left: 0; right: 0; bottom: 230px; z-index: 23; padding: 18px 60px 22px 60px; background: rgba(0,0,0,0.55); }
 #yt-links .yl-head { display: flex; align-items: baseline; margin-bottom: 14px; }

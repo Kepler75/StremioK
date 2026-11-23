@@ -92,7 +92,9 @@
         if (localSubs.length) { localReady.then(function () { early = pickSubs(localSubs, true); }); }
         // (your default language built into the file: on as soon as it plays, not after the addons)
         var cfg0 = getSubCfg();
-        if (!recallSub(ctx.id) && cfg0.lang && cfg0.lang !== 'off' && P.useAV) { wantEmbedded({ lang: cfg0.lang, early: true }); }
+        var mem0 = recallSub(ctx.id);
+        var memIdle = !!(mem0 && mem0.embedded && mem0.nth == null && !(mem0.file && mem0.file === embFileKey(ctx)) && !(mem0.lang && !P.langUnstated(mem0.lang)));   // (a built-in track's place from another file, its language unknown: not used, see pickSubs)
+        if ((!mem0 || memIdle) && cfg0.lang && cfg0.lang !== 'off' && P.useAV) { wantEmbedded({ lang: cfg0.lang, early: true }); }
         Promise.all([fromAddons, fromYouTube, localReady, usbSubs]).then(function (r) {
             // (in the order they're picked in: a source's own, made for its file, then the addons' in
             // their order, then a USB drive's, then YouTube's; built-in tracks before all: applyEmbeddedWant)
@@ -116,21 +118,26 @@
             var mem = recallSub(ctx.id);
             if (mem) {
                 if (mem.off) { return true; }
+                // (a built-in track: by its place only in the file it was chosen in, as it was then —
+                // another source, or its subtitle tracks left out differently, has other places;
+                // there, its language, if the track said one; else as if nothing were remembered)
                 if (mem.embedded) {
                     if (partial) { return false; }
-                    wantEmbedded({ index: mem.index, lang: mem.lang, nth: mem.nth }); _embDelay = Math.max(0, +mem.delay || 0); return true;
+                    var cfgE = getSubCfg(), stated = mem.lang && !P.langUnstated(mem.lang);
+                    if (mem.nth != null || (mem.file && mem.file === embFileKey(ctx))) { wantEmbedded({ index: mem.index, lang: mem.lang, nth: mem.nth }); _embDelay = Math.max(0, +mem.delay || 0); return true; }
+                    if (stated) { wantEmbedded({ lang: mem.lang, auto: true, lang2: cfgE.lang && cfgE.lang !== 'off' && langKey(cfgE.lang) !== langKey(mem.lang) ? cfgE.lang : null }); return true; }
                 }
                 var exact =
                     (mem.trackId != null ? _subTracks.find(function (t) { return t.id === mem.trackId; }) : null) ||
                     (mem.url ? _subTracks.find(function (t) { return t.url === mem.url; }) : null);
                 var remembered = exact ||
                     (mem.lang ? _subTracks.find(function (t) { return langKey(t.lang) === langKey(mem.lang); }) : null);
-                if (remembered) {
+                if (remembered && !mem.embedded) {
                     // the timing adjustment belongs to that exact file
                     loadTrack(remembered, function () { if (exact && mem.delay) { _subDelay = mem.delay; renderSubs(); } });
                     return true;
                 }
-                if (partial) { return false; }
+                if (partial && !mem.embedded) { return false; }
             }
 
             // 2) Otherwise your default language: built into the file, else an addon's (in their
@@ -168,7 +175,7 @@
     // again once it plays.
     function subsBeforeOpen() {
         _ticked = false;
-        if (_embSub != null) { _embWant = { index: _embSub, lang: _embLang }; _embSub = null; }
+        if (_embSub != null) { _embWant = { index: _embSub, lang: _embLang, file: embFileKey() }; _embSub = null; }
     }
     // The attempt reports play time: built-in tracks can be switched now.
     function subsOnTick() {
@@ -699,6 +706,17 @@
     }
     // A built-in track's language: the TV's, else the file's own for it (the 2017 TV states none
     // for an MKV's subtitle tracks: P.fileTrack).
+    // The file a built-in track's place belongs to: the source's file (its name and size, else its
+    // link without the query), and which of its subtitle tracks StremioK's service kept (that
+    // changes the places).
+    function embFileKey(ctx) {
+        ctx = ctx || S.ctx;
+        if (!ctx) { return ''; }
+        var bh = (ctx.stream && ctx.stream.behaviorHints) || {};
+        var base = bh.filename ? bh.filename + '|' + (bh.videoSize || '') : ('' + (ctx.url || '')).split(/[?#]/)[0];
+        return base + (ctx._blank ? '|kept:' + ctx._blank.join(',') : '');
+    }
+    function rememberEmb(sel) { sel.embedded = true; sel.file = embFileKey(); rememberSub(S.ctx.id, sel); }
     function textLang(tr) {
         var l = trackLang(tr);
         if (l && !P.langUnstated(l)) { return l; }
@@ -728,6 +746,7 @@
             var rank = function (t) { var f = o(t); return f.text === false ? 3 : f.forced ? 2 : f.hi ? 1 : 0; };
             return c.slice().sort(function (x, y) { return rank(x) - rank(y) || c.indexOf(x) - c.indexOf(y); })[0];
         }
+        if (w.file && w.file !== embFileKey()) { w = { lang: w.lang, lang2: w.lang2, auto: w.auto }; }   // (reopened with other tracks: its place means nothing there)
         if (w.index != null) {
             pick = tracks.find(function (t) { return t.index === w.index && (!key || langKey(textLang(t)) === key); }) || null;
         }
@@ -898,7 +917,7 @@
                 var want = Math.round(next() * 10) / 10;
                 _embDelay = Math.max(0, want);
                 _embQueue = [];
-                rememberSub(S.ctx.id, { embedded: true, index: _embSub, lang: _embLang, delay: _embDelay });
+                rememberEmb({ index: _embSub, lang: _embLang, delay: _embDelay });
                 replaceTop(embTimingMenu(topMenu().idx));
                 U.toast(want < 0 ? U.t('Built-in subtitles can\'t come earlier than the file has them') : U.t('Subtitles: {what}', { what: fmtDelay(_embDelay) + ' ' + (_embDelay ? U.t('(later)') : U.t('(as in the file)')) }), 1800);
             };
@@ -986,7 +1005,7 @@
                 return { label: (S.ctx && S.ctx._relayCc ? U.t('Closed captions') : U.t('Built into the file')) + (named ? '  ·  ' + named : l ? '  (' + l + ')' : '  ·  ' + U.t('track {n}', { n: x.n + 1 })), sel: _embSub === tr.index,
                     detail: own && P.fileTrackNote ? P.fileTrackNote(own) || undefined : undefined,   // (its own name and marks, from the file's header)
                     run: function () {
-                        _embDelay = 0; _embQueue = []; _embNudge = null; selectEmbeddedSub(tr); rememberSub(S.ctx.id, { embedded: true, index: tr.index, lang: l });
+                        _embDelay = 0; _embQueue = []; _embNudge = null; selectEmbeddedSub(tr); rememberEmb({ index: tr.index, lang: l });
                         if (menuOpen()) { replaceTop(langTracksMenu(key, list)); }
                     } };
             }
@@ -1041,7 +1060,7 @@
             } else if (_embSub != null) {
                 var was = _embDelay;
                 _embDelay = step ? Math.max(0, Math.round((_embDelay + step) * 10) / 10) : 0;
-                rememberSub(S.ctx.id, { embedded: true, index: _embSub, lang: _embLang, delay: _embDelay });
+                rememberEmb({ index: _embSub, lang: _embLang, delay: _embDelay });
                 U.toast(U.t('Subtitles: {what}', { what: fmtDelay(_embDelay) + (step < 0 && was === 0 ? ' ' + U.t('(built-in: later only)') : '') }), 1500);
             } else {
                 U.toast(U.t('No subtitles on'), 1500);
