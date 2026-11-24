@@ -266,7 +266,7 @@
             buffer: d.buffer === 'more' || d.buffer === 'most' ? d.buffer : 'normal',
             reconnect: d.reconnect === 'off' || d.reconnect === 'always' ? d.reconnect : 'few',
             phone: d.phone === 'infuse' || d.phone === 'link' ? d.phone : 'vlc',   // (Continue on phone: what the QR opens)
-            hls: d.hls === 'headers' || d.hls === 'all' ? d.hls : 'off',   // (HLS through StremioK's service: see player-core's viaService)
+            hls: d.hls === 'off' || d.hls === 'all' ? d.hls : 'headers',   // (HLS through StremioK's service: see player-core's viaService; Off only when picked)
             // (the file's details read from its start: player-core's fileInfoAsk. A USB drive's by
             // default, read off the drive itself; a link's or a network folder's are more requests
             // as it starts, so only when chosen)
@@ -275,8 +275,11 @@
             blank: d.blank === 'always' || d.blank === 'many' || d.blank === 'never' ? d.blank : 'jump',
             // (Settings › Playback › Player screen: BACK leaves at once, or asks first ('twice');
             // the time on the bar: the length and "Ends", or what's left (−mm:ss), or both)
-            back: d.back === 'twice' ? 'twice' : 'once',
-            time: d.time === 'left' || d.time === 'both' ? d.time : 'ends' };
+            back: d.back === 'twice' || d.back === 'osd' ? d.back : 'once',   // (Player screen › BACK while a video plays: at once, press twice, or the bar first)
+            time: d.time === 'left' || d.time === 'both' || d.time === 'clock' ? d.time : 'ends',   // ('clock': the length on the bar, the time of day alone at the top right)
+            // (how long the progress bar stays: 4 s, 8 s or always; the clock: with it, 8 s or always)
+            osd: d.osd === 'double' || d.osd === 'always' ? d.osd : 'normal',
+            clock: d.clock === 'double' || d.clock === 'always' ? d.clock : 'bar' };
     }
     function setPlayerCfg(cfg) {   // (what's given changes; the rest stays)
         var d = U.store.get(PLAYERCFG_KEY, {}) || {};

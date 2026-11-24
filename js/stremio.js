@@ -163,7 +163,7 @@ var Stremio = (function () {
         var p = U.store.get(PREFS_KEY, {}) || {};
         return { lang: typeof p.lang === 'string' && p.lang ? p.lang : 'auto',   // Settings > Appearance > Language (js/i18n.js: 'auto', 'en', 'es', 'pt-BR')
             posterShape: p.posterShape || 'portrait', accent: p.accent || 'indigo', bg: p.bg || 'dark',
-            look: p.look === 'modern' ? 'modern' : 'classic',   // Settings > Appearance: Classic, or Modern (a backdrop behind Home, the title's logo, rounder posters)
+            look: p.look === 'classic' ? 'classic' : 'modern',   // Settings > Appearance: Modern (the default since 2.4.9.4: a backdrop behind Home, the title's logo, rounder posters), or Classic (kept where it's saved)
             effects: p.effects === 'light' || p.effects === 'full' ? p.effects : 'auto',   // ...Modern's blur and motion: by the TV (auto), off (light) or on (full)
             zoom: [110, 120, 130, 140].indexOf(p.zoom) !== -1 ? p.zoom : 100,   // Settings > Appearance: everything bigger (percent)
             rowCards: p.rowCards === 'all' || [50, 100, 200].indexOf(p.rowCards) !== -1 ? p.rowCards : 30,   // Settings > Home: titles in a Home row ('all': Unlimited)

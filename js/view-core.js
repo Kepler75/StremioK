@@ -51,13 +51,30 @@ var ViewParts = {};
 
     // A QR code for the phone (an addon's link or setup page): the code holds the whole link;
     // what's written under it is masked (keys, tokens: as everywhere on screen). lines: notes.
+    // (the QR not drawn — its script not loaded, no canvas, or it threw: said so in its place, and
+    // logged, so the address under it is still there to type)
     function qrSpot(text) {
         var spot = U.el('div', 'qr-spot');
+        function notDrawn(why) {
+            U.log('qr', 'QR not drawn: ' + why);
+            spot.appendChild(U.el('div', 'qr-note', U.t('The QR couldn’t be drawn: type the address below on your phone.')));
+        }
         (typeof qrcode !== 'undefined' ? Promise.resolve() : U.loadScript('js/qrcode.js')).then(function () {
             var cv = U.qrCanvas(text, 0, { level: 'L', quiet: 2, fit: 260 });
-            if (cv) { spot.appendChild(cv); }
-        }, function () {});
+            if (cv) { spot.appendChild(cv); } else { notDrawn('no canvas'); }
+        }).then(null, function (e) { notDrawn((e && e.message) || String(e)); });
         return spot;
+    }
+    // A one-time phone page opened (url): its address and what to do shown first, then the QR,
+    // so a QR that fails still leaves both.
+    function qrShow(spot, link, how, url, text) {
+        link.textContent = url;
+        how.textContent = text;
+        try { spot.appendChild(qrSpotCanvas(url)); } catch (e) { U.log('qr', 'QR not drawn: ' + ((e && e.message) || e)); }
+    }
+    // The page not opened (the service's answer, or something after it, failed): logged, and said.
+    function pageFailed(what, how, text) {
+        return function (e) { U.log('qr', what + ': the phone page didn’t open (' + ((e && e.message) || e) + ')'); how.textContent = text; };
     }
     function qrModal(title, text, lines) {
         var existing = document.querySelector('.modal-overlay');
@@ -132,12 +149,11 @@ var ViewParts = {};
         if (typeof YTPlay === 'undefined' || !YTPlay.entryOpen) { how.textContent = U.t('Type it with the TV’s keyboard.'); return; }
         YTPlay.ensureService().then(function () { return YTPlay.entryOpen(o.what); }).then(function (r) {
             if (over) { if (r && r.token) { YTPlay.entryClose(r.token); } return; }
+            if (!r || !r.url) { throw new Error('no page'); }
             token = r.token;
-            spot.appendChild(qrSpotCanvas(r.url));
-            link.textContent = r.url;
-            how.textContent = U.t('Scan it with your phone (on the same Wi-Fi as the TV), then type or paste it there. Only for the next 5 minutes, and once. It travels unencrypted over your home network: use it only on a network you trust.');
+            qrShow(spot, link, how, r.url, U.t('Scan it with your phone (on the same Wi-Fi as the TV), then type or paste it there. Only for the next 5 minutes, and once. It travels unencrypted over your home network: use it only on a network you trust.'));
             poll();
-        }, function () { if (!over) { how.textContent = U.t('Your phone can’t reach the TV just now (no home network, or StremioK’s service isn’t running): type it instead.'); } });
+        }).then(null, function (e) { if (!over) { pageFailed('Text from the phone', how, U.t('Your phone can’t reach the TV just now (no home network, or StremioK’s service isn’t running): type it instead.'))(e); } });
     }
     function qrSpotCanvas(text) { var s = qrSpot(text); s.className = ''; return s; }
     // A file given to the phone (an export: YTPlay.entryGive): a QR to the service's one-time page
@@ -175,11 +191,9 @@ var ViewParts = {};
             if (over) { if (r && r.token) { YTPlay.entryClose(r.token); } return; }
             if (!r || !r.url) { throw new Error('no page'); }
             token = r.token;
-            spot.appendChild(qrSpotCanvas(r.url));
-            link.textContent = r.url;
-            how.textContent = U.t('Scan it with your phone (on the same Wi-Fi as the TV): the page shows the file to copy or download. For the next 5 minutes, unencrypted over your home network: only on a network you trust.');
+            qrShow(spot, link, how, r.url, U.t('Scan it with your phone (on the same Wi-Fi as the TV): the page shows the file to copy or download. For the next 5 minutes, unencrypted over your home network: only on a network you trust.'));
             poll();
-        }, function () { if (!over) { how.textContent = U.t('Your phone can’t reach the TV just now (no home network, or StremioK’s service isn’t running).'); } });
+        }).then(null, function (e) { if (!over) { pageFailed(title, how, U.t('Your phone can’t reach the TV just now (no home network, or StremioK’s service isn’t running).'))(e); } });
     }
 
     // Show `overlay` (already in the page) as the modal: focus moves into it, and
@@ -582,7 +596,7 @@ var ViewParts = {};
         var can = items.filter(function (it) { return !it.have; });
         var go = U.el('div', 'pill focusable modal-btn');
         function ticked() { return items.filter(function (it) { return on[it.key]; }).map(function (it) { return it.key; }); }
-        function drawGo() { go.textContent = opts.button(ticked().length); }
+        function drawGo() { go.textContent = '▶  ' + opts.button(ticked().length); }   // (▶: PLAY does it too, wherever focus is)
         var all = U.el('div', 'pick-item focusable', can.length && can.every(function (it) { return on[it.key]; }) ? U.t('Select none') : U.t('Select all'));   // (all ticked at first: an export's)
         all.__onselect = function () {
             var every = can.every(function (it) { return on[it.key]; });
@@ -623,17 +637,27 @@ var ViewParts = {};
             phone.__onselect = function () { var t = ticked(); closeModal(); phonePick(title, items.filter(function (it) { return !it.have; }), t, opts, onDone); };   // (closed first: focus back on the screen, as phonePick's own close expects)
             row.appendChild(phone);
         }
-        box.appendChild(row);
-        box.appendChild(listEl);
         var under = U.el('div', 'modal-row pick-under');   // (Cancel under the list: the row above stays one line)
-        under.appendChild(cancel);
-        box.appendChild(under);
         var first = listEl.firstChild, end = listEl.children[listEl.children.length - 1];
-        if (first) { first.__goUP = function () { return go; }; }
-        Array.prototype.forEach.call(row.children, function (b) { b.__goUP = function () { return false; }; b.__goDOWN = function () { return first || cancel; }; });
-        if (end) { end.__goDOWN = function () { return cancel; }; }
-        cancel.__goUP = function () { return end || go; };
-        cancel.__goDOWN = function () { return false; };
+        if (opts.below) {   // (a short list, an export's: its button under it, next to Cancel)
+            box.appendChild(listEl);
+            while (row.firstChild) { under.appendChild(row.firstChild); }
+            under.appendChild(cancel);
+            box.appendChild(under);
+            if (first) { first.__goUP = function () { return false; }; }
+            if (end) { end.__goDOWN = function () { return go; }; }
+            Array.prototype.forEach.call(under.children, function (b) { b.__goUP = function () { return end || false; }; b.__goDOWN = function () { return false; }; });
+        } else {
+            box.appendChild(row);
+            box.appendChild(listEl);
+            under.appendChild(cancel);
+            box.appendChild(under);
+            if (first) { first.__goUP = function () { return go; }; }
+            Array.prototype.forEach.call(row.children, function (b) { b.__goUP = function () { return false; }; b.__goDOWN = function () { return first || cancel; }; });
+            if (end) { end.__goDOWN = function () { return cancel; }; }
+            cancel.__goUP = function () { return end || go; };
+            cancel.__goDOWN = function () { return false; };
+        }
         Array.prototype.forEach.call(box.querySelectorAll('.focusable'), function (n) { n.__onplay = function () { go.__onselect(); }; });   // (PLAY: as the button, wherever focus is; BACK: as Cancel)
         overlay.appendChild(box);
         document.body.appendChild(overlay);
@@ -679,11 +703,9 @@ var ViewParts = {};
             if (over) { if (r && r.token) { YTPlay.entryClose(r.token); } return; }
             if (!r || !r.url) { throw new Error('no page'); }
             token = r.token;
-            spot.appendChild(qrSpotCanvas(r.url));
-            link.textContent = r.url;
-            how.textContent = U.t('Scan it with your phone (on the same Wi-Fi as the TV), tick them there and send. Only for the next 5 minutes, and once; unencrypted over your home network.');
+            qrShow(spot, link, how, r.url, U.t('Scan it with your phone (on the same Wi-Fi as the TV), tick them there and send. Only for the next 5 minutes, and once; unencrypted over your home network.'));
             poll();
-        }, function () { if (!over) { how.textContent = U.t('Your phone can’t reach the TV just now (no home network, or StremioK’s service isn’t running).'); } });
+        }).then(null, function (e) { if (!over) { pageFailed('Tick on the phone', how, U.t('Your phone can’t reach the TV just now (no home network, or StremioK’s service isn’t running).'))(e); } });
     }
 
     function _current() {

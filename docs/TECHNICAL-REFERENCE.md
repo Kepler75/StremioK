@@ -227,6 +227,8 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
   can't be restored, the stream opens again where it was.
 - **A live channel whose stream ends** is counted like a stall: if it keeps ending, it stops and
   says so.
+- **An HLS source refused before it plays** (not through the service yet) is tried once through
+  the [relay](#live-relay), with its headers, whatever *HLS through StremioK's service* says.
 - **An HLS quality that won't start** steps down, then falls back to Auto.
 
 ### Video quality

@@ -230,9 +230,38 @@ var PlayerParts = {};
         liftSubs(barShown() ? SUBS_OVER_BAR : SUBS_OVER_OSD);
         if (wasHidden && S.ctx) { renderOSD(); }   // it isn't kept current while hidden
         if (_osdTimer) { clearTimeout(_osdTimer); _osdTimer = null; }
-        if (!sticky) { _osdTimer = setTimeout(hideOSD, 4000); }
+        var ms = osdMs();
+        if (!sticky && ms) { _osdTimer = setTimeout(hideOSD, ms); }
+        loneClock(false);   // (the bar's own clock shows: not the one on its own)
     }
-    function hideOSD() { U.byId('player-osd').className = 'hidden'; liftSubs(0); }
+    function hideOSD() { U.byId('player-osd').className = 'hidden'; liftSubs(0); lingerClock(); }
+    // Settings › Playback › Player screen › Progress bar on screen: OSD_MS (as it always was), twice
+    // that, or always (until hidden: BACK, with that choice, or a key that hides it).
+    var OSD_MS = 4000;
+    function osdMs() { var v = P.playerCfg ? P.playerCfg().osd : 'normal'; return v === 'always' ? 0 : v === 'double' ? OSD_MS * 2 : OSD_MS; }
+    // ...Clock on screen: the time of day (and when it ends) at the top right with the progress bar
+    // (as it always was), or on its own after the bar has gone, OSD_MS more (twice the bar's time), or
+    // always while something plays (not behind the menus, nor a channel's preview).
+    var _clockTimer = null, _clockTick = null;
+    function lingerClock() {
+        var v = P.playerCfg ? P.playerCfg().clock : 'bar';
+        if (!S.active || S.behind || v === 'bar') { loneClock(false); return; }
+        loneClock(true);
+        if (v === 'double') { _clockTimer = setTimeout(function () { loneClock(false); }, OSD_MS); }
+    }
+    function loneClock(on) {
+        if (_clockTimer) { clearTimeout(_clockTimer); _clockTimer = null; }
+        var el = U.byId('player-clock');
+        if (!on) {
+            if (_clockTick) { clearInterval(_clockTick); _clockTick = null; }
+            if (el) { el.className = 'hidden'; }
+            return;
+        }
+        if (!el) { el = U.el('div', 'hidden'); el.id = 'player-clock'; document.body.appendChild(el); }
+        fillClock(el);
+        el.className = '';
+        if (!_clockTick) { _clockTick = setInterval(function () { var c = U.byId('player-clock'); if (c && c.className !== 'hidden' && S.active) { fillClock(c); } }, 10000); }
+    }
     function osdHidden() { return U.byId('player-osd').className.indexOf('hidden') !== -1; }
 
     // ---------- chapters (a YouTube video's, from the service: S.ytInfo.chapters; a Jellyfin
@@ -364,15 +393,17 @@ var PlayerParts = {};
     function clock(sec) { var d = new Date(sec * 1000); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); }
     if (typeof EPG !== 'undefined' && EPG.onChange) { EPG.onChange(function () { if (S.active && S.isLive) { renderOSD(); } }); }
     function timeShown() { return P.playerCfg ? P.playerCfg().time : 'ends'; }
+    // The time of day, and under it, when what plays has a length, when it ends (at this pace: later
+    // while paused). The bar's clock, and the one on its own (Clock on screen).
+    function fillClock(ck) {
+        ck.textContent = clock(Date.now() / 1000);
+        var left = !S.isLive && S.dur > 0 ? S.dur - S.cur : 0;
+        if (left > 30 && timeShown() !== 'left' && timeShown() !== 'clock') { ck.appendChild(U.el('div', 'osd-ends', U.t('Ends {time}', { time: clock(Date.now() / 1000 + left / (S.speed || 1)) }))); }
+    }
     function renderOSD() {
         U.byId('osd-title').textContent = S.ctx ? S.ctx.name : '';
         var ck = U.byId('osd-clock');   // (the time of day, top right while the bar is on screen)
-        if (ck) {
-            ck.textContent = clock(Date.now() / 1000);
-            // (under it, when what plays has a length: when it ends, at this pace — later while paused)
-            var left = !S.isLive && S.dur > 0 ? S.dur - S.cur : 0;
-            if (left > 30 && timeShown() !== 'left') { ck.appendChild(U.el('div', 'osd-ends', U.t('Ends {time}', { time: clock(Date.now() / 1000 + left / (S.speed || 1)) }))); }
-        }
+        if (ck) { fillClock(ck); }
         renderTags();
         renderChapters();
         if (S.isLive) {
@@ -397,7 +428,7 @@ var PlayerParts = {};
         U.byId('osd-progress').style.width = pct + '%';
         U.byId('osd-cur').textContent = U.fmtTime(S.cur);
         // (Settings › Playback › Player screen › Time shown: the length, or what's left as −mm:ss)
-        U.byId('osd-dur').textContent = timeShown() === 'ends' || !(S.dur > 0) ? U.fmtTime(S.dur) : '−' + U.fmtTime(Math.max(0, S.dur - S.cur));
+        U.byId('osd-dur').textContent = timeShown() === 'ends' || timeShown() === 'clock' || !(S.dur > 0) ? U.fmtTime(S.dur) : '−' + U.fmtTime(Math.max(0, S.dur - S.cur));
         if (scrubbing()) { renderScrub(); }
     }
 
@@ -453,7 +484,7 @@ var PlayerParts = {};
     // is what's learned from it (s.stream, through ctx.learnFor); the title, its episodes and
     // whether it's private stay.
     var SOURCE_FIELDS = ['url', 'variantUrl', 'initialQualityHeight', 'yt', 'ytLang', '_headers', 'localSubs', 'localFile', 'subExtra', 'sourceSubs', 'formatInfo', 'onStarted', 'onFailed', 'stream',
-        '_reported', 'fromStart', 'resumeSec', 'switching', 'viaService', '_relay', '_relayFor', '_relayCc', '_relayFix', '_ownUrl', '_av', '_played'];   // (_ownUrl: each copy its own link, see formatStart; _played: this source has played a second, reloads or not)
+        '_reported', 'fromStart', 'resumeSec', 'switching', 'viaService', '_relay', '_relayFor', '_relayCc', '_relayFix', '_ownUrl', '_av', '_played', '_svcTried', '_svcRetry'];   // (_ownUrl: each copy its own link, see formatStart; _played: this source has played a second, reloads or not)
     // keep: a source that didn't start gives way to the next (nextSourceOnFail): the same place to
     // resume, and Play from the start as it was.
     function replaceSource(s, keep) {
@@ -932,13 +963,18 @@ var PlayerParts = {};
                     if (S.playing && liveReconnects()) { U.log('player', 'Playback error: ' + err + ' (' + where(S.ctx.url) + ')'); liveDropped('Connection lost'); return; }
                     // A reconnect's try that didn't play → the next try.
                     if (!S.playing && _reco.tries) { if (!relayFailed()) { liveDropped(U.t('Couldn’t reconnect')); } return; }
-                    // Failed before it ever played (opened, maybe, but nothing shown) → retry / step down / Auto.
-                    if (!S.playing && (relayFailed() || tryFallback())) { return; }
-                    reportStart(false, err);   // (unless it had already played)
-                    U.log('player', 'Playback error: ' + err + ' (' + where(S.ctx && S.ctx.url) + ')');
-                    if (!S.playing) { failedStart(formatFailText(U.t('Playback error: {why}', { why: err }), err)); return; }
-                    toast(U.t('Playback error: {why}', { why: err }));
-                    exitLater();
+                    // Failed before it ever played (opened, maybe, but nothing shown) → through the
+                    // service once (serviceRetry) / retry / step down / Auto.
+                    if (!S.playing && (relayFailed() || serviceRetry(failed))) { return; }
+                    failed();
+                    function failed() {
+                        if (!S.playing && tryFallback()) { return; }
+                        reportStart(false, err);   // (unless it had already played)
+                        U.log('player', 'Playback error: ' + err + ' (' + where(S.ctx && S.ctx.url) + ')');
+                        if (!S.playing) { failedStart(formatFailText(U.t('Playback error: {why}', { why: err }), err)); return; }
+                        toast(U.t('Playback error: {why}', { why: err }));
+                        exitLater();
+                    }
                 }
             });
             if (drm) { drmSetup(drm); }
@@ -976,11 +1012,15 @@ var PlayerParts = {};
                 spinner(false);
                 if (relayFailed()) { return; }
                 if (_reco.tries) { liveDropped(U.t('Couldn’t reconnect')); return; }   // (a reconnect's try: the next one)
-                // Prepare failed → retry / step down / Auto.
-                if (tryFallback()) { return; }
-                U.log('player', 'Could not open: ' + (err && (err.name || err.message || err)) + ' (' + where(url) + ')');
-                reportStart(false, err && (err.name || err.message || err));
-                failedStart(S.ctx && S.ctx._drmWhy ? U.t('No license for this channel: {why}', { why: S.ctx._drmWhy }) : formatFailText(U.t('Could not open stream'), err && (err.name || err.message || err)));
+                // Prepare failed → through the service once (serviceRetry) / retry / step down / Auto.
+                if (serviceRetry(failed)) { return; }
+                failed();
+                function failed() {
+                    if (tryFallback()) { return; }
+                    U.log('player', 'Could not open: ' + (err && (err.name || err.message || err)) + ' (' + where(url) + ')');
+                    reportStart(false, err && (err.name || err.message || err));
+                    failedStart(S.ctx && S.ctx._drmWhy ? U.t('No license for this channel: {why}', { why: S.ctx._drmWhy }) : formatFailText(U.t('Could not open stream'), err && (err.name || err.message || err)));
+                }
             });
         } catch (e) {
             U.log('player', 'AVPlay failed: ' + (e && e.message));
@@ -1736,23 +1776,47 @@ var PlayerParts = {};
         }, failed);
     }
     P.liveSound = liveSound; P.setLiveSound = setLiveSound;
-    // HLS through StremioK's service (Settings › Playback › Seeking & buffering: 'off' | 'headers':
-    // sources with their own User-Agent, Referer or Cookie | 'all'; or ctx.viaService, hold OK on a
-    // source): the relay without the look, so every playlist and piece is fetched with the source's
-    // headers (the TV's player can't always send them). A film's relay keeps every link (film=1).
-    // Not YouTube, DRM, USB files or the service's own links; the service not answering: as it is.
+    // HLS through StremioK's service (Settings › Playback › Seeking & buffering: 'off' | 'headers'
+    // (the default): sources with their own User-Agent, Referer or Cookie | 'all'; or
+    // ctx.viaService, hold OK on a source): the relay without the look, so every playlist and piece
+    // is fetched with the source's headers (the TV's player can't always send them). A film's relay
+    // keeps every link (film=1). Not YouTube, DRM, USB files or the service's own links (hlsServiceOk);
+    // the service not answering: as it is.
     var HLS_LINK = /\.m3u8?(?:[?#]|$)/i;
-    function viaService(ctx) {
+    function hlsServiceOk(ctx) {
         if (!useAV || !ctx || ctx.yt || ctx.trailer || ctx.localFile || (ctx.stream && ctx.stream._drm)) { return false; }
         if (typeof YTPlay === 'undefined' || !YTPlay.liveOpen || YTPlay.installMode() === 'browser') { return false; }
         var url = ctx.url || '';
         if (!/^https?:\/\//i.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)[:\/]/i.test(url)) { return false; }
-        if (!HLS_LINK.test(url) && !(ctx.formatInfo && ctx.formatInfo.container === 'hls')) { return false; }
+        return HLS_LINK.test(url) || !!(ctx.formatInfo && ctx.formatInfo.container === 'hls');
+    }
+    function viaService(ctx) {
+        if (!hlsServiceOk(ctx)) { return false; }
         if (ctx.viaService) { return true; }
         var mode = P.playerCfg().hls;
         return mode === 'all' || (mode === 'headers' && !!U.sanitizeHeaders(ctx._headers));
     }
+    // An HLS stream the TV's player refused or couldn't open, before it played, not through the
+    // service yet (_svcTried: this source has been): once through the relay (_svcRetry), before a
+    // lower quality or the next source, whatever the setting: a host that wants headers the TV's
+    // player can't send, or refuses it. That not starting either (relayFailed, or the service not
+    // answering): failed(), the way it went on before, not the stream as it is again.
+    function serviceRetry(failed) {
+        var c = S.ctx;
+        if (S.playing || !c || c._played || c._relay || c._svcTried || _reco.tries || !hlsServiceOk(c)) { return false; }
+        c._svcTried = c._svcRetry = true;
+        U.log('player', 'Didn’t open: trying it through StremioK’s service, with the source’s headers (' + where(c.url) + ')');
+        spinner(true, U.t('Trying it through StremioK’s service…'));
+        var live = !!S.isLive, token = _playToken;
+        YTPlay.liveOpen(c.url, c._headers, true, { fix: false, film: !live }).then(function (r) {
+            if (S.ctx !== c || !S.active || token !== _playToken) { return; }
+            if (!relayed(c, r, null, false)) { spinner(false); failed(); return; }
+            startAV(c.url);
+        }, function () { if (S.ctx === c && S.active && token === _playToken) { spinner(false); failed(); } });
+        return true;
+    }
     function startViaService(ctx, settle) {
+        ctx._svcTried = true;   // (not again by serviceRetry)
         var live = !!S.isLive, known = live && liveFixable(ctx) ? liveKnown(ctx.url) : null;
         YTPlay.liveOpen(ctx.url, ctx._headers, true, { fix: !!(known && known.fix), film: !live }).then(function (r) {
             if (S.ctx !== ctx || !S.active) { return; }
@@ -1827,7 +1891,9 @@ var PlayerParts = {};
             if (S.ctx !== ctx || !S.active || ctx.url !== url) { return; }
             if (cc && cc.length && !ctx._relayCc) { ctx._ccOffer = cc; }
             if (cc && cc.length && ccWanted(ctx, cc)) { ccOn(ctx, U.t('Adding this channel’s captions…')); return; }
-            if (known || !fix || ctx._relay || !relayed(ctx, r, null, true)) { return; }   // (the sound: restarted for on its first look only)
+            // (the sound: restarted for on its first look only; a relay already that only passes it on
+            // (HLS through StremioK's service, or serviceRetry): the look's, which repacks it, instead)
+            if (known || !fix || (ctx._relay && (ctx._relayFix || ctx._relayCc)) || !relayed(ctx, r, null, true)) { return; }
             U.log('player', 'Live sound repacked by StremioK\'s service (' + (r.why || '') + ')');
             reopen(U.t('Fixing this channel’s sound…'));
         }, function () {});
@@ -1851,6 +1917,11 @@ var PlayerParts = {};
     // The relay didn't start (StremioK's service gone): the channel as it is.
     function relayFailed() {
         if (S.playStarted || !S.ctx || !S.ctx._relay) { return false; }
+        if (S.ctx._svcRetry) {   // (serviceRetry's: the stream as it is had failed already, so on as it would have)
+            U.log('player', 'Didn’t start through StremioK’s service either');
+            S.ctx._relay = null; S.ctx._relayFor = null;
+            return false;
+        }
         U.log('player', 'StremioK’s service relay didn’t start: playing the stream as it is');
         S.ctx._relay = null;
         startAV(S.ctx.url);
@@ -2151,7 +2222,7 @@ var PlayerParts = {};
         recoReset();
         if (_ticker) { clearInterval(_ticker); _ticker = null; }
         if (_osdTimer) { clearTimeout(_osdTimer); _osdTimer = null; }
-        hideOSD();
+        hideOSD(); loneClock(false);
         closeSubs();
         if (useAV) {
             try { avplay.stop(); } catch (e) {}
@@ -2174,7 +2245,7 @@ var PlayerParts = {};
     }
 
     // ----- for the other parts (and js/player.js) -----
-    P.isPreview = isPreview; P.init = init; P.isActive = isActive; P.inUse = inUse; P.isBehind = isBehind; P.toBehind = toBehind; P.fromBehind = fromBehind; P.behindKey = behindKey; P.showOSD = showOSD; P.hideOSD = hideOSD; P.renderOSD = renderOSD; P.play = play; P.playLinked = playLinked; P.replaceSource = replaceSource;
+    P.isPreview = isPreview; P.init = init; P.isActive = isActive; P.inUse = inUse; P.isBehind = isBehind; P.toBehind = toBehind; P.fromBehind = fromBehind; P.behindKey = behindKey; P.showOSD = showOSD; P.hideOSD = hideOSD; P.osdHidden = osdHidden; P.renderOSD = renderOSD; P.play = play; P.playLinked = playLinked; P.replaceSource = replaceSource;
     P.updateHint = updateHint; P.startAV = startAV; P.startHTML5 = startHTML5;
     P.handleCredits = handleCredits; P.isPaused = isPaused; P.play_ = play_; P.pause_ = pause_;
     P.sponsorHighlight = sponsorHighlight;

@@ -480,14 +480,14 @@ where it applies. It goes round and closes after 5 seconds without a key.
 - *Video quality* (HLS streams: YouTube, and links to an `.m3u8`); it says so when a stream's
   qualities can't be read.
 - *Playback* (restart, rewind / forward).
-- *Speed*: 1×, or 2× and 4× without sound (the TV mutes them); under TizenBrew 0.5× to 2×. For this title; another source keeps it.
+- *Speed*: 1×, or 2× and 4× without sound; under TizenBrew 0.5× to 2×. For this title; another source keeps it.
 - *Picture*: Fit, Zoom or Stretch, remembered (a live channel keeps its own).
 - *Format* (an Xtream channel): MPEG-TS or HLS, kept for that channel.
 - *Stream info*.
 - *Reload*: opened again (a live channel at the live edge, a video where it is).
 - *Sleep timer*: Off, 30, 60 or 90 minutes, then playback stops (the menu shows what's left).
 
-With the progress bar, the time of day shows at the top right, and when it ends (*Ends 21:47*, at the speed playing). [Player screen](SETTINGS.md#player-screen) can show what's left instead (−42:10), and make BACK ask before leaving.
+With the progress bar, the time of day shows top right, and when it ends (*Ends 21:47*, at the speed playing). [Player screen](SETTINGS.md#player-screen) can show what's left (−42:10), make BACK ask or hide the bar, and keep bar and clock longer.
 
 ### Keys while it plays
 

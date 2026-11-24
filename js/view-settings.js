@@ -1412,7 +1412,7 @@
         row.__onselect = function () {
             var groups = Stremio.exportGroups();
             pickMany(U.t('Tick what to export'), groups.map(function (g) { return { key: g.key, label: g.label }; }),
-                { on: groups.filter(function (g) { return !g.off; }).map(function (g) { return g.key; }), button: function (n) { return U.t('Export {n}', { n: n }); } }, function (keys) {
+                { on: groups.filter(function (g) { return !g.off; }).map(function (g) { return g.key; }), below: true, button: function (n) { return U.t('Export {n}', { n: n }); } }, function (keys) {
                     V.phoneGive(U.t('Export configuration'), Stremio.exportSetup(keys, appVersion()),
                         U.t('It holds your addon links, playlist logins, API keys and MAC addresses: keep the file private. Not in it: your Trakt sign-in.'));
                 });
@@ -1425,7 +1425,7 @@
             usb.__onselect = function () {
                 var groups = Stremio.exportGroups();
                 pickMany(U.t('Tick what to export'), groups.map(function (g) { return { key: g.key, label: g.label }; }),
-                    { on: groups.filter(function (g) { return !g.off; }).map(function (g) { return g.key; }), button: function (n) { return U.t('Export {n}', { n: n }); } }, function (keys) {
+                    { on: groups.filter(function (g) { return !g.off; }).map(function (g) { return g.key; }), below: true, button: function (n) { return U.t('Export {n}', { n: n }); } }, function (keys) {
                         usbDrive(function (d) { saveToDrive(d, 'backup', Stremio.exportSetup(keys, appVersion())); });
                     });
             };
@@ -2681,14 +2681,18 @@
         focusSettings();
     }
     // Playback › Player screen: what BACK does while a video plays; the time on the bar.
-    var BACKS = [['once', U.t('Leave at once (default)')], ['twice', U.t('Press twice: the first one asks')]];
-    var TIMES = [['ends', U.t('The length, and when it ends (default)')], ['left', U.t('What’s left (−42:10)')], ['both', U.t('What’s left, and when it ends')]];
+    var BACKS = [['once', U.t('Leave at once (default)')], ['twice', U.t('Press twice: the first one asks')], ['osd', U.t('Hide the progress bar, or leave')]];
+    var TIMES = [['ends', U.t('The length, and when it ends (default)')], ['left', U.t('What’s left (−42:10)')], ['both', U.t('What’s left, and when it ends')], ['clock', U.t('Just the time of day')]];
+    var OSD_TIMES = [['normal', U.t('4 seconds (default)')], ['double', U.t('8 seconds')], ['always', U.t('Always')]];
+    var CLOCK_TIMES = [['bar', U.t('With the progress bar (default)')], ['double', U.t('8 seconds')], ['always', U.t('Always')]];
     function settingsPlayerScreen(wrap) {
         wrap.appendChild(U.el('h2', null, U.t('Player screen')));
-        var store = { get: function () { var c = Player.playerCfg(); return { back: c.back, time: c.time }; },
-            set: function (cfg) { Player.setPlayerCfg({ back: cfg.back, time: cfg.time }); } };
+        var store = { get: function () { var c = Player.playerCfg(); return { back: c.back, time: c.time, osd: c.osd, clock: c.clock }; },
+            set: function (cfg) { Player.setPlayerCfg({ back: cfg.back, time: cfg.time, osd: cfg.osd, clock: cfg.clock }); } };
         wrap.appendChild(subPickRow(U.t('BACK while a video plays'), BACKS, 'back', store));
         wrap.appendChild(subPickRow(U.t('Time shown'), TIMES, 'time', store));
+        wrap.appendChild(subPickRow(U.t('Progress bar on screen'), OSD_TIMES, 'osd', store));
+        wrap.appendChild(subPickRow(U.t('Clock on screen'), CLOCK_TIMES, 'clock', store));
         wrap.appendChild(U.el('div', 'hint', U.t('Press twice: BACK only says “Press BACK again to leave”, and leaves if pressed again within 3 seconds. A live channel kept behind the menus isn’t asked.')));
         focusSettings();
     }

@@ -674,3 +674,7 @@ body.fx-full .row-loading .row-scroller { -webkit-animation: ph-pulse 1.6s ease-
 #osd-clock:empty { display: none; }
 .pf-badge.pf-pic { background-size: cover; background-position: center; background-repeat: no-repeat; }   /* (a profile's picture in place of its initial) */
 #osd-clock .osd-ends { font-size: 22px; font-weight: normal; text-align: right; opacity: 0.85; margin-top: 2px; }   /* (when what plays ends, under the time) */
+/* the clock on its own, once the bar has gone (Settings › Playback › Player screen › Clock on screen): as #osd-clock */
+#player-clock { position: fixed; top: 40px; right: 60px; z-index: 21; font-size: 34px; font-weight: bold; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,0.9); }
+#player-clock:empty { display: none; }
+#player-clock .osd-ends { font-size: 22px; font-weight: normal; text-align: right; opacity: 0.85; margin-top: 2px; }

@@ -3,6 +3,29 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.4.10 — 2026-11-24
+New:
+- **Retry through StremioK's service:** an HLS source the TV refuses before it plays gets one
+  more try through StremioK's service, with its headers, before the next source.
+- **HLS through StremioK's service starts on *Sources that need headers*:** sources whose addon
+  gives them a User-Agent, Referer or Cookie go through the service from the start. If you set
+  Off yourself, it stays Off.
+- **Modern look by default:** new installs start on Modern. A TV that already has its settings
+  keeps the look it had.
+- **Progress bar and clock on screen:** choose how long each stays up. The progress bar: 4
+  seconds (as before), 8 seconds or always. The clock: with the progress bar (as before), 8
+  seconds or always.
+- **On screen Clock:** a new option to show JUST the time of day.
+- **BACK:** a third choice for *BACK while a video plays*: *Hide the progress bar, or leave*.
+  With the bar on screen, BACK only hides it; without it, BACK leaves.
+- **Tick lists:** Export configuration's *▶ Export* button is now under the list, next to
+  *Cancel*. Every tick list's button shows ▶, since the remote's ▶ Play key does the same.
+
+Fixed, just in case:
+- **Phone pages stuck on "Opening the page for your phone…":** Export configuration and the
+  other pages that open on your phone now say when something went wrong. A QR that can't be
+  drawn says so, with the address to type below it.
+
 ## 2.4.9 — 2026-11-23
 New:
 - **Episodes in the player:** on the quick bar for a series, a strip of the season's episodes

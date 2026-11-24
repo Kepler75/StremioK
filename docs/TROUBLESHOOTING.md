@@ -116,6 +116,7 @@ sources. Try again later.
 |--------------|---------------------|
 | Nothing plays; the screen stays black | A source not playing after 45 seconds gives way to the next; with none left, StremioK says so. |
 | It stalls | A stalled stream reloads where it was; if it keeps stalling, you're back on the source list (one that never played: the next source). Try another source, or *Buffer: More* / *Most* (Settings › Playback › Seeking & buffering) on a slow connection. |
+| An HLS source is refused (`PLAYER_ERROR_CONNECTION_FAILED`) | Tried once through StremioK's service, then the next source. |
 | An HLS quality won't start | It steps down a quality, then falls back to *Auto*. |
 | An HLS source stays on "Opening stream…" while direct ones play | Its host may want a Referer (or User-Agent, Cookie) on every piece, which the TV's player can't always send. Hold OK on it › *Play through StremioK's service*; for all such sources, *HLS through StremioK's service* (Settings › Playback › Seeking & buffering). |
 | A live channel keeps reconnecting | Its connection drops, or its server stops the stream; StremioK opens it again ("Connection lost — reconnecting…"). How often is up to *Reconnect live channels* (Settings › Playback › Live TV). |

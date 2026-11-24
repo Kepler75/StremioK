@@ -16,6 +16,8 @@
     function seekBy() { return P.seekBy.apply(null, arguments); }   // core
     function seekTo() { return P.seekTo.apply(null, arguments); }   // core
     function showOSD() { return P.showOSD.apply(null, arguments); }   // core
+    function hideOSD() { return P.hideOSD.apply(null, arguments); }   // core
+    function osdHidden() { return P.osdHidden.apply(null, arguments); }   // core
     function aspectDef() { return P.aspectDef.apply(null, arguments); }   // store
     function playerCfg() { return P.playerCfg.apply(null, arguments); }   // store
     function setPlayerCfg() { return P.setPlayerCfg.apply(null, arguments); }   // store
@@ -1360,7 +1362,9 @@
         // Scrubbing: OK jumps now, BACK cancels (instead of pausing / leaving the player).
         if (_scrub && action === 'OK') { commitScrub(); return true; }
         if (_scrub && action === 'BACK') { cancelScrub(); return true; }
-        // No overlay: default transport on the D-pad.
+        // No overlay: default transport on the D-pad. (Player screen › BACK while a video plays ›
+        // Hide the progress bar, or leave: with the bar on screen, BACK only hides it)
+        var barUp = action === 'BACK' && playerCfg().back === 'osd' && !osdHidden() && !!S.ctx && !S.ctx.trailer;
         showOSD(false);
         switch (action) {
             case 'OK': togglePlay(); return true;
@@ -1368,7 +1372,7 @@
             case 'LEFT': if (S.isLive && canChannels()) { openChannels(); return true; } scrub(-seekStep()); return true;
             case 'UP': openBar(); return true;
             case 'DOWN': openMenu(); return true;
-            case 'BACK': if (P.toBehind && P.toBehind()) { return true; } if (backAsks()) { return true; } exit(); return true;
+            case 'BACK': if (barUp) { hideOSD(); return true; } if (P.toBehind && P.toBehind()) { return true; } if (backAsks()) { return true; } exit(); return true;
         }
         return true;
     }
