@@ -3,6 +3,13 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.4.12 — 2026-11-25
+Fixed:
+- **A source playing through StremioK's service froze at the same moment every time:** with
+  *Leave out other subtitle tracks* on, or a source that needs headers, playback could stop for
+  good at one spot in a file, because the debrid host stopped sending from there. The service now
+  asks for the file in pieces, and playback goes on.
+
 ## 2.4.11 — 2026-11-25
 New:
 - **Side menu look:** a third choice in Settings › Appearance › Look. Settings and your profile

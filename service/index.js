@@ -2596,6 +2596,7 @@ function handle(req, res) {
 // stream as it comes, its sound repacked on the way (liveStream); &raw=1 asks for that one.
 var HLS_MASTER_MAX = 524288;   // (an HLS quality list: /live/master)
 var LIVE_RAW_PROBE = 1048576, LIVE_RAW_CHUNK = 65536;
+var FILE_WINDOW = 16 * 1048576;   // (a file relay's pieces asked of the host: see liveFile)
 var LIVE_MAX = 4, LIVE_IDLE_MS = 5 * 60 * 1000, LIVE_LINKS = 400, LIVE_LIST_MAX = 1048576, LIVE_SEG_MAX = 32 * 1048576, LIVE_PROBE = 1536 * 1024, LIVE_MS = 20000;
 var ADTS_RATES = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
 var _live = Object.create(null);   // (no prototype: whatever key it's asked for, nothing shared is reached)
@@ -3668,70 +3669,108 @@ function liveFile(s, req, res) {
     var plan = s.plan || null, want = plan ? /^bytes=(\d*)-(\d*)$/.exec(range || 'bytes=0-') : null, x = 0, y = '';
     if (plan && (!want || want[1] === '')) { plan = null; }
     if (plan) { x = +want[1]; y = want[2]; range = 'bytes=' + blankFrom(plan, x) + '-' + y; }
+    // A range with a start is asked of the host in FILE_WINDOW pieces, one after another (the
+    // player still gets one answer): an open-ended request from the TV's service to a debrid host
+    // stopped for good at the same place in a file (Real-Debrid, Tizen 6), where bounded ones went
+    // through. The pieces after the first go to the link the redirects ended on.
+    var win = /^bytes=(\d+)-(\d*)$/.exec(range), wFrom = win ? +win[1] : -1, wTo = win && win[2] !== '' ? +win[2] : -1;
+    var finalUrl = '', wEnd = -1, bl = null, at = 0, total = 0, last = 0, expect = -1;   // (expect: where the next piece must start)
     function stop() { gone = true; try { if (r) { r.abort(); } } catch (e) {} }
     res.on('close', stop);
     function fail(code, why) { if (gone) { return; } if (!res.headersSent) { send(res, code, 'text/plain', 'failed: ' + why); } else { try { res.end(); } catch (e) {} } stop(); }
     var timer = setTimeout(function () { if (!res.headersSent) { fail(504, 'timed out'); } }, LIVE_MS);
-    function get(url) {
+    function windowRange(from) { var to = from + FILE_WINDOW - 1; if (wTo >= 0 && wTo < to) { to = wTo; } if (wEnd >= 0 && wEnd < to) { to = wEnd; } return 'bytes=' + from + '-' + to; }
+    function get(url, ask) {
         var pu;
         try { pu = urllib.parse(url); } catch (e) { fail(400, 'bad link'); return; }
         if ((pu.protocol !== 'http:' && pu.protocol !== 'https:') || !dlHostOk(pu.hostname)) { fail(400, 'a link it can\'t follow'); return; }
         if (!hops) { firstHost = pu.hostname; }
         else if (!fileHopOk(firstHost, pu.hostname, s.lan)) { fail(403, 'a link into your home network'); return; }
         var h = liveHeaders(s);
-        if (range) { h.Range = range; }
+        if (ask) { h.Range = ask; }
         var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, headers: h };
         if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
         try {
             r = (pu.protocol === 'https:' ? https : http).get(opts, function (resp) {
                 if (gone) { resp.resume(); return; }
                 var sc = resp.statusCode;
-                if (sc >= 300 && sc < 400 && resp.headers.location && hops < 5) { resp.resume(); hops++; get(urllib.resolve(url, resp.headers.location)); return; }
+                if (sc >= 300 && sc < 400 && resp.headers.location && hops < 5) { resp.resume(); hops++; get(urllib.resolve(url, resp.headers.location), ask); return; }
                 if (sc !== 200 && sc !== 206) { resp.resume(); clearTimeout(timer); fail(sc >= 400 && sc < 600 ? sc : 502, 'HTTP ' + sc); return; }
                 clearTimeout(timer);
+                if (res.headersSent) { more(resp, sc); return; }   // (a piece after the first)
+                finalUrl = url;
+                var cr = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(String(resp.headers['content-range'] || ''));
+                if (win && sc === 206 && cr && +cr[1] === wFrom) { first(resp, +cr[2], +cr[3]); return; }
                 if (plan) { blanked(resp, sc); return; }
                 var out = { 'Content-Type': String(resp.headers['content-type'] || 'application/octet-stream'), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Accept-Ranges': 'bytes' };
                 if (resp.headers['content-length']) { out['Content-Length'] = resp.headers['content-length']; }
                 if (resp.headers['content-range']) { out['Content-Range'] = resp.headers['content-range']; }
                 res.writeHead(sc, out);
-                resp.on('data', function (c) {
-                    if (gone) { return; }
-                    s.last = Date.now();
-                    if (!res.write(c)) { resp.pause(); res.once('drain', function () { if (!gone) { resp.resume(); } }); }
-                });
-                resp.on('end', function () { if (!gone) { try { res.end(); } catch (e) {} } });
-                resp.on('error', function () { fail(502, 'the host stopped sending'); });
+                pipe(resp, function () { try { res.end(); } catch (e) {} });
             });
             guardSelf(r, function () { fail(400, 'a link it can\'t follow'); });
             r.on('error', function (e) { clearTimeout(timer); fail(502, (e && e.message) || 'network error'); });
         } catch (e) { clearTimeout(timer); fail(400, 'bad link'); }
     }
-    // The answer blanked (mkvBlanker) from where it starts, the player given its own range.
-    function blanked(resp, sc) {
-        var cr = /^bytes (\d+)-\d+\/(\d+)$/.exec(String(resp.headers['content-range'] || ''));
-        var from = sc === 206 && cr ? +cr[1] : 0, total = cr ? +cr[2] : +(resp.headers['content-length'] || 0);
-        if (from > x || !(total > 0)) { resp.resume(); fail(502, 'the host sent another part of the file'); return; }
-        var last = y !== '' ? Math.min(+y, total - 1) : total - 1;
-        var out = { 'Content-Type': String(resp.headers['content-type'] || 'application/octet-stream'), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Accept-Ranges': 'bytes', 'Content-Length': String(last - x + 1) };
-        if (req.headers.range) { out['Content-Range'] = 'bytes ' + x + '-' + last + '/' + total; }
-        res.writeHead(req.headers.range ? 206 : 200, out);
-        var bl = mkvBlanker(plan, from), at = from;
-        function give(b) {   // (what comes before x, read only to follow the blocks: not sent)
-            var n = b.length;
-            if (at + n <= x) { at += n; return true; }
-            if (at < x) { b = b.slice(x - at); }
-            at += n;
-            return b.length ? res.write(b) : true;
-        }
+    // The answer passed on as it comes (through give when blanked), the host paused while the
+    // player is behind; then done().
+    function pipe(resp, done) {
         resp.on('data', function (c) {
             if (gone) { return; }
             s.last = Date.now();
-            if (!give(bl.push(c))) { resp.pause(); res.once('drain', function () { if (!gone) { resp.resume(); } }); }
+            if (!give(bl ? bl.push(c) : c)) { resp.pause(); res.once('drain', function () { if (!gone) { resp.resume(); } }); }
         });
-        resp.on('end', function () { if (!gone) { give(bl.end()); try { res.end(); } catch (e) {} } });
+        resp.on('end', function () { if (!gone) { done(); } });
         resp.on('error', function () { fail(502, 'the host stopped sending'); });
     }
-    get(s.file);
+    // (what comes before x, read only to follow the blocks: not sent; x is 0 unblanked)
+    function give(b) {
+        var n = b.length;
+        if (at + n <= x) { at += n; return true; }
+        if (at < x) { b = b.slice(x - at); }
+        at += n;
+        return b.length ? res.write(b) : true;
+    }
+    // The first piece of a windowed range: the player's headers for the whole of it, then the
+    // pieces after it (more) until its end.
+    function first(resp, b, size) {
+        total = size;
+        wEnd = wTo >= 0 ? Math.min(wTo, total - 1) : total - 1;
+        if (plan) {
+            last = y !== '' ? Math.min(+y, total - 1) : total - 1;
+            if (wFrom > x) { resp.resume(); fail(502, 'the host sent another part of the file'); return; }
+            bl = mkvBlanker(plan, wFrom);
+        } else { x = wFrom; last = wEnd; }
+        at = wFrom;
+        var out = { 'Content-Type': String(resp.headers['content-type'] || 'application/octet-stream'), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Accept-Ranges': 'bytes', 'Content-Length': String(last - x + 1) };
+        if (req.headers.range) { out['Content-Range'] = 'bytes ' + x + '-' + last + '/' + total; }
+        res.writeHead(req.headers.range ? 206 : 200, out);
+        pipe(resp, function () { next(b + 1); });
+    }
+    function next(from) {
+        if (from > wEnd) { if (bl) { give(bl.end()); } try { res.end(); } catch (e) {} return; }
+        hops = 0; expect = from;
+        get(finalUrl, windowRange(from));
+    }
+    function more(resp, sc) {
+        var cr = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(String(resp.headers['content-range'] || ''));
+        if (sc !== 206 || !cr || +cr[1] !== expect) { resp.resume(); fail(502, 'the host sent another part of the file'); return; }
+        pipe(resp, function () { next(+cr[2] + 1); });
+    }
+    // Blanked, the host answering without the windows (no byte range: 200): from where it starts.
+    function blanked(resp, sc) {
+        var cr = /^bytes (\d+)-\d+\/(\d+)$/.exec(String(resp.headers['content-range'] || ''));
+        var from = sc === 206 && cr ? +cr[1] : 0;
+        total = cr ? +cr[2] : +(resp.headers['content-length'] || 0);
+        if (from > x || !(total > 0)) { resp.resume(); fail(502, 'the host sent another part of the file'); return; }
+        last = y !== '' ? Math.min(+y, total - 1) : total - 1;
+        var out = { 'Content-Type': String(resp.headers['content-type'] || 'application/octet-stream'), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Accept-Ranges': 'bytes', 'Content-Length': String(last - x + 1) };
+        if (req.headers.range) { out['Content-Range'] = 'bytes ' + x + '-' + last + '/' + total; }
+        res.writeHead(req.headers.range ? 206 : 200, out);
+        bl = mkvBlanker(plan, from); at = from;
+        pipe(resp, function () { give(bl.end()); try { res.end(); } catch (e) {} });
+    }
+    get(s.file, win ? windowRange(wFrom) : range);
 }
 function liveHeader(v, max) { v = String(v || ''); return v.length <= (max || 300) && /^[\x20-\x7e]+$/.test(v) ? v : ''; }
 function liveWho(q) {   // (a stream's own headers, as the app sends them)
