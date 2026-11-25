@@ -678,7 +678,7 @@ var ViewParts = {};
         box.appendChild(spot); box.appendChild(link); box.appendChild(how);
         var row = U.el('div', 'modal-row'), back = U.el('div', 'pill focusable modal-btn', U.t('Tick them on the TV'));
         var token = null, timer = null, over = false;
-        back.__onselect = function () { closeModal(); pickMany(title, items, { button: opts.button, haveText: opts.haveText, on: on, none: opts.none, phone: opts.phone }, onDone); };
+        back.__onselect = function () { closeModal(); pickMany(title, items, { button: opts.button, haveText: opts.haveText, on: on, none: opts.none, phone: opts.phone, below: opts.below }, onDone); };
         row.appendChild(back); box.appendChild(row); overlay.appendChild(box);
         document.body.appendChild(overlay);
         showModal(overlay, back);
@@ -734,7 +734,29 @@ var ViewParts = {};
     // the same: Watching, then the tabs, Discover and Search in your order (menuItems), then
     // Settings, on the left; StremioK on the right.
     // `active` is the key of the current view: a tab key, 'search' or 'settings'.
+    // Side menu (Settings › Appearance › Look): the main menu down the left edge of Home, Discover,
+    // Search, Settings and title pages (css/modern.css, body.menu-left).
+    // There: UP / DOWN go along it, RIGHT back to where focus was, LEFT stays; it opens wide (its
+    // names shown) while focus is in it. Content never reaches it with UP / DOWN, only with LEFT
+    // from its leftmost item (js/focus.js).
+    var SIDE_SCREENS = /^screen-(home|discover|search|settings|detail)$/;
+    function sideMenu(head) {
+        if (!document.body.classList || !document.body.classList.contains('menu-left')) { return false; }
+        for (var p = head; p && p.nodeType === 1; p = p.parentNode) { if (p.id && SIDE_SCREENS.test(p.id)) { return true; } }
+        return false;
+    }
+    V.sideMenu = sideMenu;
+    if (typeof Focus !== 'undefined' && Focus.onFocus) {
+        Focus.onFocus(function (n) {
+            var heads = document.querySelectorAll('.home-header');
+            for (var i = 0; i < heads.length; i++) { heads[i].classList[heads[i].contains(n) ? 'add' : 'remove']('menu-open'); }
+        });
+    }
+    // A title page has no item of its own: its menu marks the page it was opened from (the last
+    // main page's: a Home tab, Discover, Search), so going into the menu lands there, not on Watching.
+    var _lastMain = '';
     function buildTopMenu(active) {
+        if (active === 'detail') { active = _lastMain; } else { _lastMain = active; }
         var head = U.el('div', 'header home-header');
         // Going UP into the menu always lands on the current view's item (not the pill
         // nearest the column you left), and remembers where you came from so DOWN
@@ -743,16 +765,28 @@ var ViewParts = {};
             head.__lastContent = from;
             return head.querySelector('.tab-pill.active, .hchip.active');
         };
-        function down() { return focusBelowTop(head); }
+        function down() { return sideMenu(head) ? false : focusBelowTop(head); }   // (the side menu: DOWN goes along it)
+        // the side menu: the next / previous item along it (none: stays), RIGHT back to the page
+        function along(n, step) {
+            var all = head.querySelectorAll('.focusable'), i = Array.prototype.indexOf.call(all, n);
+            return all[i + step] || false;
+        }
+        function sideHooks(n) {
+            n.__goUP = function () { return sideMenu(head) ? along(n, -1) : undefined; };
+            n.__goDOWN = function () { return sideMenu(head) ? along(n, 1) : undefined; };
+            n.__goLEFT = function () { return sideMenu(head) ? false : undefined; };
+            n.__goRIGHT = function () { if (!sideMenu(head)) { return undefined; } focusBelowTop(head); return false; };
+        }
         var tabbar = U.el('div', 'tabbar-inline');
         // a pill: a Home tab, Discover (browse any catalog in full, its own screen), Search;
         // Settings a chip like them (name, then icon), after them
         function item(cls, key, label, icon, open, into) {
             var p = U.el('div', cls + ' focusable' + (key === active ? ' active' : ''));
-            p.appendChild(document.createTextNode(label));
+            p.appendChild(U.el('span', 'tab-label', label));   // (its own box: the side menu shows only the icon, then both)
             p.appendChild(U.el('span', 'tab-ic', icon));
             p.__onselect = open;
             p.__navDOWN = down;
+            sideHooks(p);
             into.appendChild(p);
         }
         menuItems().forEach(function (m) {
@@ -771,6 +805,7 @@ var ViewParts = {};
             chip.setAttribute('aria-label', me.name);
             chip.__onselect = function () { profilePicker(null, U.t('Switch profile')); };
             chip.__navDOWN = down;
+            sideHooks(chip);
             strip.appendChild(chip);
         }
         head.appendChild(strip);
@@ -799,11 +834,12 @@ var ViewParts = {};
             var lr = last.getBoundingClientRect();
             if (lr.width > 0 && lr.height > 0) { Focus.setFocus(last); return true; }
         }
-        var s = _current();
+        var s = _current(), side = sideMenu(head);
         var all = s.querySelectorAll('.focusable');
         for (var i = 0; i < all.length; i++) {
+            if (side && head.contains(all[i])) { continue; }
             var r = all[i].getBoundingClientRect();
-            if (r.height > 0 && r.top > 80 * U.zoom()) { Focus.setFocus(all[i]); return true; }   // (below the menu: on screen, zoomed)
+            if (r.height > 0 && (side ? r.width > 0 : r.top > 80 * U.zoom())) { Focus.setFocus(all[i]); return true; }   // (below the menu, or beside it: on screen, zoomed)
         }
         return false;
     }

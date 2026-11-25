@@ -84,13 +84,20 @@ var Focus = (function () {
             return;
         }
         var best = null;
+        // Side menu (Settings › Appearance › Look): the main menu down the left edge. From the
+        // page, a move never measures its way into it; LEFT with nothing further left on the page
+        // (or at the page's own edge: Discover's first column, the channel groups) goes to its
+        // current item, as UP into the top menu does. UP stops at the page's top (scrolling back
+        // up never runs into it; the Guide's top row: a second UP, see view-guide). Its own items
+        // go along it.
+        var side = sideMenuOf(), fromPage = !!side && !side.contains(_current);
         // An item that knows its neighbors (a Discover card: by its place in the grid) says
         // where a move goes, without measuring anything: a node, false (stay), or nothing
         // (work it out as usual).
         var hook = _current['__go' + dir];
         if (typeof hook === 'function') {
             var t = hook();
-            if (t === false) { return; }
+            if (t === false) { if (fromPage && dir === 'LEFT') { toSide(side); } return; }   // (the page's own edge: the side menu)
             if (t && t.nodeType === 1) { setFocus(enterGroup(t)); return; }
         }
         // UP/DOWN in a list of rows (Home, Search, Cast & more): only the next / previous
@@ -108,6 +115,7 @@ var Focus = (function () {
             if (best) { setFocus(enterGroup(best)); return; }
         }
         var skip = (inRow && (dir === 'LEFT' || dir === 'RIGHT' || _rowsAsked)) ? isRowCard : null;
+        if (fromPage) { var skip0 = skip; skip = function (n) { return side.contains(n) || (!!skip0 && skip0(n)); }; }
         // LEFT/RIGHT fast path: in a carousel row the only same-row candidates are the
         // card's siblings, so skip measuring the whole screen. At a row end (nothing
         // there) fall back to the full scan, which may reach a non-sibling on the same
@@ -126,7 +134,21 @@ var Focus = (function () {
             }
         }
         if (!best) { best = pick(dir, r, _scope.querySelectorAll('.focusable'), skip); }
+        if (!best && fromPage && dir === 'LEFT') { toSide(side); return; }   // (nothing further left on the page)
         if (best) { setFocus(enterGroup(best)); }
+    }
+    // Into the side menu, on the page's own item (as UP into the top menu).
+    function toSide(side) {
+        var n = side.__onEnter ? side.__onEnter(_current) : null;
+        n = n || side.querySelector('.focusable');
+        if (n) { setFocus(n); }
+    }
+    // The side menu on the page in use (body.menu-left, and a page that has it: see
+    // view-core's sideMenu), or null.
+    function sideMenuOf() {
+        if (!document.body || !document.body.classList || !document.body.classList.contains('menu-left') || !_scope) { return null; }
+        var head = _scope.querySelector('.home-header');
+        return head && typeof Views !== 'undefined' && Views.sideMenu && Views.sideMenu(head) ? head : null;
     }
 
     var _rowsAsked = false;   // (this move: every row that way was looked at, by nextRowPick)
@@ -254,6 +276,9 @@ var Focus = (function () {
 
     function onFocus(fn) { _onFocus.push(fn); }
 
-    return { setScope: setScope, move: move, setFocus: setFocus, current: current, onFocus: onFocus,
+    // (the Guide: its top row's second UP) true when there's a side menu and focus went into it
+    function intoSide() { var side = sideMenuOf(); if (!side || side.contains(_current)) { return false; } toSide(side); return true; }
+    function hasSide() { return !!sideMenuOf(); }
+    return { setScope: setScope, move: move, setFocus: setFocus, current: current, onFocus: onFocus, intoSide: intoSide, hasSide: hasSide,
              clickCurrent: clickCurrent, refresh: function () { return items(); } };
 })();

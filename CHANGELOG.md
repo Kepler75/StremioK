@@ -3,6 +3,35 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.4.11 — 2026-11-25
+New:
+- **Side menu look:** a third choice in Settings › Appearance › Look. Settings and your profile
+  always stay visible at the bottom. With Effects on, it slides open over a blurred backdrop.
+- **Clock correction** (Settings › Appearance): 1 hour back or 1 hour ahead, for TVs whose clock
+  in StremioK is an hour off while the TV's own clock is right, such as Brazil's old summer-time
+  rules.
+- **AIOStreams variants:** a variant picked with `?v=` after `manifest.json` (e.g. `?v=tizen3`) now
+  applies to everything that addon sends, not just its manifest.
+- **"Reading the file's headers…"** shows while StremioK waits to read an MKV's tracks, instead of
+  "Buffering…".
+- **Tick lists:** the ▶ button is under the list, next to *Cancel*, in the short lists too
+  (AIOManager's Sync, importing a configuration file or addons, Nuvio's profiles and plugins).
+
+Fixed:
+- **Channel browser:** the groups fold to a narrow strip while you're in the channels, so the
+  channel list gets the room; LEFT opens them again.
+- **Title pages:** the menu opens on the page you came from (a Home tab, Discover, Search) instead
+  of Watching.
+- **Large zoom (120–140%):**
+  - The player's menu (DOWN › Subtitles, Audio) and its channel list (LEFT on a channel) no longer
+    run off the screen.
+  - The channel browser's info pane always shows the channel, Now and Next, with a slightly smaller
+    preview at 130–140%.
+- **Tabs flashing at start-up:** tabs with nothing in them (Sports, YouTube) no longer appear for a
+  moment while Home loads.
+- **Effects on:** the focused title's highlight shows at once.
+- **BACK while a video is loading** (*Hide the progress bar, or leave*): BACK leaves straight away.
+
 ## 2.4.10 — 2026-11-24
 New:
 - **Retry through StremioK's service:** an HLS source the TV refuses before it plays gets one

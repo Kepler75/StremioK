@@ -168,6 +168,10 @@ The tabs, **Discover**, **Search** and **Settings ⚙**, then the StremioK name.
 reaches it. When they don't all fit, the menu scrolls sideways as you move along it (or pick an
 item by number); the StremioK name stays put.
 
+With the *Side menu* look (Settings › Appearance › Look) it runs down the left edge instead, as
+icons that show their names while you're in it. LEFT from a page's left edge reaches it (in the
+Guide, also UP pressed twice on the top row); UP and DOWN move along it, RIGHT goes back.
+
 ### Lists you put in order
 
 In Settings, a list you order (addons, playlists, YouTube catalogs, Home feeds, Search results,
@@ -663,7 +667,7 @@ An Xtream account's films and series come with its channels, as do a Stalker por
 ### Watching
 
 - **★ Favorites:** hold OK on a channel card, then *Add to favorites*. They're a row of their
-  own, first on the IPTV tab (all of them, up to 300) and on the Guide tab. **⟲ Recent**, after
+  own, first on the IPTV tab (all of them, up to 300) and on the Guide tab. **🕘 Recent**, after
   them: the last 25 channels you played.
 - **IPTV** and **Radio** rows, a row per group; a channel's details name its playlist.
 - **Films in a playlist:** a file's link (`.mkv`, `.mp4`…, an Xtream `/movie/` or `/series/`
@@ -681,8 +685,8 @@ An Xtream account's films and series come with its channels, as do a Stalker por
   favorites, then each group; ←/→ the group, ↑/↓ the channel, with what's on now and next. OK
   watches it, and CH+ / CH− then go through that group.
 - **The channel browser** (Settings › Home › *IPTV tab*): the IPTV tab as groups (addons' TV
-  feeds last), a group's channels with what's on now, and the focused one's now and next. OK watches it, hold OK
-  for its menu. *With preview*: rest on a channel and it plays in the box below, with sound;
+  feeds last), a group's channels with what's on now, and the focused one's now and next. In the
+  channels, the groups fold to a strip for room. OK watches it, hold OK for its menu. *With preview*: rest on a channel and it plays in the box below, with sound;
   not while one plays behind the menus.
 - **Behind the menus** (Settings › Playback › Live TV, off by default): BACK keeps a channel playing
   behind Home. ▶ brings it back full screen, ■ stops it, CH+ / CH− change it; opening anything

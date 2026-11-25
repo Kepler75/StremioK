@@ -36,9 +36,9 @@ Adding, ordering and managing addons: the user guide's
 | *Import addons from your Stremio account* | | Lists your Stremio account's addons to tick and import. |
 | *Import addons from Nuvio* | | The same for a Nuvio profile's addons (badged N). |
 | *AIOManager* | | Its own page: see [AIOManager](#aiomanager). |
-| Each addon | ⇈ ▲ ▼ ⇊ ↻; OK: *Turn off* / *Turn on*, *Remove*, *Share*, *Configure* | ↻ reloads it; switches off (kept, not asked) or on, removes, shows its link's QR code (with your tokens: your devices only) or setup page. Higher addons describe titles first. |
+| Each addon | ⇈ ▲ ▼ ⇊ ↻; OK: *Turn off* / *Turn on*, *Remove*, *Share*, *Configure* | ↻ reloads it. *Share*: its link's QR code (with your tokens: your devices only). Higher addons describe titles first. |
 | *Wait for addons* | **Normal** (12 s; sources 15, search 25), 20, 30, 45, 60 seconds | Longer helps an addon that sleeps when unused. |
-| *Local-network links from internet addons* | **Blocked**, Allowed | Blocked, internet addons can't point links into your home network; your network's addons and playlists still can. See [Privacy](PRIVACY.md#your-home-network). |
+| *Local-network links from internet addons* | **Blocked**, Allowed | Blocked: internet addons can't link into your home network; yours still can ([Privacy](PRIVACY.md#your-home-network)). |
 
 ### AIOManager
 
@@ -216,7 +216,7 @@ Addons (in order), playlists, portals, API keys, settings and, if ticked, your h
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
-| *BACK while a video plays* | **Leave at once**, Press twice, Hide the progress bar, or leave | Twice: the first asks; again within 3 s leaves. The bar: showing, only hidden. |
+| *BACK while a video plays* | **Leave at once**, Press twice, Hide the progress bar, or leave | Twice: the first asks; again within 3 s leaves. The bar: showing, only hidden (not while loading). |
 | *Time shown* | **The length, and when it ends**, What's left, Both, Just the time of day | What's left: −42:10 on the bar. |
 | *Progress bar on screen* | **4 seconds**, 8 seconds, Always | |
 | *Clock on screen* | **With the progress bar**, 8 seconds, Always | Time of day, top right. |
@@ -304,11 +304,12 @@ them.
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Language* | **Automatic** (the TV's; English where StremioK was already in use), English, or another language | Menus, buttons and messages; StremioK restarts in it. Titles and synopses come from your addons. |
-| *Look* | Classic, **Modern** | Modern: big backdrops and logos, rounder posters, a centered menu. |
+| *Look* | Classic, **Modern**, Side menu | Modern: big backdrops, logos, rounder posters, a centered menu. Side menu: menu on the left. |
 | *Effects* | **Auto (by the TV)**, Light, Full | Modern's blur, fades and motion. Auto: on from Tizen 6 (2021 TVs), off on older ones, where they'd slow it. |
 | *Background* | Black, **Dark**, Light Gray, White | The light ones have dark text; the player keeps its dark controls. |
 | *Accent color* | **Indigo**, and nine others | |
-| *Zoom* | **100%**, 110%, 120%, 130%, 140% | Everything bigger; fewer cards fit a row. Subtitles keep theirs. |
+| *Zoom* | **100%**, 110%, 120%, 130%, 140% | Everything bigger; subtitles keep theirs. |
+| *Clock correction* | **Off**, 1 hour back, 1 hour ahead | Moves times shown ([why](TROUBLESHOOTING.md#home)). |
 | *Poster orientation* | **Portrait**, Landscape | |
 | *Ratings on posters* | **Off**, On | A title's IMDb rating on its card (★ 7.8), when the catalog gives it. |
 | *Watched titles* | **Show**, Dim, Hide | Ticked (✓), dimmed too, or left out of Home's and Discover's rows (not Continue Watching). |

@@ -204,14 +204,18 @@
     // Look: Classic (the stylesheet as it is) or Modern (css/modern.css, its rules only under
     // body.look-modern). Effects, Modern's blur and motion: Auto turns them on where the TV's
     // browser can blur behind a panel (Tizen 6 and later), Light keeps them off, Full on.
-    var LOOKS = [['classic', U.t('Classic')], ['modern', U.t('Modern')]];
+    var LOOKS = [['classic', U.t('Classic')], ['modern', U.t('Modern')], ['side', U.t('Side menu')]];   // (Side menu: Modern, the menu down the left)
     var EFFECTS = [['auto', U.t('Auto (by the TV)')], ['light', U.t('Light')], ['full', U.t('Full')]];
     function applyAppearance() {
         var a = appearance(), p = Stremio.getPrefs();
         U.applyTheme(a.accent, a.bg);
         U.setLook(p.look, p.effects, a.bg === 'gray' || a.bg === 'white');
         U.setZoom(zoomPct() / 100);
+        U.setClockShift(p.clockShift);
     }
+    // Clock correction (#35): a TV whose web engine keeps old timezone rules (Brazil's summer time,
+    // dropped in 2019) shows every time an hour off; this moves them all (clock, Ends, Guide, Calendar).
+    var CLOCK_SHIFTS = [['0', U.t('Off')], ['-60', U.t('1 hour back')], ['60', U.t('1 hour ahead')]];
     // The interface's language (js/i18n.js): Automatic (the TV's own), or one picked; each named in
     // its own language. Another one: StremioK restarts in it (its phrases are read as it starts).
     function languageRow() {
@@ -248,6 +252,10 @@
         wrap.appendChild(subPickRow(U.t('Zoom'), ZOOMS, 'zoom', {
             get: function () { return { zoom: '' + zoomPct() }; },
             set: function (cfg) { Stremio.setPref('zoom', +cfg.zoom); applyAppearance(); }
+        }));
+        wrap.appendChild(subPickRow(U.t('Clock correction'), CLOCK_SHIFTS, 'clockShift', {
+            get: function () { return { clockShift: '' + Stremio.getPrefs().clockShift }; },
+            set: function (cfg) { Stremio.setPref('clockShift', +cfg.clockShift); applyAppearance(); markHomeDirty(); }   // (Home's Calendar days, drawn again)
         }));
         wrap.appendChild(subPickRow(U.t('Poster orientation'), POSTER_SHAPES, 'posterShape', {
             get: function () { return { posterShape: Stremio.getPrefs().posterShape }; },
@@ -764,7 +772,7 @@
         if (!fresh.length) { if (then) { then(); } return; }
         var adding = false;
         pickMany(U.t('Its Nuvio plugins: add them too? (for every profile on this TV)'), fresh.map(function (r, i) { return { key: '' + i, label: (r.name || U.t('Repository')) + '  ·  ' + shortHost(r.url) }; }),
-            { on: fresh.map(function (r, i) { return '' + i; }), button: function (n) { return U.tn(n, 'Add {n} repository', 'Add {n} repositories'); } }, function (keys) {
+            { on: fresh.map(function (r, i) { return '' + i; }), below: true, button: function (n) { return U.tn(n, 'Add {n} repository', 'Add {n} repositories'); } }, function (keys) {
                 adding = true;
                 U.spinner(true, U.t('Adding…'));
                 keys.reduce(function (chain, k) { return chain.then(function () { return Plugins.addRepo(fresh[+k].url).then(null, function () {}); }); }, Promise.resolve()).then(function () {
@@ -783,7 +791,7 @@
             return { key: '' + i, label: p.name + '  ·  ' + U.tn(p.addons.length, '{n} addon', '{n} addons') + ', ' + U.tn(Object.keys(p.watched).length, '{n} watched', '{n} watched'),
                 note: p.locked ? U.t('PIN-locked in Nuvio') : '' };
         });
-        pickMany(U.tn(room, 'Nuvio’s profiles: tick up to {n}', 'Nuvio’s profiles: tick up to {n}'), items, { button: function (n) { return U.tn(n, 'Import {n} profile', 'Import {n} profiles'); } }, function (keys) {
+        pickMany(U.tn(room, 'Nuvio’s profiles: tick up to {n}', 'Nuvio’s profiles: tick up to {n}'), items, { below: true, button: function (n) { return U.tn(n, 'Import {n} profile', 'Import {n} profiles'); } }, function (keys) {
             keys = keys.slice(0, room);
             U.spinner(true, U.t('Importing…'));
             var made = [];
@@ -1114,7 +1122,7 @@
             var u = (Stremio.normalizeAddonUrl && Stremio.normalizeAddonUrl(x.url)) || x.url;
             return { key: '' + i, label: (x.name || shortHost(x.url)) + '  ·  ' + shortHost(x.url), have: mine.indexOf(x.url) !== -1 || mine.indexOf(u) !== -1 };
         });
-        pickMany(U.t('Nuvio’s “{name}” addons: tick the ones to add', { name: p.name }), items, { button: function (n) { return U.tn(n, 'Import {n} addon', 'Import {n} addons'); } }, function (keys) {
+        pickMany(U.t('Nuvio’s “{name}” addons: tick the ones to add', { name: p.name }), items, { below: true, button: function (n) { return U.tn(n, 'Import {n} addon', 'Import {n} addons'); } }, function (keys) {
             var n = 0, last = null;
             keys.forEach(function (k) { var added = Stremio.addAddon(p.addons[+k].url); if (added) { n++; last = added; if (Stremio.setAddonOrigin) { Stremio.setAddonOrigin(added, 'nuvio'); } } });
             clearCatalogCache();
@@ -1130,7 +1138,7 @@
             var have = mine.indexOf(x.url) !== -1 || mine.indexOf(Stremio.normalizeUrl ? Stremio.normalizeUrl(x.url) : x.url) !== -1;
             return { key: '' + i, label: x.name + '  ·  ' + shortHost(x.url), have: have };
         });
-        pickMany(U.t('Your Stremio addons: tick the ones to add'), items, { button: function (n) { return U.tn(n, 'Import {n} addon', 'Import {n} addons'); } }, function (keys) {
+        pickMany(U.t('Your Stremio addons: tick the ones to add'), items, { below: true, button: function (n) { return U.tn(n, 'Import {n} addon', 'Import {n} addons'); } }, function (keys) {
             var n = 0, last = null;
             keys.forEach(function (k) { var added = Stremio.addAddon(list[+k].url); if (added) { n++; last = added; if (Stremio.setAddonOrigin) { Stremio.setAddonOrigin(added, 'stremio'); } } });
             clearCatalogCache();
@@ -1304,7 +1312,7 @@
                 renderSettings();
             }
             if (!items.length) { U.toast(U.t('Nothing to sync: AIOManager has no addons StremioK can use'), 4000); done(0); return; }
-            pickMany(U.t('Sync with AIOManager: tick what to do'), items, { button: function (n) { return U.t('Apply {n}', { n: n }); } }, function (keys) {
+            pickMany(U.t('Sync with AIOManager: tick what to do'), items, { below: true, button: function (n) { return U.t('Apply {n}', { n: n }); } }, function (keys) {
                 var added = 0, removed = 0, addedUrls = [];
                 keys.forEach(function (k) {
                     if (k.indexOf('add:') === 0) { var got = Stremio.addAddon(add[+k.slice(4)].url); if (got) { added++; addedUrls.push(got); Stremio.setAddonOrigin(got, 'aiomanager'); } }
@@ -1361,7 +1369,7 @@
         }
         if (here()) { App.back(); renderSettings(); }
         pickMany(U.t('In that file: tick what to import'), parsed.items.map(function (it, i) { return { key: '' + i, label: it.label, have: it.have, note: it.note }; }),
-            { button: function (n) { return U.t('Import {n}', { n: n }); } }, function (keys) {
+            { below: true, button: function (n) { return U.t('Import {n}', { n: n }); } }, function (keys) {
                 var imported = Stremio.applySetupEntries(keys.map(function (k) { return parsed.items[+k]; })), parts = [];
                 if (imported.addons) { parts.push(U.tn(imported.addons, '{n} addon', '{n} addons')); }
                 if (imported.playlists) { parts.push(U.tn(imported.playlists, '{n} playlist', '{n} playlists')); }
@@ -1514,7 +1522,7 @@
         var st = Stremio.iptvStatus(p.id), parts = [];
         if (!st.url) { return U.t('Not read yet'); }
         parts.push(U.tn(st.count || 0, '{n} channel', '{n} channels', { n: thousands(st.count || 0) }) + (st.groups ? ' ' + U.tn(st.groups, 'in {n} group', 'in {n} groups') : ''));
-        if (st.fetchedAt) { var d = new Date(st.fetchedAt); parts.push(U.t('downloaded {when}', { when: U.dayLabel(st.fetchedAt) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes()) })); }
+        if (st.fetchedAt) { var d = U.localDate(st.fetchedAt); parts.push(U.t('downloaded {when}', { when: U.dayLabel(st.fetchedAt) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes()) })); }
         if (st.dropped) { parts.push(U.t('{n} more left out (a playlist keeps its first {max}: Largest playlist on the TV, below)', { n: thousands(st.dropped), max: thousands(IPTV.maxChannels()) })); }
         if (p.genres) { parts.push(U.tn(p.genres.length, '{n} group chosen', '{n} groups chosen')); }
         if (st.svcCut) { parts.push(U.t('the service read {total}; the TV keeps {kept} (Largest playlist on the TV): OK on it, then Channel groups', { total: thousands(st.svcCut.total), kept: thousands(st.svcCut.kept) })); }   // (read by StremioK's service, more than the TV holds: see IPTV readNote)
@@ -1529,7 +1537,7 @@
         var g = typeof EPG !== 'undefined' && EPG.status ? EPG.status(p.id) : null;
         if (!g) { return typeof EPG !== 'undefined' && EPG.available && EPG.available() ? U.t('no TV guide') : ''; }
         if (g.state === 'ready') {
-            var d = new Date(g.at);
+            var d = U.localDate(g.at);
             return U.t('TV guide: {channels}, {programs} programs', { channels: U.tn(g.channels, '{n} channel', '{n} channels', { n: thousands(g.channels) }), programs: thousands(g.programmes) }) + (g.partial ? ' ' + U.t('(part of it: too large)') : '') +
                 (g.at ? ', ' + U.t('read {when}', { when: U.dayLabel(g.at) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes()) }) : '') + (g.error ? ' ' + U.t('(the last read failed: {why})', { why: g.error }) : '');
         }
@@ -2210,7 +2218,7 @@
     function traktSyncRow() {
         var st = Trakt.connectStatus(), r = U.el('div', 'addon-item focusable cfg-row trakt-sync');
         function two(n) { return (n < 10 ? '0' : '') + n; }
-        var d = st.lastSync ? new Date(st.lastSync) : null;
+        var d = st.lastSync ? U.localDate(st.lastSync) : null;
         var last = d ? U.t('Last synced {when}', { when: (U.dayLabel ? U.dayLabel(st.lastSync) + ' ' : '') + two(d.getHours()) + ':' + two(d.getMinutes()) }) : U.t('Not synced yet');
         var bits = [last];
         if (st.pending) { bits.push(U.tn(st.pending, '{n} change waiting to reach Trakt', '{n} changes waiting to reach Trakt')); }
@@ -2239,7 +2247,7 @@
     function nuvioAccountRow() {
         var st = NuvioSync.connectStatus(), r = U.el('div', 'addon-item focusable cfg-row');
         function two(x) { return (x < 10 ? '0' : '') + x; }
-        var d = st.lastSync ? new Date(st.lastSync) : null;
+        var d = st.lastSync ? U.localDate(st.lastSync) : null;
         r.appendChild(U.el('div', 'a-name', U.t('Nuvio account') + (st.connected && st.name ? ':  ' + st.name : '')));
         r.appendChild(U.el('div', 'a-url', st.connected && st.reconnect ? U.t('Its sign-in no longer works — press OK to connect again')
             : st.connected ? (d ? U.t('Last synced {when}', { when: (U.dayLabel ? U.dayLabel(st.lastSync) + ' ' : '') + two(d.getHours()) + ':' + two(d.getMinutes()) }) : U.t('Not synced yet')) + (st.err ? '   ·   ⚠ ' + st.err : '') + '   ·   ' + U.t('OK for options')
@@ -2256,7 +2264,7 @@
     function stremioAccountRow() {
         var st = StremioSync.connectStatus(), r = U.el('div', 'addon-item focusable cfg-row');
         function two(x) { return (x < 10 ? '0' : '') + x; }
-        var d = st.lastSync ? new Date(st.lastSync) : null;
+        var d = st.lastSync ? U.localDate(st.lastSync) : null;
         var bits = [];
         if (st.connected) {
             bits.push(d ? U.t('Last synced {when}', { when: (U.dayLabel ? U.dayLabel(st.lastSync) + ' ' : '') + two(d.getHours()) + ':' + two(d.getMinutes()) }) : U.t('Not synced yet'));
@@ -2735,7 +2743,7 @@
             : U.t('No problems since StremioK started.')));
         function two(n) { return (n < 10 ? '0' : '') + n; }
         list.forEach(function (e) {
-            var d = new Date(e.t);
+            var d = U.localDate(e.t);
             var r = U.el('div', 'addon-item focusable diag-row');
             r.appendChild(U.el('div', 'a-name', two(d.getHours()) + ':' + two(d.getMinutes()) + ':' + two(d.getSeconds()) + '   ' + e.src + (e.n > 1 ? '   ×' + e.n : '')));
             r.appendChild(U.el('div', 'a-url', e.msg));
@@ -2824,7 +2832,7 @@
         if (st.state === 'failed') { return U.t('Indexing failed: {why}', { why: st.error }); }
         if (st.state === 'none') { return U.t('Not indexed yet'); }
         return U.tn(st.videos, '{n} video', '{n} videos') + ', ' + U.t('{n} matched to titles', { n: st.matched }) + (st.truncated ? ' ' + (folder ? U.t('(a very large folder: only part of it)') : U.t('(a very large drive: only part of it)')) : '') +
-            (st.left ? ', ' + U.t('{n} titles left to match', { n: st.left }) : '') + '   ·   ' + U.t('indexed {when}', { when: U.dayLabel(st.at) + ' ' + new Date(st.at).toTimeString().slice(0, 5) });
+            (st.left ? ', ' + U.t('{n} titles left to match', { n: st.left }) : '') + '   ·   ' + U.t('indexed {when}', { when: U.dayLabel(st.at) + ' ' + U.localDate(st.at).toTimeString().slice(0, 5) });
     }
     // ---- Network folders (WebDAV): NetFolders ----
     var _netListening = false;
@@ -3241,7 +3249,7 @@
     // Tizen version; model and firmware where the TV says), as plain text in English.
     function logsText() {
         function two(n) { return (n < 10 ? '0' : '') + n; }
-        function when(t) { var d = new Date(t); return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes()) + ':' + two(d.getSeconds()); }
+        function when(t) { var d = U.localDate(t); return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes()) + ':' + two(d.getSeconds()); }
         // (the model: Samsung's productinfo (config.xml's productinfo privilege), else Tizen's own system info)
         var tv = [], pi = window.webapis && webapis.productinfo, model = '', ver = '';
         function cap(k) { try { return typeof tizen !== 'undefined' && tizen.systeminfo && tizen.systeminfo.getCapability ? '' + (tizen.systeminfo.getCapability(k) || '') : ''; } catch (e) { return ''; } }

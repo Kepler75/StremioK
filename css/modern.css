@@ -88,7 +88,7 @@ body.look-modern .card .cap { padding: 20px 12px 8px 12px; font-size: 18px; line
 body.look-modern .card.person-card .cap { max-height: none; padding-top: 16px; }   /* (a person's: as tall as name and role need; style.css) */
 body.look-modern .card.focusable.focused { border: 0; box-shadow: 0 0 0 4px #fff; -webkit-transform: scale(1.06); transform: scale(1.06); }
 body.look-modern .card.focusable.moving { border: 0; box-shadow: 0 0 0 4px #f59e0b; }
-body.look-modern.fx-full .card { -webkit-transition: -webkit-transform 0.16s ease-out, box-shadow 0.16s ease-out; transition: transform 0.16s ease-out, box-shadow 0.16s ease-out; }
+body.look-modern.fx-full .card { -webkit-transition: -webkit-transform 0.16s ease-out; transition: transform 0.16s ease-out; }   /* (the ring at once, as focus lands: only the zoom eases in) */
 body.look-modern.fx-full .card.focusable.focused { box-shadow: 0 0 0 4px #fff, 0 18px 44px rgba(0,0,0,0.7); }
 body.look-modern .card .prog { height: 6px; border-radius: 0 3px 3px 0; }
 body.look-modern #screen-home .row-empty { margin-left: 90px; }
@@ -147,3 +147,44 @@ body.look-modern .season-bar .pill { background: rgba(255,255,255,0.12); color: 
 body.look-modern .season-bar .pill.focusable.focused { background: #fff; color: #000; }
 body.look-modern .stream.focusable.focused, body.look-modern .ep.focusable.focused { background: #fff; color: #000; border-color: #ffffff; box-shadow: none; }
 body.look-modern .stream, body.look-modern .ep { border-radius: 14px; background: rgba(22,27,38,0.72); }
+
+/* ---- Side menu (Settings › Appearance › Look): Modern, with the main menu down the left edge of
+   Home, Discover, Search, Settings and title pages (body.menu-left). The screen moves right by the
+   menu's width and up by the top menu's height, so every page keeps its own layout; the menu,
+   inside it, fills the left edge: icons only, opening wide (names shown) while focus is in it
+   (.menu-open), over the page. Effects Full (or Auto on a TV that blurs): it slides open. ---- */
+body.menu-left #screen-home, body.menu-left #screen-discover, body.menu-left #screen-search, body.menu-left #screen-settings, body.menu-left #screen-detail { left: 96px; width: calc(100% - 96px); top: -80px; height: calc(100% + 80px); }
+body.menu-left #screen-home .home-header, body.menu-left #screen-discover .home-header, body.menu-left #screen-search .home-header, body.menu-left #screen-settings .home-header, body.menu-left #screen-detail .home-header {
+    position: absolute; left: -96px; top: 80px; bottom: 0; width: 96px; height: auto; padding: 26px 0 22px 0; box-sizing: border-box; z-index: 6; overflow: hidden;
+    display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; -webkit-align-items: stretch; align-items: stretch;
+    background: rgba(12,15,22,0.96); }
+body.menu-left.fx-full #screen-home .home-header, body.menu-left.fx-full #screen-discover .home-header, body.menu-left.fx-full #screen-search .home-header, body.menu-left.fx-full #screen-settings .home-header, body.menu-left.fx-full #screen-detail .home-header { background: rgba(22,27,38,0.72); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); -webkit-transition: width 0.18s ease; transition: width 0.18s ease; }
+body.menu-left #screen-home .home-header.menu-open, body.menu-left #screen-discover .home-header.menu-open, body.menu-left #screen-search .home-header.menu-open, body.menu-left #screen-settings .home-header.menu-open, body.menu-left #screen-detail .home-header.menu-open { width: 330px; }
+body.menu-left .home-header::before { display: none; }
+body.menu-left .home-header .brand { -webkit-order: -1; order: -1; font-size: 0; text-align: center; margin: 0 0 22px 0; white-space: nowrap; }
+body.menu-left .home-header .brand .dot { font-size: 44px; }
+body.menu-left .home-header.menu-open .brand, body.menu-left .home-header.menu-open .brand .dot { font-size: 36px; }
+body.menu-left .home-header .menu-scroll { -webkit-flex: 1 1 auto; flex: 1 1 auto; -webkit-flex-direction: column; flex-direction: column; -webkit-align-items: stretch; align-items: stretch; margin: 0; padding: 0; overflow: hidden; min-height: 0; }
+body.menu-left .home-header .tabbar-inline, body.menu-left.fx-full .home-header .tabbar-inline { -webkit-flex-direction: column; flex-direction: column; -webkit-align-items: stretch; align-items: stretch; background: transparent; border-radius: 0; padding: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
+body.menu-left .home-header .menu-scroll > :first-child, body.menu-left .home-header .menu-scroll > :last-child { margin-left: 0; margin-right: 0; }
+body.menu-left .home-header .menu-scroll > .hchip:not(.pf-chip) { margin-top: auto; }   /* (Settings at the bottom) */
+/* only the tabs scroll (focus keeps the one it's on in view); Settings and the profile stay put at
+   the bottom, always on screen, as they stay at the right of Modern's top menu */
+body.menu-left .home-header .tabbar-inline { -webkit-flex: 0 1 auto; flex: 0 1 auto; min-height: 0; overflow: hidden; }
+body.menu-left .home-header .menu-scroll > .hchip, body.menu-left .home-header .tabbar-inline > * { -webkit-flex: none; flex: none; }   /* (items keep their size: the tabs scroll, never squeeze) */
+/* an item: its icon in a fixed box at the left (72 px: the closed menu's width inside its margins), its name after it, shown only while open */
+body.menu-left .home-header .tab-pill, body.menu-left .home-header .hchip {
+    display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; -webkit-justify-content: flex-start; justify-content: flex-start;
+    font-size: 23px; padding: 10px 0; margin: 3px 12px; border-radius: 18px; white-space: nowrap; overflow: hidden; }
+body.menu-left .home-header .tab-ic { display: block; -webkit-order: -1; order: -1; -webkit-flex: 0 0 66px; flex: 0 0 66px; width: 66px; font-size: 30px; line-height: 36px; text-align: center; margin: 0; }
+body.menu-left .home-header .tab-label { display: block; -webkit-flex: none; flex: none; margin-left: 4px; opacity: 0; }   /* (closed: clipped by the item, unseen) */
+body.menu-left .home-header.menu-open .tab-label { opacity: 1; }
+/* Effects on: the menu slides open and the names fade in just after; off (the 2017 TV's Auto): at once */
+body.menu-left.fx-full .home-header .tab-label { -webkit-transition: opacity 0.16s ease 0.06s; transition: opacity 0.16s ease 0.06s; }
+body.menu-left.fx-full .home-header.menu-open .tab-label { -webkit-transition-delay: 0.08s; transition-delay: 0.08s; }
+/* Home's and a title page's backdrop run on under the menu: with Effects on, the menu shows it, blurred */
+body.menu-left #screen-home .home-bg { left: -96px; width: calc(100% + 96px); }
+body.menu-left #screen-detail .detail-hero { left: -96px; }
+body.menu-left .home-header .hchip.pf-chip { -webkit-justify-content: center; justify-content: center; padding: 6px 0; margin-top: 10px; }
+/* Discover under the side menu at 130–140%: the title count gives its room to the search box */
+body.menu-left.zoom-130 #screen-discover .discover-count, body.menu-left.zoom-140 #screen-discover .discover-count { display: none; }

@@ -118,7 +118,15 @@ var U = (function () {
         if (_session.crumbs.length > 12) { _session.crumbs.shift(); }
         saveSession();
     }
-    function hhmm(ms) { var d = new Date(ms); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); }
+    // Clock correction (Settings › Appearance, #35): minutes added to every time of day StremioK
+    // shows, for a TV whose web engine keeps old timezone rules (Brazil's summer time, dropped in
+    // 2019, still applied: an hour ahead). localDate(ms): that moment as a Date whose getHours(),
+    // getDate()… are the corrected local ones (only for showing it: never sent or stored).
+    var _clockShift = 0;
+    function setClockShift(min) { _clockShift = (min === 60 || min === -60) ? min : 0; }
+    function clockShiftMs() { return _clockShift * 60000; }
+    function localDate(ms) { return new Date((ms === undefined ? Date.now() : ms) + _clockShift * 60000); }
+    function hhmm(ms) { var d = localDate(ms); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); }
     // When this install was made (the TV's own record): a new one since the last launch means
     // it was installed again (an update closes the running app), not that it closed by itself.
     function installedAt() {
@@ -1511,12 +1519,16 @@ var U = (function () {
     }
     var _look = 'classic';
     function look() { return _look; }
+    // 'side' (Side menu): Modern with the main menu down the left edge (menu-left, css/modern.css):
+    // look-modern too, so everything Modern does it does; modernLook() says either.
+    function modernLook() { return _look === 'modern' || _look === 'side'; }
     function setLook(lk, fx, light) {   // (light: Light Gray or White, bg-light: css/modern.css's fills for them)
-        _look = lk === 'modern' ? 'modern' : 'classic';
+        _look = lk === 'modern' || lk === 'side' ? lk : 'classic';
         var b = document.body;
         if (!b || !b.classList) { return; }
-        var full = _look === 'modern' && (fx === 'full' || (fx !== 'light' && canBlur()));
-        b.classList[_look === 'modern' ? 'add' : 'remove']('look-modern');
+        var full = modernLook() && (fx === 'full' || (fx !== 'light' && canBlur()));
+        b.classList[modernLook() ? 'add' : 'remove']('look-modern');
+        b.classList[_look === 'side' ? 'add' : 'remove']('menu-left');
         b.classList[full ? 'add' : 'remove']('fx-full');
         b.classList[light ? 'add' : 'remove']('bg-light');
     }
@@ -1614,7 +1626,7 @@ var U = (function () {
     function weekday(d) { return t(WDAYS[d]); }
     function month(m) { return t(MONTHS[m]); }
     function dayLabel(ms) {
-        var d = new Date(ms), today = new Date(Date.now());
+        var d = localDate(ms), today = localDate();
         function startOf(x) { return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime(); }
         var diff = Math.round((startOf(d) - startOf(today)) / 86400000);
         if (diff === 0) { return t('today'); }
@@ -1732,10 +1744,10 @@ var U = (function () {
         parseUrl: parseUrl, urlProblem: urlProblem, isPlaylistUrl: isPlaylistUrl, isManifestUrl: isManifestUrl,
         isPrivateHost: isPrivateHost, urlIsPrivate: urlIsPrivate, setLocalPolicy: setLocalPolicy, sanitizeHeaders: sanitizeHeaders, drawable: drawable,
         t: t, tn: tn, weekday: weekday, month: month,
-        look: look, setLook: setLook, canBlur: canBlur, heroImages: heroImages, log: log, logEntries: logEntries, clearLog: clearLog, bigStore: bigStore, diskInfo: diskInfo,
+        look: look, modernLook: modernLook, setLook: setLook, canBlur: canBlur, heroImages: heroImages, log: log, logEntries: logEntries, clearLog: clearLog, bigStore: bigStore, diskInfo: diskInfo,
         store: store, toast: toast, spinner: spinner,
         deferImage: deferImage, deferBg: deferBg, cardImage: cardImage, prioritizeImages: prioritizeImages, requeueImages: requeueImages,
-        fmtTime: fmtTime, dayLabel: dayLabel, settleAll: settleAll, cancelToken: cancelToken, isHidden: isHidden, whenVisible: whenVisible, crumb: crumb, sessionStart: sessionStart, sessionState: sessionState, mark: mark, startupMarks: startupMarks, loadScript: loadScript, qrModules: qrModules, qrCanvas: qrCanvas, qrScale: qrScale,
+        fmtTime: fmtTime, dayLabel: dayLabel, localDate: localDate, setClockShift: setClockShift, clockShiftMs: clockShiftMs, settleAll: settleAll, cancelToken: cancelToken, isHidden: isHidden, whenVisible: whenVisible, crumb: crumb, sessionStart: sessionStart, sessionState: sessionState, mark: mark, startupMarks: startupMarks, loadScript: loadScript, qrModules: qrModules, qrCanvas: qrCanvas, qrScale: qrScale,
         applyTheme: applyTheme, zoom: zoom, setZoom: setZoom, accentColor: accentColor, ACCENT_KEYS: Object.keys(ACCENTS)
     };
 })();

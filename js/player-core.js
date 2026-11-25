@@ -390,7 +390,7 @@ var PlayerParts = {};
     }
     // An IPTV channel's TV guide (js/epg.js): { now, next } or null.
     function guideNow() { return (typeof EPG !== 'undefined' && S.ctx && /^iptv:/.test(S.ctx.id || '')) ? EPG.now(S.ctx.id) : null; }
-    function clock(sec) { var d = new Date(sec * 1000); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); }
+    function clock(sec) { var d = U.localDate(sec * 1000); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); }
     if (typeof EPG !== 'undefined' && EPG.onChange) { EPG.onChange(function () { if (S.active && S.isLive) { renderOSD(); } }); }
     function timeShown() { return P.playerCfg ? P.playerCfg().time : 'ends'; }
     // The time of day, and under it, when what plays has a length, when it ends (at this pace: later
@@ -1430,6 +1430,8 @@ var PlayerParts = {};
     // Kept: your subtitle languages' tracks (a choice made for the title first), BLANK_KEEP at
     // most; with none to keep, the file plays with all of them. Not USB files, network folders, YouTube, DRM or live.
     var BLANK_MIN = 5, BLANK_KEEP = 4, BLANK_ASK_MS = 6000, _blankAsk = null;
+    // (said while a start or a jump waits for those tracks: the file's header read, not buffering)
+    var READING_HEADERS = U.t('Reading the file’s headers…');
     function blankKeep(ctx, mi) {
         var cfg = P.getSubCfg(), mine = P.recallSub ? P.recallSub(ctx.id) : null;
         var keys = [mine && mine.lang, cfg.lang, cfg.lang2].filter(function (l) { return l && l !== 'off' && l !== 'none'; }).map(P.langKey);
@@ -1474,7 +1476,12 @@ var PlayerParts = {};
         if (!job || _miSeen.get(job.key)) { then(); return; }
         ctx._blankChecked = true;
         var done = false, look = U.cancelToken();
-        function on(m) { if (done) { return; } done = true; if (m && m.container) { _miSeen.set(job.key, m); } if (S.ctx === ctx && S.active) { then(); } }
+        if (!S.behind) { spinner(true, READING_HEADERS); }   // (what it waits for now: the file's tracks, not the stream)
+        function on(m) {
+            if (done) { return; } done = true;
+            if (m && m.container) { _miSeen.set(job.key, m); }
+            if (S.ctx === ctx && S.active) { if (!S.behind) { spinner(true, U.t('Opening stream…')); } then(); }
+        }
         job.ask(look).then(on, function () { on(null); });
         setTimeout(function () { look.cancel(); on(null); }, BLANK_ASK_MS);
     }
@@ -1491,12 +1498,12 @@ var PlayerParts = {};
         var job = fileInfoAsk(ctx, true), mi = S.mi || (job && _miSeen.get(job.key)) || null;
         if (mi || !job) { ctx._blankChecked = true; if (mi && blankFits(ctx, mi)) { reopenBlank(ctx, mi, target); return true; } return false; }
         var ask = _blankAsk = { target: target, done: false }, tok = _playToken, look = U.cancelToken();
-        spinner(true);
+        spinner(true, READING_HEADERS);   // (the jump waits for the file's tracks, not for buffering)
         function finish(m) {
             if (ask.done) { return; }
             ask.done = true; _blankAsk = null; ctx._blankChecked = true;
             if (!S.active || S.ctx !== ctx || tok !== _playToken) { return; }
-            if (m && blankFits(ctx, m)) { reopenBlank(ctx, m, ask.target); return; }
+            if (m && blankFits(ctx, m)) { spinner(true, U.t('Opening stream…')); reopenBlank(ctx, m, ask.target); return; }
             spinner(false); doAVSeek(ask.target, 0);
         }
         job.ask(look).then(function (m) {

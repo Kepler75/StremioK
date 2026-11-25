@@ -41,6 +41,14 @@ var Stremio = (function () {
     function baseOf(manifestUrl) {
         return manifestUrl.replace(/\/manifest\.json.*$/, '');
     }
+    // An AIOStreams variant chosen in its link's query ("…/manifest.json?v=tizen3"): kept on the
+    // addon's catalog, meta, stream and subtitle requests too, as AIOStreams reads it on each
+    // (its other form, "…/v/tizen3/manifest.json", is in the base already; a host's sign-in
+    // gate may stop that one, as ElfHosted's does). Only v: other queries stay the manifest's.
+    function variantQuery(addon) {
+        var m = /[?&]v=([^&#]+)/.exec((addon && addon.url) || '');
+        return m ? '?v=' + m[1] : '';
+    }
 
     // The default addons are for a first launch only: once the list has been saved, it's
     // yours, even empty (removing the last addon used to bring the defaults back).
@@ -163,9 +171,10 @@ var Stremio = (function () {
         var p = U.store.get(PREFS_KEY, {}) || {};
         return { lang: typeof p.lang === 'string' && p.lang ? p.lang : 'auto',   // Settings > Appearance > Language (js/i18n.js: 'auto', 'en', 'es', 'pt-BR')
             posterShape: p.posterShape || 'portrait', accent: p.accent || 'indigo', bg: p.bg || 'dark',
-            look: p.look === 'classic' ? 'classic' : 'modern',   // Settings > Appearance: Modern (the default since 2.4.9.4: a backdrop behind Home, the title's logo, rounder posters), or Classic (kept where it's saved)
+            look: p.look === 'classic' || p.look === 'side' ? p.look : 'modern',   // Settings > Appearance: Modern (the default since 2.4.9.4: a backdrop behind Home, the title's logo, rounder posters), or Classic (kept where it's saved)
             effects: p.effects === 'light' || p.effects === 'full' ? p.effects : 'auto',   // ...Modern's blur and motion: by the TV (auto), off (light) or on (full)
             zoom: [110, 120, 130, 140].indexOf(p.zoom) !== -1 ? p.zoom : 100,   // Settings > Appearance: everything bigger (percent)
+            clockShift: p.clockShift === 60 || p.clockShift === -60 ? p.clockShift : 0,   // ...Clock correction: minutes added to the times shown (U.localDate, #35)
             rowCards: p.rowCards === 'all' || [50, 100, 200].indexOf(p.rowCards) !== -1 ? p.rowCards : 30,   // Settings > Home: titles in a Home row ('all': Unlimited)
             formatsAuto: p.formatsAuto !== false,   // Settings > Formats: mark "Not working" on its own
             allowLocal: p.allowLocal === true,      // Settings > Addons: home-network links from internet addons
@@ -848,7 +857,7 @@ var Stremio = (function () {
             }
         }
         var tail = extras.length ? ('/' + extras.join('&')) : '';
-        return addon.base + '/catalog/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + tail + '.json';
+        return addon.base + '/catalog/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + tail + '.json' + variantQuery(addon);
     }
 
     // A search can take an addon a while (Cinemeta's often 8 s or more): it gets longer
@@ -1103,7 +1112,7 @@ var Stremio = (function () {
             function tryNext() {
                 if (i >= providers.length) { return Promise.reject(new Error(U.t('Meta not found'))); }
                 var a = providers[i++];
-                var url = a.base + '/meta/' + encodeURIComponent(asType[a.url] || type) + '/' + encodeURIComponent(id) + '.json';
+                var url = a.base + '/meta/' + encodeURIComponent(asType[a.url] || type) + '/' + encodeURIComponent(id) + '.json' + variantQuery(a);
                 return U.getJSON(url, addonMs(12000), META_MAX, cancel).then(function (res) {
                     var meta = fromAddon(a, res, 'title details').meta;
                     if (meta && typeof meta === 'object' && isErrorMeta(meta)) {
@@ -1191,7 +1200,7 @@ var Stremio = (function () {
                 notify();
                 return U.settleAll(providers.map(function (a, i) {
                     return function () {
-                        var url = a.base + '/stream/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '.json';
+                        var url = a.base + '/stream/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '.json' + variantQuery(a);
                         // (StremioK's own source, your Xtream accounts' copies: asked here, with the title's details)
                         var asked = a.__impl ? metaFirst(type, id).then(function (m) { return a.__impl.streams(type, id, m); }).then(function (l) { return { streams: l }; }) : U.getJSON(url, addonMs(15000));
                         return asked.then(function (res) {
@@ -1391,7 +1400,7 @@ var Stremio = (function () {
             var providers = addons.filter(function (a) { return supports(a, 'subtitles', type, id); });
             var tasks = providers.map(function (a) {
                 return function () {
-                    var url = a.base + '/subtitles/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + (args.length ? '/' + args.join('&') : '') + '.json';
+                    var url = a.base + '/subtitles/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + (args.length ? '/' + args.join('&') : '') + '.json' + variantQuery(a);
                     return U.getJSON(url, addonMs(15000)).then(function (res) {   // (15 s: a subtitle addon may fetch them from elsewhere first)
                         var arr = U.listOf(fromAddon(a, res, 'subtitles').subtitles, MAX_SUBTITLES);
                         arr.forEach(function (s) { s._addon = a.manifest.name || U.t('Addon'); });

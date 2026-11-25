@@ -1220,7 +1220,9 @@
     // channel's: ←/→ the group, ↑/↓ the channel (what's on now and next, from its guide), OK
     // tunes it (that group is the row CH+ / CH− go through from then on), BACK closes it.
     // Only CHL_ROWS rows are drawn at a time (a group can hold thousands).
-    var CHL_ROWS = 9, _chl = null, _chlHooked = false;   // _chl: { el, groups, g, idx, top }
+    // As many as fit, though (d.rows: measured once drawn, at any zoom: from 120% up, 9 ran past
+    // the screen's bottom, over its own hint).
+    var CHL_ROWS = 9, _chl = null, _chlHooked = false;   // _chl: { el, groups, g, idx, top, rows }
     function canChannels() { return !!(S.ctx && S.ctx.zapList && typeof IPTV !== 'undefined' && IPTV.zapGroups && IPTV.channel && IPTV.channel(S.ctx.id)); }
     function chlEl() {
         var el = U.byId('channel-list');
@@ -1251,17 +1253,17 @@
         if (!quiet) { showOSD(false); }
     }
     function renderChannels() {
-        var d = _chl, grp = d.groups[d.g], list = grp.list, n = list.length;
+        var d = _chl, grp = d.groups[d.g], list = grp.list, n = list.length, R = d.rows || CHL_ROWS;
         if (d.idx >= n) { d.idx = Math.max(0, n - 1); }
-        if (d.idx < d.top) { d.top = d.idx; } else if (d.idx >= d.top + CHL_ROWS) { d.top = d.idx - CHL_ROWS + 1; }
-        d.top = Math.max(0, Math.min(d.top, n - CHL_ROWS));
+        if (d.idx < d.top) { d.top = d.idx; } else if (d.idx >= d.top + R) { d.top = d.idx - R + 1; }
+        d.top = Math.max(0, Math.min(d.top, n - R));
         var el = d.el, playing = S.ctx && S.ctx.id;
         U.clear(el);
         var head = U.el('div', 'chl-head');
         head.appendChild(U.el('div', 'chl-group', (d.groups.length > 1 ? '◀  ' : '') + grp.name + (d.groups.length > 1 ? '  ▶' : '')));
         head.appendChild(U.el('div', 'chl-count', (d.idx + 1) + ' / ' + n + (d.groups.length > 1 ? '   ·   ' + U.t('group {n} of {max}', { n: d.g + 1, max: d.groups.length }) : '')));
         el.appendChild(head);
-        var shown = list.slice(d.top, d.top + CHL_ROWS);
+        var shown = list.slice(d.top, d.top + R);
         if (typeof EPG !== 'undefined' && EPG.want) { EPG.want(shown.map(function (m) { return m.id; })); }
         var rows = U.el('div', 'chl-rows');
         shown.forEach(function (m, k) {
@@ -1280,6 +1282,12 @@
         el.appendChild(rows);
         el.appendChild(U.el('div', 'chl-hint', U.t('←/→ group   ↑/↓ channel   OK: watch   RETURN: close')));
         el.className = '';
+        // (drawn: how many rows the box has room for; fewer than drawn: drawn again with that many)
+        var room = rows.clientHeight, first = rows.firstChild, rowH = first ? first.offsetHeight + 6 : 0;
+        if (room > 0 && rowH > 0) {
+            var fit = Math.max(3, Math.min(CHL_ROWS, Math.floor((room + 6) / rowH)));
+            if (fit < R) { d.rows = fit; renderChannels(); }
+        }
     }
     function channelsKey(action) {
         var d = _chl, list = d.groups[d.g].list;
@@ -1364,7 +1372,9 @@
         if (_scrub && action === 'BACK') { cancelScrub(); return true; }
         // No overlay: default transport on the D-pad. (Player screen › BACK while a video plays ›
         // Hide the progress bar, or leave: with the bar on screen, BACK only hides it)
-        var barUp = action === 'BACK' && playerCfg().back === 'osd' && !osdHidden() && !!S.ctx && !S.ctx.trailer;
+        // (the spinner up — opening, buffering, reading the file's headers: no bar to use, so BACK leaves)
+        var spin = U.byId('spinner'), busy = !!spin && spin.className !== 'hidden';
+        var barUp = action === 'BACK' && playerCfg().back === 'osd' && !osdHidden() && !busy && !!S.ctx && !S.ctx.trailer;
         showOSD(false);
         switch (action) {
             case 'OK': togglePlay(); return true;

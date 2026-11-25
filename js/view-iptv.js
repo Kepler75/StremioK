@@ -30,6 +30,16 @@
     }
     function fromPlaylist(m) { return !!(m && IPTV.owns(m.id)); }
     function alive() { return !!(_b && document.documentElement.contains(_b.wrap)); }
+    // Focus in the channels (or the info beside them): the groups fold to a narrow strip and the
+    // channels take the room (.groups-away, css/style.css); back in the groups: open again. The
+    // info / preview column on the right doesn't move, so the preview's video stays where it is.
+    if (typeof Focus !== 'undefined' && Focus.onFocus) {
+        Focus.onFocus(function (n) {
+            if (!alive() || !_b.wrap.contains(n)) { return; }
+            var away = !_b.gEl.contains(n);
+            if (away !== /\bgroups-away\b/.test(_b.wrap.className)) { _b.wrap.className = _b.wrap.className.replace(/\s*groups-away/g, '') + (away ? ' groups-away' : ''); }
+        });
+    }
 
     function iptvBrowser(rows) {
         var groups = groupsNow(), old = _b;

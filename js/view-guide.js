@@ -168,7 +168,7 @@
                 n.__row = r; n.__chan = c.id;
                 n.__goLEFT = function () { return i < 0 ? false : step(g, r, i, -1); };
                 n.__goRIGHT = function () { return i < 0 ? false : step(g, r, i, 1); };
-                n.__goUP = function () { return vertical(g, r, -1, n); };
+                n.__goUP = function () { return topUp(vertical(g, r, -1, n)); };
                 n.__goDOWN = function () { return vertical(g, r, 1, n); };
             }
             if (!(c.id in g.lists)) {   // (not read yet: says so, and can be passed through)
@@ -268,6 +268,18 @@
     // ↑ / ↓: the next channel up / down with something in these hours (one with nothing in them
     // is passed; one not read yet is stopped at: it says so); from the top row, on up to the menu.
     // Past the rows drawn, the window moves along to it.
+    // The Side menu: UP from the top row stops there; a second, separate press (not the key held
+    // down: its repeats come closer together than UP_AGAIN_MS) goes into the menu, within
+    // UP_WINDOW_MS. The top menu: on up to it, as before (undefined: worked out by position).
+    var UP_AGAIN_MS = 350, UP_WINDOW_MS = 2500, _upAt = 0;
+    function topUp(v) {
+        if (v !== undefined) { _upAt = 0; return v; }
+        if (!Focus.hasSide || !Focus.hasSide()) { return v; }
+        var now = Date.now(), gap = now - _upAt;
+        if (_upAt && gap > UP_AGAIN_MS && gap < UP_WINDOW_MS) { _upAt = 0; Focus.intoSide(); return false; }
+        _upAt = now;
+        return false;
+    }
     function vertical(g, r, dir, from) {
         var end = g.start + SPAN, t = from.__loading ? from.__t : Math.max(from.__p.start, g.start);
         for (var k = r + dir; k >= 0 && k < g.chans.length; k += dir) {

@@ -162,6 +162,7 @@ sources. Try again later.
 | What you see | Why, and what to do |
 |--------------|---------------------|
 | Browsing is slow, the spinner shows often | Usually *Titles in a Home row* set high: *Unlimited* asks each addon for up to 200 pages a row, every 15 minutes. Use 30 or 50 (Settings › Home). With a Stalker portal, keep *Stalker films and series* at 10 minutes: *Off* asks it for each row again. |
+| Every time an hour off (the clock, Ends, the Guide, the Calendar), the TV's own clock right | The TV's web engine keeps the timezone rules it was made with: Brazil's summer time, dropped in 2019, still applied. Settings › Appearance › *Clock correction*. |
 | Watching shows a title's name, no poster | No poster was saved, or its link stopped loading, and no other is known (no IMDb id). Open the title from a row showing its poster and play 10 seconds: Watching keeps it. |
 
 ## IPTV

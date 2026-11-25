@@ -493,9 +493,9 @@ var EPG = (function () {
 
     // 20:30, or with the day when it isn't today (Tue 01:00).
     function two(n) { return (n < 10 ? '0' : '') + n; }
-    function hhmm(sec) { var d = new Date(sec * 1000); return two(d.getHours()) + ':' + two(d.getMinutes()); }
+    function hhmm(sec) { var d = U.localDate(sec * 1000); return two(d.getHours()) + ':' + two(d.getMinutes()); }
     function dayTime(sec) {
-        var d = new Date(sec * 1000), today = new Date(Date.now());
+        var d = U.localDate(sec * 1000), today = U.localDate();
         var same = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
         return (same ? '' : U.weekday(d.getDay()) + ' ') + hhmm(sec);
     }

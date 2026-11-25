@@ -77,18 +77,35 @@
         return out;
     }
 
-    // Which tabs to show in the top menu (needs the home catalogs; falls back to the
-    // standard set before they've loaded so the menu is consistent everywhere).
-    // Tabs you hid (Settings › Home › Menu) aren't shown; Watching always is.
+    // Which tabs to show in the top menu (needs the home catalogs). Before they've loaded: the
+    // tabs the last launch ended with (LAST_TABS_KEY), and any whose catalogs are already coming;
+    // none saved yet (a new install): Movies and Series. So a tab with nothing in it (Sports,
+    // YouTube) doesn't show for a moment and then go (2.4.10.1). Tabs you hid (Settings › Home ›
+    // Menu) aren't shown; Watching always is.
+    var LAST_TABS_KEY = 'stremiok.lasttabs';
+    var _lastTabs = (function () { var l = U.store.get(LAST_TABS_KEY, null); return Object.prototype.toString.call(l) === '[object Array]' ? l : null; })();   // (read once, as StremioK starts)
+    function lastTabs() { return _lastTabs; }
     function availableTabs() {
         var hidden = Stremio.getPrefs().hiddenTabs || [];
         function shown(t) { return t.key === 'continue' || (hidden.indexOf(t.key) === -1 && (t.key !== 'guide' || hasGuide())); }
+        function filled(t) { return catsForTab(t.key).length > 0 || (t.key === 'tv' && hasIptvTv()); }
         if (_homeCatalogs === null || _homeFirstLoad) {   // first load still running
-            return HOME_TABS.filter(function (t) { return shown(t) && (t.key !== 'local' || hasLocal()); });
+            var last = lastTabs();
+            return HOME_TABS.filter(function (t) {
+                if (!shown(t)) { return false; }
+                if (t.key === 'continue' || t.key === 'calendar' || t.key === 'guide') { return true; }
+                if (t.key === 'local') { return hasLocal(); }
+                return (last ? last.indexOf(t.key) !== -1 : (t.key === 'movie' || t.key === 'series')) || filled(t);
+            });
         }
-        return HOME_TABS.filter(function (t) {
-            return shown(t) && (t.key === 'continue' || t.key === 'calendar' || t.key === 'guide' || (t.key === 'local' ? hasLocal() : catsForTab(t.key).length > 0 || (t.key === 'tv' && hasIptvTv())));
+        var tabs = HOME_TABS.filter(function (t) {
+            return shown(t) && (t.key === 'continue' || t.key === 'calendar' || t.key === 'guide' || (t.key === 'local' ? hasLocal() : filled(t)));
         });
+        var keys = tabs.map(function (t) { return t.key; }).filter(function (k) { return k !== 'continue' && k !== 'calendar' && k !== 'guide' && k !== 'local'; });
+        // (for the next launch's first moments: written once a session, then when it changes; not
+        // read here, a page's storage reads being few)
+        if (!_lastTabs || _lastTabs.join(',') !== keys.join(',')) { _lastTabs = keys; U.store.set(LAST_TABS_KEY, keys); }
+        return tabs;
     }
 
     // YouTube's tab: StremioK's own YouTube catalogs (whatever type you gave one: "Podcasts"),
@@ -758,7 +775,7 @@
     // ----- Calendar (a Home tab): what's coming up for the shows you're watching, and what you
     // watched — on this TV, and on Trakt when you're connected (any device) — a row a day. -----
     var CAL_AHEAD = 60, CAL_BACK = 30, _calCancel = null, _calWatched = false;   // (Watched shown: for the session)
-    function dayStart(ms) { var d = new Date(ms); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
+    function dayStart(ms) { var d = U.localDate(ms); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - U.clockShiftMs(); }   // (Clock correction: the corrected day's start, as a real moment)
     function dayTitle(ms) { var l = U.dayLabel(ms); return l.charAt(0).toUpperCase() + l.slice(1); }
     function calPoster(id) { return /^tt\d+$/.test(id) ? 'https://images.metahub.space/poster/small/' + id + '/img' : ''; }
     function codeOfId(id) { var p = ('' + id).split(':'); return p.length >= 3 ? 'S' + p[p.length - 2] + 'E' + p[p.length - 1] : ''; }
@@ -1293,7 +1310,7 @@
             if (launch && asked === 'guide' && (Stremio.getPrefs().hiddenTabs || []).indexOf('guide') === -1) { _wantGuide = _homeTab; }   // (see EPG.onChange below)
         }
 
-        var hero = U.look() === 'modern' && !NO_HERO[_homeTab];   // (Modern: the focused title's backdrop, behind it all)
+        var hero = U.modernLook() && !NO_HERO[_homeTab];   // (Modern: the focused title's backdrop, behind it all)
         if (hero) { s.appendChild(homeBackdrop(_homeTab)); }
         s.appendChild(buildTopMenu(_homeTab));
         // The focused title's details, between the top menu and the rows (#home-info); Modern's

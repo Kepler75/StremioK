@@ -727,7 +727,7 @@ var IPTV = (function () {
         if (!any && at !== -1) { d.catalogs.splice(at, 1); }
         recentCatalog(d);
     }
-    // ---- ⟲ Recent: the channels you played last (noteRecent, from a channel's page as it plays),
+    // ---- 🕘 Recent: the channels you played last (noteRecent, from a channel's page as it plays),
     // newest first, RECENT_MAX at most; a row after Favorites while one of them is among the
     // channels read. ----
     var RECENT_KEY = 'stremiok.iptv.recent', RECENT_MAX = 25, RECENT_CAT = 'iptv_recent';
@@ -743,7 +743,7 @@ var IPTV = (function () {
         var at = -1, fav = -1;
         for (var i = 0; i < d.catalogs.length; i++) { if (d.catalogs[i].id === RECENT_CAT) { at = i; } if (d.catalogs[i].id === FAV_CAT) { fav = i; } }
         var any = recents().some(function (id) { return !!resolve(d, id); });
-        if (any && at === -1) { d.catalogs.splice(fav + 1, 0, { type: 'tv', id: RECENT_CAT, name: U.t('⟲ Recent'), extra: [{ name: 'search' }], _recent: true }); }
+        if (any && at === -1) { d.catalogs.splice(fav + 1, 0, { type: 'tv', id: RECENT_CAT, name: U.t('🕘 Recent'), extra: [{ name: 'search' }], _recent: true }); }
         if (!any && at !== -1) { d.catalogs.splice(at, 1); }
     }
 

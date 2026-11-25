@@ -2144,7 +2144,7 @@
         var behindOk = !!(exitToBack && _d && _d.live) || undefined;   // (BACK: it can play on behind the menus, Settings › Playback › Live TV)
         if (lists) {
             U.store.set('stremiok.iptv.last', { id: videoId, type: _d.type, name: label });   // (Settings › Home › Start on › Last IPTV channel)
-            if (typeof IPTV !== 'undefined' && IPTV.noteRecent) { IPTV.noteRecent(videoId); }   // (the IPTV tab's ⟲ Recent)
+            if (typeof IPTV !== 'undefined' && IPTV.noteRecent) { IPTV.noteRecent(videoId); }   // (the IPTV tab's 🕘 Recent)
         }
         // Once it plays (or fails to): Formats learn from it; Played before and the series'
         // preferred source (Next episode) remember it, or forget it.

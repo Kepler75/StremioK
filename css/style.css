@@ -234,6 +234,11 @@ html, body {
 #sub-menu { position: absolute; right: 60px; bottom: 250px; width: 560px; max-height: 620px; overflow: hidden; z-index: 30; background: rgba(20,25,36,0.98); border-radius: 12px; padding: 18px; }
 #sub-menu .sm-title { font-size: 24px; font-weight: bold; margin-bottom: 12px; color: #c7cbd4; }
 #sub-menu .sm-list { max-height: 520px; overflow: hidden; }
+/* under a zoom the page is shorter (1080 / zoom: 772 px at 140%): the menu, 250 px up, keeps its
+   top (its title) on screen, 40 px clear of the edge; its list scrolls to the focused item */
+body.zoom-120 #sub-menu { max-height: 610px; } body.zoom-120 #sub-menu .sm-list { max-height: 520px; }
+body.zoom-130 #sub-menu { max-height: 541px; } body.zoom-130 #sub-menu .sm-list { max-height: 451px; }
+body.zoom-140 #sub-menu { max-height: 482px; } body.zoom-140 #sub-menu .sm-list { max-height: 392px; }
 #sub-menu .sm-item { padding: 12px 16px; border-radius: 8px; border: 3px solid transparent; }
 #sub-menu .sm-item .sm-main { font-size: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #sub-menu .sm-item .sm-detail { font-size: 16px; color: #9aa2b1; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -307,6 +312,13 @@ body.live-behind .home-bg { display: none !important; }
 .iptvb { position: absolute; top: 0; left: 36px; right: 36px; bottom: 24px; display: flex; }
 .iptvb-groups { width: 330px; flex: none; margin-right: 18px; }
 .iptvb-chans { flex: 1; min-width: 0; margin-right: 18px; }
+/* focus in the channels: the groups fold to a strip (the start of each name, the one shown still
+   marked) and the channels take the room; Effects on (Modern, Side menu): sliding */
+.iptvb.groups-away .iptvb-groups { width: 96px; margin-right: 12px; }
+.iptvb.groups-away .iptvb-group { padding: 0 10px; }
+.iptvb.groups-away .iptvb-gname { text-overflow: clip; }
+.iptvb.groups-away .iptvb-gcount { display: none; }
+body.fx-full .iptvb-groups { -webkit-transition: width 0.2s ease, margin 0.2s ease; transition: width 0.2s ease, margin 0.2s ease; }
 .iptvb-info { width: 520px; flex: none; box-sizing: border-box; padding: 22px 24px; border-radius: 14px; background: rgba(22,27,38,0.92); overflow: hidden; }
 .iptvb-group { display: flex; align-items: center; height: 58px; box-sizing: border-box; padding: 0 16px; margin-bottom: 6px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 3px solid transparent; font-size: 21px; color: #cfd5e2; }
 .iptvb-group.on { background: rgba(129,140,248,0.22); color: #fff; }
@@ -337,6 +349,24 @@ body.live-behind .home-bg { display: none !important; }
 .iptvb-inext { font-size: 20px; color: #cfd3dc; margin-top: 4px; }
 .iptvb-inone { font-size: 19px; color: #9aa3b2; margin-top: 12px; }
 .iptvb-ihint { position: absolute; bottom: 20px; font-size: 16px; color: #8b93a5; }
+/* the info pane a column: when it's short (a preview under it, a zoom) the description gives up
+   lines first and the hint stays under it, never over it */
+.iptvb-info { display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; }
+.iptvb-info > * { -webkit-flex: none; flex: none; }
+.iptvb-info > .iptvb-idesc { -webkit-flex: 0 1 auto; flex: 0 1 auto; min-height: 26px; }
+.iptvb-info > .iptvb-ihint { position: static; margin-top: auto; padding-top: 10px; -webkit-flex: 0 100 auto; flex: 0 100 auto; min-height: 0; overflow: hidden; }   /* (gives way first) */
+/* 130–140% with the preview under it: the pane is short, its spacing tighter */
+body.zoom-130 .iptvb.with-pip .iptvb-info, body.zoom-140 .iptvb.with-pip .iptvb-info { padding: 14px 18px; }
+body.zoom-130 .iptvb.with-pip .iptvb-iname, body.zoom-140 .iptvb.with-pip .iptvb-iname { font-size: 26px; margin-bottom: 0; }
+body.zoom-130 .iptvb.with-pip .iptvb-igroup, body.zoom-140 .iptvb.with-pip .iptvb-igroup { margin-bottom: 8px; }
+body.zoom-130 .iptvb.with-pip .iptvb-ilabel, body.zoom-140 .iptvb.with-pip .iptvb-ilabel { margin-top: 8px; }
+body.zoom-130 .iptvb.with-pip .iptvb-ititle, body.zoom-140 .iptvb.with-pip .iptvb-ititle { font-size: 22px; margin-top: 2px; }
+body.zoom-120 .iptvb.with-pip .iptvb-idesc, body.zoom-130 .iptvb.with-pip .iptvb-idesc, body.zoom-140 .iptvb.with-pip .iptvb-idesc { margin-top: 4px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-height: 52px; -webkit-flex: none; flex: none; }   /* (whole lines, then …) */
+body.zoom-140 .iptvb.with-pip .iptvb-idesc { -webkit-line-clamp: 1; max-height: 26px; }
+/* ...and the column narrower, so its preview (16:9: the picture is drawn to the box) is shorter
+   and the info above it gets the height; the folded groups give the channels the width back */
+body.zoom-130 .iptvb.with-pip .iptvb-side, body.zoom-140 .iptvb.with-pip .iptvb-side { width: 440px; }
+body.zoom-130 .iptvb.with-pip .iptvb-pip, body.zoom-140 .iptvb.with-pip .iptvb-pip { height: 248px; }
 .iptvb-info { position: relative; }
 body.live-behind .iptvb-info, body.live-behind .iptvb-group:not(.focused):not(.on), body.live-behind .iptvb-ch:not(.focused) { background-color: rgba(14,17,23,0.82); }   /* (over live TV behind the menus: readable, the focused one as it is) */
 /* the focused channel's preview, under its pane (js/view-iptv.js; the player's pipLook): the page
@@ -352,7 +382,7 @@ body.iptv-pip, body.iptv-pip #app, body.iptv-pip #screen-home, body.look-modern.
 body.iptv-pip .home-bg { display: none !important; }
 #pip-mask { position: absolute; z-index: 5; border-radius: 11px; pointer-events: none; }
 /* the channel list in the player (a live IPTV channel: LEFT) */
-#channel-list { position: absolute; left: 0; top: 0; bottom: 0; width: 640px; z-index: 26; box-sizing: border-box; padding: 40px 28px 28px 40px; background: rgba(14,17,23,0.92); border-right: 2px solid rgba(255,255,255,0.12); }
+#channel-list { position: absolute; left: 0; top: 0; bottom: 0; width: 640px; z-index: 26; box-sizing: border-box; padding: 40px 28px 28px 40px; background: rgba(14,17,23,0.97); display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; border-right: 2px solid rgba(255,255,255,0.12); }
 #channel-list .chl-head { margin-bottom: 16px; }
 #channel-list .chl-group { font-size: 30px; font-weight: bold; color: #e6e9ef; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #channel-list .chl-count { font-size: 18px; color: #9aa3b2; margin-top: 4px; }
@@ -365,7 +395,9 @@ body.iptv-pip .home-bg { display: none !important; }
 #channel-list .chl-name { font-size: 22px; font-weight: bold; color: #e6e9ef; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #channel-list .chl-now { font-size: 17px; color: #cbd2df; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 #channel-list .chl-next { font-size: 15px; color: #8b93a5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#channel-list .chl-hint { position: absolute; left: 40px; right: 28px; bottom: 24px; font-size: 16px; color: #9aa3b2; }
+#channel-list .chl-head, #channel-list .chl-hint { -webkit-flex: none; flex: none; }
+#channel-list .chl-rows { -webkit-flex: 1 1 auto; flex: 1 1 auto; min-height: 0; overflow: hidden; }   /* (the rows the box has room for: player-controls' renderChannels) */
+#channel-list .chl-hint { padding-top: 10px; font-size: 16px; color: #9aa3b2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Cast & crew over the video (quick bar): a strip of photos, moved to keep the selected one in view */
 #cast-strip { position: absolute; left: 0; right: 0; bottom: 230px; z-index: 23; padding: 18px 60px 22px 60px; background: rgba(0,0,0,0.55); overflow: hidden; }   /* see-through, like the subtitles' default box; dark whatever the Appearance background */
 #cast-strip .cs-head { display: flex; align-items: baseline; margin-bottom: 14px; }
