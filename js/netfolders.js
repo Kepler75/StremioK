@@ -191,14 +191,17 @@ var NetFolders = (function () {
         return list(f, '').then(function (r) { return { url: f.url, user: f.user, pass: f.pass, cert: f.cert, name: kind === 'dlna' ? ('' + (server.name || 'DLNA')).slice(0, 80) : nameOf(f.url), entries: r.entries.length, digest: !!f.digest, kind: f.kind, control: f.control }; });
     }
     // Keep a folder probe() found (the same address again: replaced).
+    // (the same address again, its sign-in changed say: the same folder, its id kept, so what was
+    // saved under it (Continue Watching, its index) still finds it; in its place in the list)
     function add(p) {
-        var l = all().filter(function (f) { return f.url !== p.url; });
-        if (l.length >= MAX) { throw new Error(U.t('Up to {n} network folders', { n: MAX })); }
-        var f = { id: newId(), name: p.name || nameOf(p.url), url: p.url, user: p.user || '', pass: p.pass || '', cert: p.cert || '', at: Date.now() };
+        var had = all(), old = had.filter(function (f) { return f.url === p.url; })[0] || null;
+        if (!old && had.length >= MAX) { throw new Error(U.t('Up to {n} network folders', { n: MAX })); }
+        var f = { id: old ? old.id : newId(), name: p.name || nameOf(p.url), url: p.url, user: p.user || '', pass: p.pass || '', cert: p.cert || '', at: Date.now() };
         if (p.digest) { f.digest = true; }
         if (p.kind === 'smb') { f.kind = 'smb'; }
         if (p.kind === 'dlna') { f.kind = 'dlna'; f.control = p.control; }
-        l.push(f);
+        if (old) { delete _tickets[old.id]; }   // (its ticket was for the old sign-in)
+        var l = old ? had.map(function (x) { return x === old ? f : x; }) : had.concat([f]);
         save(l);
         U.log('local', 'Network folder “' + f.name + '” added' + (f.cert ? ' (its certificate trusted)' : ''));
         return f;

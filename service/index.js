@@ -1308,7 +1308,7 @@ function fsWalk(root, cb) {
                         try {
                             if (!e2 && st && !st.isSymbolicLink()) {
                                 if (st.isDirectory()) { if (d.depth + 1 <= FS_WALK_DEPTH) { queue.push({ rel: rel, depth: d.depth + 1 }); } else { truncated = true; } }
-                                else if (walkWants(n, names) && files.length < FS_WALK_FILES) { files.push({ p: rel, size: st.size }); }
+                                else if (walkWants(n, names)) { if (files.length < FS_WALK_FILES) { files.push({ p: rel, size: st.size }); } else { truncated = true; } }   // (one too many: the index says it's incomplete)
                             }
                         } catch (x) {}
                         step();
@@ -1772,7 +1772,7 @@ function mediaInfo(readAt, cb) {
 // readAt for a link (a source's): Range requests with its own headers, its redirects followed
 // once (the next pieces asked at the final address), not into the home network from outside it
 // unless lan, never to the TV itself; a server that ignores Range: only from the start.
-function miHttpReader(url, who, lan, stops) {
+function miHttpReader(url, who, lan, stops, seen) {
     var at = url, firstHost = null, hops = 0;
     return function readAt(off, len, cb) {
         cb = once(cb);
@@ -1810,6 +1810,7 @@ function miHttpReader(url, who, lan, stops) {
                 if (sc !== 200 && sc !== 206) { resp.resume(); end(upError('HTTP ' + sc, sc >= 400 && sc < 600 ? sc : 502)); return; }
                 var cr = /\/(\d+)\s*$/.exec(String(resp.headers['content-range'] || ''));
                 total = cr ? +cr[1] : sc === 200 ? +(resp.headers['content-length'] || 0) : 0;
+                if (seen) { seen.type = String(resp.headers['content-type'] || '').split(';')[0].trim().toLowerCase().slice(0, 100); seen.host = pu.hostname; }
                 resp.on('data', function (c) { if (ended) { return; } chunks.push(c); got += c.length; if (got >= len) { end(null, total); } });
                 resp.on('end', function () { end(null, total); });
                 resp.on('error', function () { end(upError('the host stopped sending', 502)); });
@@ -1820,6 +1821,34 @@ function miHttpReader(url, who, lan, stops) {
         } catch (e) { end(upError('bad link', 400)); }
     };
 }
+// Does a source's link lead to a video? Its first KB asked (as the player would: its headers,
+// its redirects): { kind: 'video' | 'page' | 'error' | 'unknown', status, type, host, size }.
+// 'page': a web page (HTML) where the file should be; 'error': the host said no (HTTP 4xx / 5xx).
+// Only those two are sure; a host that doesn't answer in time is 'unknown' (the player tries it).
+var PROBE_MS = 8000;
+function linkProbe(url, who, lan, cb) {
+    cb = once(cb);
+    var stops = [], seen = {}, read = miHttpReader(url, who, lan, stops, seen);
+    var timer = setTimeout(function () { stop(); cb(null, { kind: 'unknown', why: 'no answer in ' + (PROBE_MS / 1000) + ' s' }); }, PROBE_MS);
+    function stop() { stops.forEach(function (f) { try { f(); } catch (e) {} }); }
+    read(0, 1024, function (err, b, total) {
+        clearTimeout(timer); stop();
+        try { judge(err, b, total); } catch (e) { log('link check: ' + e.message); cb(null, { kind: 'unknown', why: 'couldn\'t tell' }); }   // (never left unanswered)
+    });
+    function judge(err, b, total) {
+        if (err) {
+            var st = err.status || 0;
+            cb(null, st >= 400 && st < 600 && st !== 499 && st !== 504 && /^HTTP \d+$/.test(err.message || '') ? { kind: 'error', status: st, host: seen.host || hostOfUrl(url) } : { kind: 'unknown', why: String(err.message || '').slice(0, 120) });
+            return;
+        }
+        // ('binary', not 'latin1': the 2017 TV's Node doesn't know that name)
+        var head = b ? b.slice(0, 512).toString('binary').replace(/^\xEF\xBB\xBF/, '').replace(/^\s+/, '').slice(0, 64).toLowerCase() : '';
+        var sig = b && b.length >= 8 && (b.readUInt32BE(0) === 0x1A45DFA3 || /^(ftyp|moov|mdat|free|skip|wide|pnot)$/.test(b.toString('binary', 4, 8)) || b[0] === 0x47 || b.toString('binary', 0, 4) === 'RIFF');
+        var page = !sig && (/^text\/html|^application\/xhtml/.test(seen.type || '') || /^<(!doctype html|html|head|body|script|meta)\b/.test(head));
+        cb(null, { kind: sig ? 'video' : page ? 'page' : 'unknown', type: seen.type || '', host: seen.host || hostOfUrl(url), size: total || 0 });
+    }
+}
+function hostOfUrl(u) { try { return urllib.parse(u).hostname || ''; } catch (e) { return ''; } }
 // readAt for a file on a USB drive (a video, on a drive: fsRealOk); done() closes it.
 function miFileReader(p, cb) {
     if (!VIDEO_EXT.test(p)) { cb({ status: 400, message: 'not a video file' }); return; }
@@ -3633,18 +3662,41 @@ function mkvBlanker(plan, start) {
         end: function () { ended = true; out = []; run(); if (pend.length) { mode = 'skip'; skipTo = Infinity; emit(pend.length); } return Buffer.concat(out); }
     };
 }
-// A host in the home network (by its name or address): a private, link-local or carrier-grade
-// address, a name without a dot, or a .local / .lan / .home.arpa / .internal one.
+// Not on the public internet (as the app's U.isPrivateHost): "this network" 0/8, private 10/8,
+// 172.16/12, 192.168/16, carrier-grade NAT 100.64/10, loopback 127/8, link-local 169.254/16, IETF
+// 192.0.0/24, documentation 192.0.2/24, 198.51.100/24, 203.0.113/24, benchmarking 198.18/15,
+// multicast, reserved and broadcast (224 and up).
+function v4Lan(n) {
+    var a = Math.floor(n / 16777216), b = Math.floor(n / 65536) % 256, c = Math.floor(n / 256) % 256;
+    return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) ||
+        (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0 && (c === 0 || c === 2)) ||
+        (a === 198 && (b === 18 || b === 19)) || (a === 198 && b === 51 && c === 100) || (a === 203 && b === 0 && c === 113) || a >= 224;
+}
+// An IPv6 address's 8 words: one carrying an IPv4 address (mapped ::ffff:a.b.c.d, translated
+// ::ffff:0:a.b.c.d, the old compatible ::a.b.c.d, NAT64, 6to4) judged by that address; unique-local,
+// link-local, site-local, multicast, documentation and discard ones are the home network's.
+function v6Lan(w) {
+    function v4At(i) { return v4Lan(w[i] * 65536 + w[i + 1]); }
+    var zero4 = !w[0] && !w[1] && !w[2] && !w[3];
+    if (zero4 && !w[4] && !w[5]) { return true; }                     // (::, ::1, ::a.b.c.d)
+    if (zero4 && !w[4] && w[5] === 0xffff) { return v4At(6); }         // (IPv4-mapped)
+    if (zero4 && w[4] === 0xffff && !w[5]) { return v4At(6); }         // (IPv4-translated)
+    if (w[0] === 0x64 && w[1] === 0xff9b) { return w[2] === 1 || v4At(6); }   // (NAT64; 64:ff9b:1::/48 is local)
+    if (w[0] === 0x2002) { return v4At(1); }                           // (6to4)
+    if (w[0] === 0x100 && !w[1] && !w[2] && !w[3]) { return true; }   // (discard 100::/64)
+    if ((w[0] === 0x2001 && w[1] === 0xdb8) || (w[0] === 0x3fff && w[1] < 0x1000)) { return true; }   // (documentation)
+    return (w[0] & 0xfe00) === 0xfc00 || (w[0] & 0xffc0) === 0xfe80 || (w[0] & 0xffc0) === 0xfec0 || (w[0] & 0xff00) === 0xff00;
+}
+// A host in the home network (by its name or address): any address above, a name without a dot,
+// or a .local / .lan / .home.arpa / .internal one. An IPv6 address that doesn't parse counts as
+// one (never passed unchecked).
 function isLanName(host) {
     var h = String(host || '').toLowerCase().replace(/^\[|\]$/g, '').replace(/%.*$/, '').replace(/\.$/, '');
     if (!h) { return false; }
     if (isSelfAddr(h)) { return true; }
-    if (h.indexOf(':') !== -1) { var w = ipv6Words(h); return !!w && ((w[0] & 0xfe00) === 0xfc00 || (w[0] & 0xffc0) === 0xfe80); }
+    if (h.indexOf(':') !== -1) { var w = ipv6Words(h); return !w || v6Lan(w); }
     var n = ipv4Int(h);
-    if (n >= 0) {
-        var a = Math.floor(n / 16777216), b = Math.floor(n / 65536) % 256;
-        return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
-    }
+    if (n >= 0) { return v4Lan(n); }
     return h.indexOf('.') === -1 || /\.(local|lan|home\.arpa|internal|home)$/.test(h);
 }
 // May a redirect go from the file's own host to this one? Not into the home network from a host
@@ -3675,10 +3727,16 @@ function liveFile(s, req, res) {
     // through. The pieces after the first go to the link the redirects ended on.
     var win = /^bytes=(\d+)-(\d*)$/.exec(range), wFrom = win ? +win[1] : -1, wTo = win && win[2] !== '' ? +win[2] : -1;
     var finalUrl = '', wEnd = -1, bl = null, at = 0, total = 0, last = 0, expect = -1;   // (expect: where the next piece must start)
-    function stop() { gone = true; try { if (r) { r.abort(); } } catch (e) {} }
+    var timer = null;
+    function stop() { gone = true; clearTimeout(timer); try { if (r) { r.abort(); } } catch (e) {} }
     res.on('close', stop);
-    function fail(code, why) { if (gone) { return; } if (!res.headersSent) { send(res, code, 'text/plain', 'failed: ' + why); } else { try { res.end(); } catch (e) {} } stop(); }
-    var timer = setTimeout(function () { if (!res.headersSent) { fail(504, 'timed out'); } }, LIVE_MS);
+    // (once the player has its headers, a failure cuts the answer off: it asks again, rather than
+    // waiting for the rest of a Content-Length that won't come)
+    function fail(code, why) { if (gone) { return; } if (!res.headersSent) { send(res, code, 'text/plain', 'failed: ' + why); } else { log('file relay: ' + why + ', the answer cut off'); try { res.destroy(); } catch (e) {} } stop(); }
+    // Waiting on the host (every piece's answer, and its data as it comes): LIVE_MS without
+    // anything, and it's given up. Not while the player is behind (the host paused on purpose).
+    function arm() { clearTimeout(timer); timer = setTimeout(function () { fail(504, 'the host stopped answering'); }, LIVE_MS); }
+    function rest() { clearTimeout(timer); }
     function windowRange(from) { var to = from + FILE_WINDOW - 1; if (wTo >= 0 && wTo < to) { to = wTo; } if (wEnd >= 0 && wEnd < to) { to = wEnd; } return 'bytes=' + from + '-' + to; }
     function get(url, ask) {
         var pu;
@@ -3688,6 +3746,7 @@ function liveFile(s, req, res) {
         else if (!fileHopOk(firstHost, pu.hostname, s.lan)) { fail(403, 'a link into your home network'); return; }
         var h = liveHeaders(s);
         if (ask) { h.Range = ask; }
+        arm();
         var opts = { hostname: pu.hostname, port: pu.port, path: pu.path, headers: h };
         if (pu.protocol === 'https:' && caList().length) { opts.ca = caList(); }
         try {
@@ -3695,8 +3754,10 @@ function liveFile(s, req, res) {
                 if (gone) { resp.resume(); return; }
                 var sc = resp.statusCode;
                 if (sc >= 300 && sc < 400 && resp.headers.location && hops < 5) { resp.resume(); hops++; get(urllib.resolve(url, resp.headers.location), ask); return; }
-                if (sc !== 200 && sc !== 206) { resp.resume(); clearTimeout(timer); fail(sc >= 400 && sc < 600 ? sc : 502, 'HTTP ' + sc); return; }
-                clearTimeout(timer);
+                if (sc !== 200 && sc !== 206) { resp.resume(); fail(sc >= 400 && sc < 600 ? sc : 502, 'HTTP ' + sc); return; }
+                // (a web page where the file should be: refused, so the player says so at once
+                // rather than waiting on it)
+                if (/^\s*(text\/html|application\/xhtml)/i.test(String(resp.headers['content-type'] || ''))) { resp.resume(); log('file relay: a web page, not a video (' + pu.hostname + ')'); fail(502, 'a web page, not a video'); return; }
                 if (res.headersSent) { more(resp, sc); return; }   // (a piece after the first)
                 finalUrl = url;
                 var cr = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(String(resp.headers['content-range'] || ''));
@@ -3709,8 +3770,8 @@ function liveFile(s, req, res) {
                 pipe(resp, function () { try { res.end(); } catch (e) {} });
             });
             guardSelf(r, function () { fail(400, 'a link it can\'t follow'); });
-            r.on('error', function (e) { clearTimeout(timer); fail(502, (e && e.message) || 'network error'); });
-        } catch (e) { clearTimeout(timer); fail(400, 'bad link'); }
+            r.on('error', function (e) { fail(502, (e && e.message) || 'network error'); });
+        } catch (e) { fail(400, 'bad link'); }
     }
     // The answer passed on as it comes (through give when blanked), the host paused while the
     // player is behind; then done().
@@ -3718,9 +3779,10 @@ function liveFile(s, req, res) {
         resp.on('data', function (c) {
             if (gone) { return; }
             s.last = Date.now();
-            if (!give(bl ? bl.push(c) : c)) { resp.pause(); res.once('drain', function () { if (!gone) { resp.resume(); } }); }
+            arm();
+            if (!give(bl ? bl.push(c) : c)) { rest(); resp.pause(); res.once('drain', function () { if (!gone) { arm(); resp.resume(); } }); }
         });
-        resp.on('end', function () { if (!gone) { done(); } });
+        resp.on('end', function () { if (!gone) { rest(); done(); } });
         resp.on('error', function () { fail(502, 'the host stopped sending'); });
     }
     // (what comes before x, read only to follow the blocks: not sent; x is 0 unblanked)
@@ -3831,6 +3893,13 @@ function liveControl(req, res, path, query, leaving) {
             send(res, 200, 'application/json', JSON.stringify(r));
         });
         if (stopMi) { leaving.push(stopMi); }
+        return;
+    }
+    if (path === '/live/probe') {   // does a source's link lead to a video (see linkProbe)
+        if (!entryAllowed(req, query)) { send(res, 403, 'text/plain', 'not allowed (token)'); return; }
+        var pu0 = q.u || '';
+        if (!/^https?:\/\/[^\s]+$/i.test(pu0) || pu0.length > 2000) { send(res, 400, 'text/plain', 'bad link'); return; }
+        linkProbe(pu0, liveWho(q), q.lan === '1', function (err, r) { send(res, 200, 'application/json', JSON.stringify(r)); });
         return;
     }
     if (path === '/live/file') {   // a file through the relay (see liveFile)
@@ -4209,7 +4278,7 @@ function davWalk(f, st, cb) {
                             if (HIDDEN_NAME.test(e.name)) { return; }
                             var p = d.rel ? d.rel + '/' + e.name : e.name;
                             if (e.dir) { if (d.depth < DAV_WALK_DEPTH) { queue.push({ rel: p, depth: d.depth + 1 }); } else { truncated = true; } }
-                            else if (walkWants(e.name, names) && files.length < DAV_WALK_FILES) { files.push({ p: p, size: e.size || 0 }); }
+                            else if (walkWants(e.name, names)) { if (files.length < DAV_WALK_FILES) { files.push({ p: p, size: e.size || 0 }); } else { truncated = true; } }   // (one too many: the index says it's incomplete)
                         });
                     }
                     pump();
@@ -4271,6 +4340,7 @@ function smbAscii(str) { var b = allocBuffer(str.length); for (var i = 0; i < st
 function smbBytes(arr) { var b = allocBuffer(arr.length); for (var i = 0; i < arr.length; i++) { b[i] = arr[i] & 0xFF; } return b; }
 function smbW64(b, off, n) { b.writeUInt32LE(n % 4294967296 >>> 0, off); b.writeUInt32LE(Math.floor(n / 4294967296) >>> 0, off + 4); }
 function smbR64(b, off) { return b.readUInt32LE(off) + b.readUInt32LE(off + 4) * 4294967296; }
+function smbSame(a, b) { if (a.length !== b.length) { return false; } var d = 0; for (var i = 0; i < a.length; i++) { d |= a[i] ^ b[i]; } return d === 0; }
 function smbFill(n, v) { var b = allocBuffer(n); b.fill(v || 0); return b; }
 // MD4 (RFC 1320), for the NT hash: the TV's OpenSSL may not have it.
 function md4(buf) {
@@ -4386,6 +4456,15 @@ SmbConn.prototype._dispatch = function (msg) {
     if (status === SMB_ST.PENDING) { return; }   // (the answer follows)
     var p = this.pending[mid];
     if (!p) { return; }
+    // A signed request's answer: signed too, and the signature right (else someone on the way
+    // changed it, or made it up): the connection dropped. An error alone may come unsigned (a
+    // server's "session expired", say): it carries nothing to trust.
+    var flagged = !!(msg.readUInt32LE(16) & 0x00000008);
+    if ((p.signed || flagged) && this.signKey && (flagged || (status & 0xC0000000) >>> 0 !== 0xC0000000)) {
+        var mine = msg.slice(0, 64); mine = Buffer.concat([mine.slice(0, 48), smbFill(16), msg.slice(64)]);
+        var want = crypto.createHmac('sha256', this.signKey).update(mine).digest().slice(0, 16);
+        if (!flagged || !smbSame(want, msg.slice(48, 64))) { this._die('an answer that isn\'t signed as it should be'); return; }
+    }
     delete this.pending[mid];
     clearTimeout(p.timer);
     try { p.cb(status, msg.slice(0, 64), msg.slice(64)); } catch (e) { try { p.cb(-2, null, null); } catch (e2) {} }   // (an answer too short for what it says: as an error)
@@ -4406,12 +4485,13 @@ SmbConn.prototype._send = function (command, body, charge, cb) {
     this.msgId += charge;   // (a request of several credits uses as many message ids)
     h.writeUInt32BE(0xFE534D42, 0); h.writeUInt16LE(64, 4); h.writeUInt16LE(charge, 6); h.writeUInt16LE(command, 12); h.writeUInt16LE(64, 14);
     smbW64(h, 24, id); h.writeUInt32LE(this.treeId >>> 0, 36); this.sessionId.copy(h, 40);
-    if (this.signing && this.signKey && command !== SMB2.SESSION_SETUP) {
+    var signed = !!(this.signing && this.signKey && command !== SMB2.SESSION_SETUP);
+    if (signed) {
         h.writeUInt32LE(0x00000008, 16);
         crypto.createHmac('sha256', this.signKey).update(Buffer.concat([h, body])).digest().slice(0, 16).copy(h, 48);
     }
     var packet = Buffer.concat([h, body]), pfx = smbBytes([0, (packet.length >> 16) & 0xFF, (packet.length >> 8) & 0xFF, packet.length & 0xFF]);
-    this.pending[id] = { cb: cb, timer: setTimeout(function () { if (self.pending[id]) { delete self.pending[id]; cb(-1, null, null); self._die('no answer in ' + (SMB_REQ_MS / 1000) + ' s'); } }, SMB_REQ_MS) };
+    this.pending[id] = { cb: cb, signed: signed, timer: setTimeout(function () { if (self.pending[id]) { delete self.pending[id]; cb(-1, null, null); self._die('no answer in ' + (SMB_REQ_MS / 1000) + ' s'); } }, SMB_REQ_MS) };
     this.last = Date.now();
     try { this.sock.write(Buffer.concat([pfx, packet])); } catch (e) { this._die('write: ' + e.message); }
 };
@@ -4700,7 +4780,7 @@ function smbWalk(f, st, cb) {
                             if (HIDDEN_NAME.test(e.name)) { return; }
                             var p = d.rel ? d.rel + '/' + e.name : e.name;
                             if (e.dir) { if (d.depth < SMB_WALK_DEPTH) { queue.push({ rel: p, depth: d.depth + 1 }); } else { truncated = true; } }
-                            else if (walkWants(e.name, names) && files.length < SMB_WALK_FILES) { files.push({ p: p, size: e.size }); }
+                            else if (walkWants(e.name, names)) { if (files.length < SMB_WALK_FILES) { files.push({ p: p, size: e.size }); } else { truncated = true; } }   // (one too many: the index says it's incomplete)
                         });
                     }
                     pump();
@@ -5080,7 +5160,7 @@ function dlnaWalk(control, st, cb) {
                             entries.forEach(function (e) {
                                 var p = d.rel ? d.rel + '/' + e.name : e.name;
                                 if (e.dir) { if (d.depth < DLNA_WALK_DEPTH) { queue.push({ rel: p, depth: d.depth + 1 }); } else { truncated = true; } }
-                                else if ((VIDEO_EXT.test(e.name) || SUB_EXT.test(e.name)) && files.length < DLNA_WALK_FILES) { files.push({ p: p, size: e.size || 0 }); }
+                                else if ((VIDEO_EXT.test(e.name) || SUB_EXT.test(e.name))) { if (files.length < DLNA_WALK_FILES) { files.push({ p: p, size: e.size || 0 }); } else { truncated = true; } }   // (one too many: the index says it's incomplete)
                             });
                         }
                         pump();

@@ -204,12 +204,14 @@
     // Look: Classic (the stylesheet as it is) or Modern (css/modern.css, its rules only under
     // body.look-modern). Effects, Modern's blur and motion: Auto turns them on where the TV's
     // browser can blur behind a panel (Tizen 6 and later), Light keeps them off, Full on.
-    var LOOKS = [['classic', U.t('Classic')], ['modern', U.t('Modern')], ['side', U.t('Side menu')]];   // (Side menu: Modern, the menu down the left)
+    var LOOKS = [['classic', U.t('Classic')], ['modern', U.t('Modern')]];
+    // Menu: the main menu across the top, or down the left edge (Side), with either look.
+    var MENUS = [['top', U.t('Top')], ['side', U.t('Side')]];
     var EFFECTS = [['auto', U.t('Auto (by the TV)')], ['light', U.t('Light')], ['full', U.t('Full')]];
     function applyAppearance() {
         var a = appearance(), p = Stremio.getPrefs();
         U.applyTheme(a.accent, a.bg);
-        U.setLook(p.look, p.effects, a.bg === 'gray' || a.bg === 'white');
+        U.setLook(p.look, p.effects, a.bg === 'gray' || a.bg === 'white', p.menu);
         U.setZoom(zoomPct() / 100);
         U.setClockShift(p.clockShift);
     }
@@ -243,9 +245,10 @@
         var accents = U.ACCENT_KEYS.map(function (k) { return [k, ACCENT_NAMES[k] || k, null, U.accentColor(k)]; });
         wrap.appendChild(U.el('h2', null, U.t('Appearance')));
         wrap.appendChild(languageRow());
-        var looks = { get: function () { var p = Stremio.getPrefs(); return { look: p.look, effects: p.effects }; },
-            set: function (cfg) { Stremio.setPref('look', cfg.look); Stremio.setPref('effects', cfg.effects); applyAppearance(); markHomeDirty(); } };
+        var looks = { get: function () { var p = Stremio.getPrefs(); return { look: p.look, effects: p.effects, menu: p.menu }; },
+            set: function (cfg) { Stremio.setPref('look', cfg.look); Stremio.setPref('effects', cfg.effects); Stremio.setPref('menu', cfg.menu); applyAppearance(); markHomeDirty(); } };
         wrap.appendChild(subPickRow(U.t('Look'), LOOKS, 'look', looks));
+        wrap.appendChild(subPickRow(U.t('Menu'), MENUS, 'menu', looks));
         wrap.appendChild(subPickRow(U.t('Effects'), EFFECTS, 'effects', looks));
         wrap.appendChild(subPickRow(U.t('Background'), BACKGROUNDS, 'bg', store));
         wrap.appendChild(subPickRow(U.t('Accent color'), accents, 'accent', store));

@@ -1517,18 +1517,20 @@ var U = (function () {
     function canBlur() {
         try { return !!(window.CSS && CSS.supports && (CSS.supports('backdrop-filter', 'blur(2px)') || CSS.supports('-webkit-backdrop-filter', 'blur(2px)'))); } catch (e) { return false; }
     }
-    var _look = 'classic';
+    var _look = 'classic', _menu = 'top';
     function look() { return _look; }
-    // 'side' (Side menu): Modern with the main menu down the left edge (menu-left, css/modern.css):
-    // look-modern too, so everything Modern does it does; modernLook() says either.
-    function modernLook() { return _look === 'modern' || _look === 'side'; }
-    function setLook(lk, fx, light) {   // (light: Light Gray or White, bg-light: css/modern.css's fills for them)
-        _look = lk === 'modern' || lk === 'side' ? lk : 'classic';
+    // The main menu down the left edge (Settings › Appearance › Menu: Side; menu-left, css/modern.css)
+    // with either look; modernLook(): Modern's.
+    function modernLook() { return _look === 'modern'; }
+    function sideMenu() { return _menu === 'side'; }
+    function setLook(lk, fx, light, menu) {   // (light: Light Gray or White, bg-light: css/modern.css's fills for them)
+        _look = lk === 'modern' ? 'modern' : 'classic';
+        _menu = menu === 'side' ? 'side' : 'top';
         var b = document.body;
         if (!b || !b.classList) { return; }
         var full = modernLook() && (fx === 'full' || (fx !== 'light' && canBlur()));
         b.classList[modernLook() ? 'add' : 'remove']('look-modern');
-        b.classList[_look === 'side' ? 'add' : 'remove']('menu-left');
+        b.classList[sideMenu() ? 'add' : 'remove']('menu-left');
         b.classList[full ? 'add' : 'remove']('fx-full');
         b.classList[light ? 'add' : 'remove']('bg-light');
     }
@@ -1744,7 +1746,7 @@ var U = (function () {
         parseUrl: parseUrl, urlProblem: urlProblem, isPlaylistUrl: isPlaylistUrl, isManifestUrl: isManifestUrl,
         isPrivateHost: isPrivateHost, urlIsPrivate: urlIsPrivate, setLocalPolicy: setLocalPolicy, sanitizeHeaders: sanitizeHeaders, drawable: drawable,
         t: t, tn: tn, weekday: weekday, month: month,
-        look: look, modernLook: modernLook, setLook: setLook, canBlur: canBlur, heroImages: heroImages, log: log, logEntries: logEntries, clearLog: clearLog, bigStore: bigStore, diskInfo: diskInfo,
+        look: look, modernLook: modernLook, sideMenu: sideMenu, setLook: setLook, canBlur: canBlur, heroImages: heroImages, log: log, logEntries: logEntries, clearLog: clearLog, bigStore: bigStore, diskInfo: diskInfo,
         store: store, toast: toast, spinner: spinner,
         deferImage: deferImage, deferBg: deferBg, cardImage: cardImage, prioritizeImages: prioritizeImages, requeueImages: requeueImages,
         fmtTime: fmtTime, dayLabel: dayLabel, localDate: localDate, setClockShift: setClockShift, clockShiftMs: clockShiftMs, settleAll: settleAll, cancelToken: cancelToken, isHidden: isHidden, whenVisible: whenVisible, crumb: crumb, sessionStart: sessionStart, sessionState: sessionState, mark: mark, startupMarks: startupMarks, loadScript: loadScript, qrModules: qrModules, qrCanvas: qrCanvas, qrScale: qrScale,

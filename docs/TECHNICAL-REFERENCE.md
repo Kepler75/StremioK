@@ -215,6 +215,9 @@ data](PRIVACY.md); for working on the code, the [developer guide](DEVELOPER-GUID
 
 - **Started means playing:** a source counts as started once its position has moved for a
   second; being opened isn't enough. A failure before that goes to the next source.
+- **A dead link:** while the player opens a file on the internet, StremioK's service checks its
+  link ([link check](#live-relay)); an HTTP error or a web page instead of a
+  video ends that source's start at once, said why, and the next source is tried.
 - **Nothing playing after 45 seconds:** the next source, or, with none left, it stops and says
   so. A pause is neither that nor a stall: played on, it has its 45 seconds again.
 - **Opened but not moving:** reloaded once, then the next source (a torrent: after 3 reloads).
@@ -924,6 +927,7 @@ Each endpoint's parameters are described at the top of `service/index.js`.
 | TV guide | `/epg/load`, `/epg/get` | Reads a playlist's guide for your channels; their programs | + token or header |
 | DRM | `/drm/license` (a POST) | Posts a Widevine channel's license request to its license server | + token or the guide ticket |
 | File details | `/live/mi`, `/fsmi`, `/dav/mi` | A video's header: codecs, HDR, tracks | + token or header |
+| Link check | `/live/probe` | Whether a source's link leads to a video, an error or a web page | + token or header |
 | Live relay | `/live/open`, then `/live/<id>/…` | Checks a channel's sound and captions; relays it repacked, captions as subtitles | open: + token or header |
 
 ### YouTube
@@ -1068,6 +1072,10 @@ it is.
 
 **File details** (`/live/mi`, `/fsmi`, `/dav/mi`): the playing source's header only (MKV, MP4),
 in byte ranges: 16 MB, 10 reads, 20 s at most, two at once; redirects as the file relay's.
+
+**Link check** (`/live/probe`): a source's first KB, asked as the player would (its headers,
+redirects), 8 s at most: an HTTP error or a web page ends that source's start at once.
+A web page sent to the file relay instead of the file is refused there too.
 
 **Files through StremioK's service** (`/live/file`, `/live/<id>/f`): a non-HLS source needing
 headers the TV's player can't send (Origin, Accept, Accept-Language; any, under TizenBrew), or

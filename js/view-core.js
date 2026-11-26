@@ -207,6 +207,8 @@ var ViewParts = {};
     function isModalOpen() { return _modalOpen; }
     // fn runs when the modal closes (e.g. to stop polling); null clears it
     function onModalClose(fn) { _modalOnClose = fn; }
+    // ...as well as what the popup itself runs then (a page under it waiting for it to close)
+    function alsoOnModalClose(fn) { var before = _modalOnClose; _modalOnClose = function () { if (before) { before(); } fn(); }; }
 
     var _modalOnClose = null;
     // Where focus goes back to: the node it was on, or, drawn again meanwhile (the IPTV tab's
@@ -565,14 +567,33 @@ var ViewParts = {};
             it.appendChild(document.createTextNode(opt[1]));
             if (opt[2]) { it.style.fontFamily = opt[2]; }
             it.__onselect = function () { closeModal(); onPick(opt[0]); };
+            it.__val = opt[0];
             if (opt[0] === current) { pref = it; }
             listEl.appendChild(it);
         });
         box.appendChild(listEl);
         overlay.appendChild(box);
+        overlay.__pick = { list: listEl, current: current, onPick: onPick };
         document.body.appendChild(overlay);
 
         showModal(overlay, pref);
+    }
+    // The open pickList's choices replaced (more came in meanwhile: a title's sources as addons
+    // answer), focus kept on the same choice; false when no pickList is open.
+    function pickListUpdate(options) {
+        var overlay = document.querySelector('.modal-overlay'), pk = overlay && overlay.__pick;
+        if (!pk) { return false; }
+        var cur = Focus.current(), keep = cur && overlay.contains(cur) ? cur.__val : pk.current, again = null;
+        while (pk.list.firstChild) { pk.list.removeChild(pk.list.firstChild); }
+        options.forEach(function (opt) {
+            var it = U.el('div', 'pick-item focusable' + (opt[0] === pk.current ? ' sel' : ''), opt[1]);
+            it.__val = opt[0];
+            it.__onselect = function () { closeModal(); pk.onPick(opt[0]); };
+            if (opt[0] === keep) { again = it; }
+            pk.list.appendChild(it);
+        });
+        Focus.setScope(overlay, again || pk.list.querySelector('.focusable') || undefined);
+        return true;
     }
 
     // Ticks in a popup (what to import): nothing ticked at first; OK on one ticks or unticks it,
@@ -1244,9 +1265,11 @@ var ViewParts = {};
     V.phoneEntry = phoneEntry;
     V.header = header;
     V.isModalOpen = isModalOpen;
+    V.pickListUpdate = pickListUpdate;
     V.nowPlayingLabel = nowPlayingLabel;
     V.inNowPlaying = inNowPlaying;
     V.onModalClose = onModalClose;
+    V.alsoOnModalClose = alsoOnModalClose;
     V.pickList = pickList;
     V.pickMany = pickMany;
     V.playlistActions = playlistActions;

@@ -156,36 +156,72 @@ var Plugins = (function () {
         reloadAddons();
     }
 
-    // ---- The Worker (one, kept while in use; gone after IDLE_MS, or when it asks to start over)
-    var _worker = null, _waiting = {}, _next = 1, _idle = null;
-    function worker() {
-        if (_idle) { clearTimeout(_idle); _idle = null; }
-        if (_worker) { return _worker; }
-        _worker = new Worker(workerFile());
-        _worker.onmessage = function (ev) {
+    // ---- The Workers: AT_ONCE on a TV with the WebAssembly runtime (each runs one plugin at a
+    // time: a slow plugin no longer holds up the next), one on older TVs (the plain-JavaScript
+    // runtime: slower, more memory). Kept while in use; gone after IDLE_MS. One that asks to start
+    // over (something was left inside its engine) is dropped once its answer is in.
+    var _pool = [], _waiting = {}, _next = 1, _idle = null, _queue = [];
+    function poolSize() { return legacy() ? 1 : AT_ONCE; }
+    function spawn() {
+        var slot = { w: new Worker(workerFile()), run: 0, retire: false };
+        slot.w.onmessage = function (ev) {
             var m = ev.data || {};
-            if (m.type === 'restart') { drop(); return; }
+            if (m.type === 'restart') { slot.retire = true; if (!slot.run) { letGo(slot); } return; }
             var w = _waiting[m.id];
-            if (!w) { return; }
+            if (!w || w.slot !== slot) { return; }
             delete _waiting[m.id];
             clearTimeout(w.timer);
+            slot.run = 0;
+            if (slot.retire) { letGo(slot); }
             w.done(m);
-            idleLater();
+            pump();
         };
-        _worker.onerror = function (e) { U.log('plugins', 'Plugin runtime error: ' + ((e && e.message) || 'unknown')); fail('the plugin runtime stopped'); };
-        return _worker;
+        slot.w.onerror = function (e) { U.log('plugins', 'Plugin runtime error: ' + ((e && e.message) || 'unknown')); failSlot(slot, 'the plugin runtime stopped'); pump(); };
+        _pool.push(slot);
+        return slot;
     }
-    function idleLater() { if (!Object.keys(_waiting).length) { _idle = setTimeout(drop, IDLE_MS); } }
-    function drop() { if (_worker) { try { _worker.terminate(); } catch (e) {} _worker = null; } }
-    function fail(why) { var w = _waiting; _waiting = {}; drop(); Object.keys(w).forEach(function (k) { clearTimeout(w[k].timer); w[k].done({ type: 'failed', why: why, logs: [] }); }); }
+    function letGo(slot) { try { slot.w.terminate(); } catch (e) {} _pool = _pool.filter(function (x) { return x !== slot; }); }
+    function idleLater() {
+        if (_idle) { clearTimeout(_idle); _idle = null; }
+        if (!Object.keys(_waiting).length && !_queue.length) { _idle = setTimeout(drop, IDLE_MS); }
+    }
+    function drop() { _pool.slice().forEach(letGo); _idle = null; }
+    function failSlot(slot, why) {
+        var id = slot.run;
+        letGo(slot);
+        var w = id && _waiting[id];
+        if (w) { delete _waiting[id]; clearTimeout(w.timer); w.done({ type: 'failed', why: why, logs: [] }); }
+    }
+    // (every runtime started over: the ones running told why, the ones waiting too)
+    function fail(why) {
+        var w = _waiting, q = _queue; _waiting = {}; _queue = [];
+        drop();
+        Object.keys(w).forEach(function (k) { clearTimeout(w[k].timer); w[k].done({ type: 'failed', why: why, logs: [] }); });
+        q.forEach(function (j) { j.done({ type: 'failed', why: why, logs: [] }); });
+    }
+    // The next waiting run on a free Worker (a new one while there are fewer than poolSize).
+    function pump() {
+        while (_queue.length) {
+            var slot = _pool.filter(function (x) { return !x.run && !x.retire; })[0] || (_pool.length < poolSize() ? spawn() : null);
+            if (!slot) { break; }
+            start(slot, _queue.shift());
+        }
+        idleLater();
+    }
+    function start(slot, job) {
+        var id = _next++;
+        slot.run = id;
+        var timer = setTimeout(function () { if (_waiting[id]) { failSlot(slot, 'took too long'); pump(); } }, runMs() + 5000);   // (a runtime that stopped answering: that one started over)
+        _waiting[id] = { done: job.done, timer: timer, slot: slot };
+        try { slot.w.postMessage({ type: 'run', id: id, code: job.code, scraperId: job.plugin.id, args: job.args, tmdbKey: job.tmdbKey, net: job.net, timeoutMs: runMs(), maxResults: MAX_RESULTS }); }
+        catch (e) { delete _waiting[id]; clearTimeout(timer); slot.run = 0; job.done({ type: 'failed', why: (e && e.message) || 'couldn’t start', logs: [] }); }
+    }
     function runOne(code, plugin, args, net) {
         return new Promise(function (resolve) {
-            var id = _next++;
-            var timer = setTimeout(function () { if (_waiting[id]) { fail('took too long'); } }, runMs() + 5000);   // (a runtime that stopped answering: started over)
-            _waiting[id] = { done: resolve, timer: timer };
             var tmdbKey = typeof Stremio !== 'undefined' && Stremio.getIntegrations ? (Stremio.getIntegrations().tmdb || '') : '';
-            try { worker().postMessage({ type: 'run', id: id, code: code, scraperId: plugin.id, args: args, tmdbKey: tmdbKey, net: net, timeoutMs: runMs(), maxResults: MAX_RESULTS }); }
-            catch (e) { delete _waiting[id]; clearTimeout(timer); resolve({ type: 'failed', why: (e && e.message) || 'couldn’t start', logs: [] }); }
+            if (_idle) { clearTimeout(_idle); _idle = null; }
+            _queue.push({ done: resolve, code: code, plugin: plugin, args: args, net: net, tmdbKey: tmdbKey });
+            try { pump(); } catch (e) { _queue = _queue.filter(function (j) { return j.done !== resolve; }); resolve({ type: 'failed', why: (e && e.message) || 'couldn’t start', logs: [] }); }
         });
     }
 
@@ -257,7 +293,9 @@ var Plugins = (function () {
             }, function (e) { throw new Error('its code isn’t on the TV, and downloading it again failed: ' + U.problem(e)); });
         });
     }
-    function streams(type, id, meta) {
+    // onPart (optional): the sources so far, each time a plugin finishes with some (the list
+    // shows them while the others still run).
+    function streams(type, id, meta, onPart) {
         if (!isEnabled()) { return Promise.resolve([]); }
         var kind = type === 'series' ? 'tv' : type === 'movie' ? 'movie' : '';
         var todo = enabledPlugins().filter(function (x) { return kind && x.p.types.indexOf(kind) !== -1; });
@@ -271,7 +309,14 @@ var Plugins = (function () {
             }
             var args = [tmdb, kind, ep ? +ep[1] : null, ep ? +ep[2] : null];
             return YTPlay.pluginNet(lanAllowed()).then(function (net) {
-                var out = [], notes = [], over = false, state = {};
+                var out = [], notes = [], over = false, state = {}, seen = {};
+                // (the same source from two plugins (the same plugin in two repositories, say):
+                // listed once, the first one's; by its link or torrent and its description)
+                function fresh(s) {
+                    var k = (s.url ? 'u|' + s.url : 'h|' + s.infoHash + '|' + (s.fileIdx || 0)) + '|' + s.title;
+                    if (seen[k]) { return false; }
+                    seen[k] = true; return true;
+                }
                 var all = U.settleAll(todo.map(function (x) {
                     return function () {
                         if (over) { return Promise.resolve(); }
@@ -285,7 +330,11 @@ var Plugins = (function () {
                             var list = (Array.isArray(r.streams) ? r.streams : []).slice(0, MAX_RESULTS).map(function (s, n) { return toSource(s, x.p, n); }).filter(Boolean);
                             state[x.p.id] = 'done';
                             if (!list.length) { notes.push({ plugin: x.p.name, why: U.t('no sources for this') }); }
+                            var got = list.length;
+                            list = list.filter(fresh);
+                            if (got && !list.length) { U.log('plugins', x.p.name + ': its ' + got + ' sources were the same as another plugin\'s'); }
                             out = out.concat(list);
+                            if (list.length && onPart) { try { onPart(out.slice()); } catch (e2) {} }
                         }).then(null, function (e) {
                             if (over) { return; }
                             var why = '' + ((e && e.message) || e);
@@ -316,7 +365,7 @@ var Plugins = (function () {
     var _addon = null;
     function synthAddon() {
         if (!_addon) {
-            _addon = { __local: true, __sources: true, __impl: { streams: streams }, url: 'local:plugins', base: 'local:plugins',
+            _addon = { __local: true, __sources: true, __impl: { streams: streams, partial: true }, url: 'local:plugins', base: 'local:plugins',
                 manifest: { id: 'org.stremiok.plugins', name: 'Nuvio plugins', version: '1.0.0', types: ['movie', 'series'], catalogs: [],
                     resources: [{ name: 'stream', types: ['movie', 'series'], idPrefixes: ['tt', 'tmdb:'] }] } };
         }

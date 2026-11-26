@@ -168,7 +168,7 @@ The tabs, **Discover**, **Search** and **Settings ⚙**, then the StremioK name.
 reaches it. When they don't all fit, the menu scrolls sideways as you move along it (or pick an
 item by number); the StremioK name stays put.
 
-With the *Side menu* look (Settings › Appearance › Look) it runs down the left edge instead, as
+With *Menu: Side* (Settings › Appearance), with either look, it runs down the left edge instead, as
 icons that show their names while you're in it. LEFT from a page's left edge reaches it (in the
 Guide, also UP pressed twice on the top row); UP and DOWN move along it, RIGHT goes back.
 

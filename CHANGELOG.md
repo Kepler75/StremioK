@@ -3,6 +3,32 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.4.13 — 2026-11-26
+New:
+- **Settings › Appearance › Menu:** *Look* is now Classic or Modern, and the new *Menu* is Top or
+  Side, so the side menu works with the Classic look too. If you had picked the Side menu look,
+  you get Modern with the Side menu.
+- **Dead sources skipped in a second or two,** not 25 to 45 seconds of "Opening stream…": a link
+  that answers an error (such as HTTP 404) or leads to a web page instead of a video is reported,
+  and the next source is tried.
+- **Sources sooner:** the addons are asked while a USB drive's saved index is still being read,
+  and Nuvio plugins run two at a time on Tizen 6 and newer. Plugins' sources show as each plugin
+  finishes, and the same source from two plugins is listed once.
+
+Fixed:
+- **Addon ▾ / Resolution ▾ while sources load:** the popup stays open, adds sources as they come
+  in, and closes with one BACK.
+- **A source playing through StremioK's service could wait forever** when the host stopped
+  answering partway through a file; it now gives up after 20 seconds and asks again.
+- **Network folders:** a Windows / NAS share's answers are checked against their signature;
+  adding a folder again (a new password, say) keeps your place in what you were watching; a folder
+  with more files than StremioK indexes says its index is incomplete.
+- **Nuvio plugins:** with *Local-network links from internet addons* blocked, they could still
+  reach your home network through some IPv6 addresses; a plugin could be left out as too slow.
+- **Diagnostics:** says why a file's details couldn't be read, and no longer blames the next
+  source for a dead one's.
+- **Side menu:** the Settings icon sits centered like the others.
+
 ## 2.4.12 — 2026-11-25
 Fixed:
 - **A source playing through StremioK's service froze at the same moment every time:** with

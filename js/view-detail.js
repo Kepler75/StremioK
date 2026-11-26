@@ -1776,11 +1776,25 @@
             _d.streams = sortStreams(extraWhere(Stremio.dedupeStreams(list), extra));
             _d.streamsPending = pending;
             if (Player.isActive()) { return; }
+            // A popup open over the list (Addon ▾ / Resolution ▾ while they load): left open, in
+            // focus; the filter's choices brought up to date in it, the list under it drawn again
+            // once it closes.
+            if (V.isModalOpen()) { underModal(); return; }
             // Focus stays put only once you've moved it. Until then each answer lands it on the
             // top again (the first addon to answer may have only "where to watch" links, which
             // the full list then sorts to the bottom).
             if (hadList && Focus.current() !== _d._autoFocus) { redrawKeepingFocus(); }
             else { drawDetail(); _d._autoFocus = Focus.current(); }
+        }
+        function underModal() {
+            if (_d._filterOpen && V.pickListUpdate) { V.pickListUpdate(filterChoices(_d._filterOpen, rankRowsFor(_d.streams))); }
+            if (_d._redrawAfterModal) { return; }
+            _d._redrawAfterModal = true;
+            V.alsoOnModalClose(function () {
+                _d._filterOpen = null;
+                // (after the popup has given focus back to the page: kept there as the list is drawn)
+                setTimeout(function () { _d._redrawAfterModal = false; if (here() && !V.isModalOpen() && !Player.isActive()) { redrawKeepingFocus(); } }, 0);
+            });
         }
         streamsFor(addonType(), [videoId].concat(imdbAlso(videoId)), function (list, pending) {
             if (pending > 0 && list.length) { show(list, pending); }   // partial: only once there's something to pick
@@ -1871,6 +1885,11 @@
         out.sort(kind === 'res' ? function (x, y) { return TIERS.indexOf(x[0]) - TIERS.indexOf(y[0]); } : function (x, y) { return x[3] - y[3]; });
         return out;
     }
+    // A filter button's choices: All (how many), then each addon / resolution with how many.
+    function filterChoices(kind, rows) {
+        var total = rows.filter(function (r) { return matchFilter(r, filterOf(), kind) && (kind === 'addon' || r.group !== 'where'); }).length;
+        return [['', U.t('All') + '  ·  ' + total]].concat(filterOptions(kind, rows).map(function (o) { return [o[0], o[1] + '  ·  ' + o[2]]; }));
+    }
     function filterPill(kind, rows) {
         var f = filterOf(), opts = filterOptions(kind, rows);
         if (opts.length < 2 && !f[kind]) { return null; }   // (no choice to make)
@@ -1878,8 +1897,9 @@
         var p = U.el('div', 'pill focusable filter-pill', label + '  ▾');
         if (_d._focusPill === 'filter-' + kind) { _d._epFocus = p; _d._focusPill = null; }
         p.__onselect = function () {
-            var total = rows.filter(function (r) { return matchFilter(r, filterOf(), kind) && (kind === 'addon' || r.group !== 'where'); }).length;
-            pickList(kind === 'addon' ? U.t('Sources from') : U.t('Resolution'), [['', U.t('All') + '  ·  ' + total]].concat(opts.map(function (o) { return [o[0], o[1] + '  ·  ' + o[2]]; })), f[kind], function (k) {
+            _d._filterOpen = kind;   // (sources coming in meanwhile: its choices updated, see underModal)
+            pickList(kind === 'addon' ? U.t('Sources from') : U.t('Resolution'), filterChoices(kind, rows), f[kind], function (k) {
+                _d._filterOpen = null;
                 var now = filterOf();
                 _d.filter = { addon: kind === 'addon' ? k : now.addon, res: kind === 'res' ? k : now.res };
                 _d._focusPill = 'filter-' + kind;

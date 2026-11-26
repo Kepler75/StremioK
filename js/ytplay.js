@@ -135,6 +135,14 @@ var YTPlay = (function () {
             return U.getJSON(PROXY + '/live/mi?u=' + encodeURIComponent(url) + headerQuery(h) + (lan ? '&lan=1' : '') + a.q, 25000, 262144, cancel, a.h, null, true);
         });
     }
+    // Does a source's link lead to a video? The service's /live/probe: { kind: 'video' | 'page' |
+    // 'error' | 'unknown', status, type, host, size } (see linkProbe there). h, lan: as fileOpen.
+    function linkProbe(url, h, lan, cancel) {
+        if (MODE === 'browser') { return Promise.reject(new Error('no service')); }
+        return ensureService().then(entryAuth).then(function (a) {
+            return U.getJSON(PROXY + '/live/probe?u=' + encodeURIComponent(url) + headerQuery(h) + (lan ? '&lan=1' : '') + a.q, 12000, 16384, cancel, a.h, null, true);
+        });
+    }
     // Where a Nuvio plugin's Worker sends its requests (js/plugins.js): { url, headers }, the
     // token in the link (a Worker's POST then needs no preflight). lan: home-network requests
     // allowed (Local-network links from internet addons).
@@ -409,6 +417,6 @@ var YTPlay = (function () {
         return MODE === 'tizenbrew' ? U.t('TizenBrew module') : MODE === 'wgt' ? U.t('Sideloaded app (.wgt)') : U.t('Browser (development)');
     }
 
-    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, fileOpen: fileOpen, mediaInfo: mediaInfo, pluginNet: pluginNet, hlsMaster: hlsMaster, aiomAddons: aiomAddons, stalkerList: stalkerList, stalkerVod: stalkerVod, drmLicense: drmLicense, stalkerPlayUrl: stalkerPlayUrl, stalkerArchiveUrl: stalkerArchiveUrl, stalkerGenres: stalkerGenres, stalkerLink: stalkerLink, xtvodAsk: xtvodAsk, iptvRead: iptvRead, iptvText: iptvText, iptvForget: iptvForget, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, imageBytes: imageBytes, entryGive: entryGive, bakWrite: bakWrite, bakRead: bakRead, entrySeen: entrySeen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
+    return { ensureService: ensureService, resolverUrl: resolverUrl, infoUrl: infoUrl, canPlay: canPlay, liveOpen: liveOpen, fileOpen: fileOpen, mediaInfo: mediaInfo, linkProbe: linkProbe, pluginNet: pluginNet, hlsMaster: hlsMaster, aiomAddons: aiomAddons, stalkerList: stalkerList, stalkerVod: stalkerVod, drmLicense: drmLicense, stalkerPlayUrl: stalkerPlayUrl, stalkerArchiveUrl: stalkerArchiveUrl, stalkerGenres: stalkerGenres, stalkerLink: stalkerLink, xtvodAsk: xtvodAsk, iptvRead: iptvRead, iptvText: iptvText, iptvForget: iptvForget, epgLoad: epgLoad, epgGet: epgGet, epgFiles: epgFiles, epgClear: epgClear, entryOpen: entryOpen, imageBytes: imageBytes, entryGive: entryGive, bakWrite: bakWrite, bakRead: bakRead, entrySeen: entrySeen, entryPoll: entryPoll, entryClose: entryClose, subsUrl: subsUrl, audioLang: audioLang, setAudioLang: setAudioLang, installMode: function () { return MODE; },
         installLabel: installLabel, unavailableMessage: unavailableMessage, isRunning: isRunning, port: PORT };
 })();

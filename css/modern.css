@@ -148,7 +148,7 @@ body.look-modern .season-bar .pill.focusable.focused { background: #fff; color: 
 body.look-modern .stream.focusable.focused, body.look-modern .ep.focusable.focused { background: #fff; color: #000; border-color: #ffffff; box-shadow: none; }
 body.look-modern .stream, body.look-modern .ep { border-radius: 14px; background: rgba(22,27,38,0.72); }
 
-/* ---- Side menu (Settings › Appearance › Look): Modern, with the main menu down the left edge of
+/* ---- Side menu (Settings › Appearance › Menu: Side, with either look): the main menu down the left edge of
    Home, Discover, Search, Settings and title pages (body.menu-left). The screen moves right by the
    menu's width and up by the top menu's height, so every page keeps its own layout; the menu,
    inside it, fills the left edge: icons only, opening wide (names shown) while focus is in it
@@ -168,6 +168,7 @@ body.menu-left .home-header .menu-scroll { -webkit-flex: 1 1 auto; flex: 1 1 aut
 body.menu-left .home-header .tabbar-inline, body.menu-left.fx-full .home-header .tabbar-inline { -webkit-flex-direction: column; flex-direction: column; -webkit-align-items: stretch; align-items: stretch; background: transparent; border-radius: 0; padding: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
 body.menu-left .home-header .menu-scroll > :first-child, body.menu-left .home-header .menu-scroll > :last-child { margin-left: 0; margin-right: 0; }
 body.menu-left .home-header .menu-scroll > .hchip:not(.pf-chip) { margin-top: auto; }   /* (Settings at the bottom) */
+body.menu-left .home-header .menu-scroll > .hchip.focusable { margin-left: 12px; margin-right: 12px; }   /* (Settings and the profile: the same side margins as the tabs, also when one is the column's last: icons centered alike) */
 /* only the tabs scroll (focus keeps the one it's on in view); Settings and the profile stay put at
    the bottom, always on screen, as they stay at the right of Modern's top menu */
 body.menu-left .home-header .tabbar-inline { -webkit-flex: 0 1 auto; flex: 0 1 auto; min-height: 0; overflow: hidden; }

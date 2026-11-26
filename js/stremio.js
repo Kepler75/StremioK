@@ -171,7 +171,8 @@ var Stremio = (function () {
         var p = U.store.get(PREFS_KEY, {}) || {};
         return { lang: typeof p.lang === 'string' && p.lang ? p.lang : 'auto',   // Settings > Appearance > Language (js/i18n.js: 'auto', 'en', 'es', 'pt-BR')
             posterShape: p.posterShape || 'portrait', accent: p.accent || 'indigo', bg: p.bg || 'dark',
-            look: p.look === 'classic' || p.look === 'side' ? p.look : 'modern',   // Settings > Appearance: Modern (the default since 2.4.9.4: a backdrop behind Home, the title's logo, rounder posters), or Classic (kept where it's saved)
+            look: p.look === 'classic' ? 'classic' : 'modern',   // Settings > Appearance: Modern (the default since 2.4.9.4: a backdrop behind Home, the title's logo, rounder posters), or Classic (kept where it's saved)
+            menu: p.menu === 'side' || (p.menu === undefined && p.look === 'side') ? 'side' : 'top',   // ...Menu: across the top, or down the left edge (side); the old Side menu look ('side', 2.4.10): Modern with it
             effects: p.effects === 'light' || p.effects === 'full' ? p.effects : 'auto',   // ...Modern's blur and motion: by the TV (auto), off (light) or on (full)
             zoom: [110, 120, 130, 140].indexOf(p.zoom) !== -1 ? p.zoom : 100,   // Settings > Appearance: everything bigger (percent)
             clockShift: p.clockShift === 60 || p.clockShift === -60 ? p.clockShift : 0,   // ...Clock correction: minutes added to the times shown (U.localDate, #35)
@@ -1182,28 +1183,54 @@ var Stremio = (function () {
             if (_streamOrder.length > STREAM_CACHE_MAX) { delete _streamCache[_streamOrder.shift()]; }
         }
         e = _streamCache[key] = { list: [], pending: 1, at: 0, listeners: onUpdate ? [onUpdate] : [], started: false };
-        // the files on a USB drive matched to this movie / episode: first, as soon as asked (its
-        // saved index read first when nothing has read the drive since launch: localReady)
-        var local = localFor(type, id);
+        // the files on a USB drive matched to this movie / episode: first. Its saved index, when
+        // nothing has read the drive since launch, is read meanwhile (localReady): the addons are
+        // asked at once, its matches put first when it's read (counted as one still to answer
+        // until then, so Skip the source list waits for them too).
+        var local = localFor(type, id), localWait = 1, slots = [];
         function notify() {
             for (var i = 0; i < e.listeners.length; i++) { try { e.listeners[i](e.list, e.pending); } catch (x) {} }
         }
-        e.promise = localReady().then(function () { local = localFor(type, id); return sourceFeeds.visible(); }).then(function (feeds) {   // (your order; the ones turned off left out)
+        function gather() { e.list = local.concat([].concat.apply([], slots)); }
+        var localAt = localReady().then(function () {
+            local = localFor(type, id); localWait = 0;
+            if (e.started) { e.pending--; gather(); notify(); }
+        });
+        e.promise = sourceFeeds.visible().then(function (feeds) {   // (your order; the ones turned off left out)
             var providers = feeds.map(function (f) { return f.addon; }).filter(function (a) { return supports(a, 'stream', type, id); });
-            var slots = providers.map(function () { return []; }), okCount = 0, notes = [];
+            var okCount = 0, notes = [], round = 0;
+            slots = providers.map(function () { return []; });
+            // (an addon's sources marked as its: which, its place, the headers one needs)
+            function tag(arr, a, i) {
+                arr.forEach(function (s, n) {
+                    s._addon = a.manifest.name || U.t('Addon'); s._addonRank = i; s._addonPos = n;
+                    // (a source that needs its own player settings: its User-Agent and Referer, as an IPTV channel's)
+                    var ph = s.behaviorHints && s.behaviorHints.proxyHeaders, h = ph && ph.request ? U.sanitizeHeaders(ph.request) : null;
+                    if (h) { s._headers = h; }
+                });
+                return arr;
+            }
             e.started = true;
-            e.list = local.slice();
+            gather();
             function ask() {   // one round: every source addon, 4 at a time
-                okCount = 0;
-                e.pending = providers.length;
+                okCount = 0; round++;
+                e.pending = providers.length + localWait;
                 notes = [];
                 notify();
                 return U.settleAll(providers.map(function (a, i) {
                     return function () {
                         var url = a.base + '/stream/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '.json' + variantQuery(a);
+                        // (one that tells its sources as they come, Nuvio plugins': listed meanwhile, this round only)
+                        var mine = round, over = false;
+                        function part(l) {
+                            if (over || mine !== round || slots[i].length > (l || []).length) { return; }
+                            slots[i] = tag(U.listOf(l, MAX_STREAMS).map(youTubeSource).map(torrentSource).filter(function (s) { return !isNotice(s); }), a, i);
+                            gather(); notify();
+                        }
                         // (StremioK's own source, your Xtream accounts' copies: asked here, with the title's details)
-                        var asked = a.__impl ? metaFirst(type, id).then(function (m) { return a.__impl.streams(type, id, m); }).then(function (l) { return { streams: l }; }) : U.getJSON(url, addonMs(15000));
+                        var asked = a.__impl ? metaFirst(type, id).then(function (m) { return a.__impl.streams(type, id, m, a.__impl.partial ? part : undefined); }).then(function (l) { return { streams: l }; }) : U.getJSON(url, addonMs(15000));
                         return asked.then(function (res) {
+                            over = true;
                             var arr = U.listOf(a.__impl ? res.streams : fromAddon(a, res, 'sources').streams, MAX_STREAMS).map(youTubeSource).map(torrentSource), said = notes.length;
                             arr = arr.filter(function (s) {   // (an addon's notices: what it removed and why, its errors; not sources)
                                 if (!isNotice(s)) { return true; }
@@ -1211,12 +1238,7 @@ var Stremio = (function () {
                                     text: ('' + (s.description || s.title || '')).split('\n').map(function (l) { return l.trim(); }).filter(Boolean).join('   ·   ').slice(0, 400) });
                                 return false;
                             });
-                            arr.forEach(function (s, n) {
-                                s._addon = a.manifest.name || U.t('Addon'); s._addonRank = i; s._addonPos = n;
-                                // (a source that needs its own player settings: its User-Agent and Referer, as an IPTV channel's)
-                                var ph = s.behaviorHints && s.behaviorHints.proxyHeaders, h = ph && ph.request ? U.sanitizeHeaders(ph.request) : null;
-                                if (h) { s._headers = h; }
-                            });
+                            tag(arr, a, i);
                             // (StremioK's own source that says why parts of it gave nothing: Nuvio plugins, one line each)
                             if (a.__impl && res.streams && Array.isArray(res.streams._notes)) {
                                 res.streams._notes.slice(0, 10).forEach(function (n) { notes.push({ addon: (a.manifest.name || U.t('Addon')) + ' · ' + ('' + n.plugin).slice(0, 60), title: ('' + n.why).replace(/\s+/g, ' ').slice(0, 160), text: '', rank: i }); });
@@ -1224,6 +1246,7 @@ var Stremio = (function () {
                             slots[i] = arr; okCount++;
                             if (!arr.length && notes.length === said) { note(a, i, U.t('no sources for this')); }   // (its notices say why, when it sent any)
                         }).then(function () { done(); }, function (err) {
+                            over = true;
                             // (no answer in time: what you played from it before, marked so — see keptSources)
                             if (isTimeout(err) && !slots[i].length) { slots[i] = keptSources(type, id, a, i); }
                             note(a, i, whyNone(err));
@@ -1236,7 +1259,7 @@ var Stremio = (function () {
             function note(a, i, why) { notes.push({ addon: a.manifest.name || U.t('Addon'), title: why, text: '', rank: i }); }
             function done() {
                 e.pending--;
-                e.list = local.concat([].concat.apply([], slots));
+                gather();
                 notes.sort(function (x, y) { return (x.rank === undefined ? -1 : x.rank) - (y.rank === undefined ? -1 : y.rank); });
                 _streamNotes.set(key, notes.slice(0, 10));
                 notify();
@@ -1249,9 +1272,9 @@ var Stremio = (function () {
             return ask().then(function (results) {
                 var late = !okCount && (results || []).some(function (r) { return r && !r.ok && isTimeout(r.error); });
                 if (!providers.length || fresh() > local.length || (!okCount && !late)) { return null; }
-                e.pending = providers.length; notify();   // (still loading, not "No sources found", meanwhile)
+                e.pending = providers.length + localWait; notify();   // (still loading, not "No sources found", meanwhile)
                 return new Promise(function (r) { setTimeout(r, RETRY_EMPTY_STREAMS_MS); }).then(ask);
-            }).then(function () {
+            }).then(function () { return localAt; }).then(function () {   // (the drive's matches in, LOCAL_WAIT_MS at most)
                 e.at = Date.now();
                 e.done = true; e.listeners = [];   // (nothing more to tell: none kept)
                 // Nothing (no answer, or no sources): not kept, so opening it again asks again.

@@ -304,7 +304,8 @@ them.
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Language* | **Automatic** (the TV's; English where StremioK was already in use), English, or another language | Menus, buttons and messages; StremioK restarts in it. Titles and synopses come from your addons. |
-| *Look* | Classic, **Modern**, Side menu | Modern: big backdrops, logos, rounder posters, a centered menu. Side menu: menu on the left. |
+| *Look* | Classic, **Modern** | Modern: big backdrops, logos, rounder posters. |
+| *Menu* | **Top**, Side | Side: on the left. |
 | *Effects* | **Auto (by the TV)**, Light, Full | Modern's blur, fades and motion. Auto: on from Tizen 6 (2021 TVs), off on older ones, where they'd slow it. |
 | *Background* | Black, **Dark**, Light Gray, White | The light ones have dark text; the player keeps its dark controls. |
 | *Accent color* | **Indigo**, and nine others | |

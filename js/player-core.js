@@ -484,7 +484,7 @@ var PlayerParts = {};
     // is what's learned from it (s.stream, through ctx.learnFor); the title, its episodes and
     // whether it's private stay.
     var SOURCE_FIELDS = ['url', 'variantUrl', 'initialQualityHeight', 'yt', 'ytLang', '_headers', 'localSubs', 'localFile', 'subExtra', 'sourceSubs', 'formatInfo', 'onStarted', 'onFailed', 'stream',
-        '_reported', 'fromStart', 'resumeSec', 'switching', 'viaService', '_relay', '_relayFor', '_relayCc', '_relayFix', '_ownUrl', '_av', '_played', '_svcTried', '_svcRetry'];   // (_ownUrl: each copy its own link, see formatStart; _played: this source has played a second, reloads or not)
+        '_reported', 'fromStart', 'resumeSec', 'switching', 'viaService', '_relay', '_relayFor', '_relayCc', '_relayFix', '_ownUrl', '_av', '_played', '_svcTried', '_svcRetry', '_gaveUp'];   // (_ownUrl: each copy its own link, see formatStart; _played: this source has played a second, reloads or not)
     // keep: a source that didn't start gives way to the next (nextSourceOnFail): the same place to
     // resume, and Play from the start as it was.
     function replaceSource(s, keep) {
@@ -547,8 +547,20 @@ var PlayerParts = {};
             if (look.cancelled) { return; }
             if (mi && typeof mi === 'object' && mi.container) { _miSeen.set(job.key, mi); if (S.ctx === ctx && S.active) { S.mi = mi; fileInfoIn(ctx, mi); } }
             over();
-        }, function (e) { if (!look.cancelled) { U.log('player', 'The file\'s details couldn\'t be read: ' + ((e && e.message) || 'unknown')); over(); } });
+        }, function (e) { if (!look.cancelled) { if (stillOn(ctx)) { U.log('player', 'The file\'s details couldn\'t be read: ' + whyRead(ctx, e)); } over(); } });
     }
+    // Why a read through the service failed, for the log: the source's host and what its host
+    // answered ("pixeldrain.dev: HTTP 404"), never the link (it may carry a key); private viewing:
+    // not even the host (Diagnostics doesn't say what was playing).
+    function whyRead(ctx, e) {
+        var m = /HTTP (\d{3})(?!.*HTTP \d{3})/.exec((e && e.message) || ''), host = ctx && ctx.private ? 'private playback' : hostOf(ctx && ctx.url);
+        return (host ? host + ': ' : '') + (m ? 'HTTP ' + m[1] : /timed out|timeout/i.test((e && e.message) || '') ? 'no answer in time' : 'no answer');
+    }
+    // (a read's failure logged only while its source is still the one opening: not one given up on,
+    // nor one another source has replaced, whose answer comes in after)
+    function stillOn(ctx) { return S.active && S.ctx === ctx && !ctx._gaveUp; }
+    function hostOf(u) { var m = /^https?:\/\/(?:[^@\/?#]*@)?([^\/?#:]+)/i.exec('' + (u || '')); return m ? m[1].toLowerCase() : ''; }
+    P.hostOf = hostOf;
     // The answer in: S.mi, and the source's details corrected by it (Stremio.withFileInfo): what
     // the player shows (its tags, Stream info) and what Formats learns from it are the file's.
     function fileInfoIn(ctx, mi) {
@@ -625,8 +637,10 @@ var PlayerParts = {};
         if (!S.behind) spinner(true, ctx.switching ? U.t('Switching source…') : ctx.initialQualityHeight ? U.t('Opening stream at {height}p…', { height: ctx.initialQualityHeight }) : U.t('Opening stream…'));
 
         engineFor(ctx);   // (the TV's player, or a ClearKey channel's own: see startShaka)
+        linkCheck(ctx);   // (meanwhile: a dead link or a web page given up on at once)
         // (a TorrServer torrent that doesn't say which of its files: its file list asked for first)
         var go = function () { blankBefore(ctx, function () {
+            if (ctx._gaveUp) { return; }   // (its link found dead meanwhile: linkCheck)
             var bj = !ctx._blank && fileInfoAsk(ctx, true), bmi = bj && _miSeen.get(bj.key);   // (its tracks known: see blankFits)
             if (bmi && blankFits(ctx, bmi)) { setBlank(ctx, bmi); }
             if (fileViaService(ctx)) { startFileRelay(ctx, settle); return; }
@@ -1480,10 +1494,10 @@ var PlayerParts = {};
         function on(m) {
             if (done) { return; } done = true;
             if (m && m.container) { _miSeen.set(job.key, m); }
-            if (S.ctx === ctx && S.active) { if (!S.behind) { spinner(true, U.t('Opening stream…')); } then(); }
+            if (S.ctx === ctx && S.active && !ctx._gaveUp) { if (!S.behind) { spinner(true, U.t('Opening stream…')); } then(); }
         }
-        job.ask(look).then(on, function () { on(null); });
-        setTimeout(function () { look.cancel(); on(null); }, BLANK_ASK_MS);
+        job.ask(look).then(on, function (e) { if (!done && stillOn(ctx)) { U.log('player', 'The file\'s tracks couldn\'t be read: ' + whyRead(ctx, e)); } on(null); });
+        setTimeout(function () { if (!done && stillOn(ctx)) { U.log('player', 'The file\'s tracks couldn\'t be read: ' + whyRead(ctx, { message: 'timed out' }) + ' (' + (BLANK_ASK_MS / 1000) + ' s)'); } look.cancel(); on(null); }, BLANK_ASK_MS);
     }
     function maybeMkv(ctx) {
         var bh = (ctx.stream && ctx.stream.behaviorHints) || {};
@@ -1611,6 +1625,44 @@ var PlayerParts = {};
     // A start that failed: is the link a debrid addon's notice video (Torrentio's failed_access,
     // limits_exceeded…: noticeOf)? Then that's said, and for the account's ones the next source
     // skips the addon's links through that service; then the next source, or what's to say.
+    // A source's link checked by StremioK's service while the player opens it (not waited for):
+    // the host answering an error (HTTP 4xx / 5xx) or a web page where the file should be, before
+    // anything played, and it's given up on at once (said why, the next source tried) rather than
+    // after AV_START_MS: the TV's player can sit on such an answer without an error. Anything
+    // else (a video, no answer in time, the service not there): the player goes on as it was.
+    // Files on the internet only (not HLS / DASH, live channels, YouTube, DRM, USB files,
+    // torrents or the service's own links).
+    var _linkLook = null;
+    function linkCheckable(ctx) {
+        var st = ctx && ctx.stream, url = '' + ((ctx && ctx.url) || '');
+        if (!ctx || S.isLive || ctx.yt || ctx.trailer || ctx.localFile || ctx.preview || (st && (st._drm || st._torrent || st._pickFile))) { return false; }
+        if (typeof YTPlay === 'undefined' || !YTPlay.linkProbe || YTPlay.installMode() === 'browser') { return false; }
+        if (!/^https?:\/\//i.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)[:\/]/i.test(url) || HLS_LINK.test(url) || /\.mpd(?:[?#]|$)/i.test(url)) { return false; }
+        return !(ctx.formatInfo && (ctx.formatInfo.container === 'hls' || ctx.formatInfo.container === 'dash'));
+    }
+    function linkCheck(ctx) {
+        if (_linkLook) { _linkLook.cancel(); _linkLook = null; }
+        if (!linkCheckable(ctx)) { return; }
+        var url = ctx.url, look = _linkLook = U.cancelToken(), lan = typeof Stremio !== 'undefined' && Stremio.getPrefs ? !!Stremio.getPrefs().allowLocal : false;
+        YTPlay.linkProbe(url, U.sanitizeHeaders(ctx._headers), lan, look).then(function (r) {
+            if (look.cancelled) { return; }
+            if (_linkLook === look) { _linkLook = null; }
+            if (!r || (r.kind !== 'error' && r.kind !== 'page')) { return; }
+            var host = ('' + (r.host || hostOf(url))).slice(0, 80);
+            U.log('player', 'The source\'s link: ' + (r.kind === 'error' ? 'HTTP ' + r.status : 'a web page (' + (r.type || 'HTML') + '), not a video') + ' (' + (ctx.private ? 'private playback' : host || '?') + ')');
+            if (!S.active || S.ctx !== ctx || ctx.url !== url || S.playStarted || S.playing) { return; }
+            var why = r.kind === 'error' ? U.t('The link doesn’t work ({host}: HTTP {code})', { host: host, code: r.status }) : U.t('The link leads to a web page, not a video ({host})', { host: host });
+            ctx._gaveUp = true;   // (what was still under way for it, the tracks' read, the relay: not opened after all)
+            ++_playToken; _openedAt = 0;   // (what the player says about it from now on: not about this one)
+            if (useAV) { try { avplay.stop(); } catch (e0) {} try { avplay.close(); } catch (e1) {} }
+            else if (S.videoEl) { try { S.videoEl.pause(); S.videoEl.removeAttribute('src'); S.videoEl.load(); } catch (e2) {} }
+            reportStart(false, r.kind === 'error' ? 'HTTP ' + r.status : 'web page');
+            spinner(false);
+            if (nextSourceOnFail({ text: why })) { return; }
+            toast(why, 7000);
+            exitLater();
+        }, function () { if (_linkLook === look) { _linkLook = null; } });
+    }
     function failedStart(why) {
         var c = S.ctx, token = _playToken, st = c && c.stream;
         function finish(notice, status) {
@@ -1850,7 +1902,7 @@ var PlayerParts = {};
     function startFileRelay(ctx, settle) {
         var lan = typeof Stremio !== 'undefined' && Stremio.getPrefs ? !!Stremio.getPrefs().allowLocal : false;
         function go() {
-            if (S.ctx !== ctx || !S.active) { return; }
+            if (S.ctx !== ctx || !S.active || ctx._gaveUp) { return; }
             if (useAV) { startLive(ctx, settle); } else { startHTML5(ctx._relay && ctx._relayFor === ctx.url ? ctx._relay : ctx.url); }
         }
         YTPlay.fileOpen(ctx.url, U.sanitizeHeaders(ctx._headers), lan, ctx._blank || null, ctx._blank ? ctx._audioOrder : null).then(function (r) {
