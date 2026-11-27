@@ -739,30 +739,37 @@
         // (of a language's tracks, by the file's header: a plain one in text, then SDH, then a
         // forced one — a picture one, PGS, shows nothing here, so last)
         var own = P.fileTracks ? P.fileTracks('subs', tracks) : null;
-        function best(match) {
+        // (pref: the language chosen, maybe a variant, "spa-419": its tracks first, by their tag or name)
+        function best(match, pref) {
             var c = tracks.filter(match);
-            if (!own || c.length < 2) { return c[0] || null; }
-            var o = function (t) { return own[tracks.indexOf(t)] || {}; };
+            if (c.length < 2) { return c[0] || null; }
+            var o = function (t) { return (own && own[tracks.indexOf(t)]) || {}; };
+            var vr = function (t) { var f = o(t); return P.variantRank(pref, { lang: textLang(t), bcp: f.bcp, name: f.name }); };
             var rank = function (t) { var f = o(t); return f.text === false ? 3 : f.forced ? 2 : f.hi ? 1 : 0; };
-            return c.slice().sort(function (x, y) { return rank(x) - rank(y) || c.indexOf(x) - c.indexOf(y); })[0];
+            return c.slice().sort(function (x, y) { return vr(x) - vr(y) || rank(x) - rank(y) || c.indexOf(x) - c.indexOf(y); })[0];
+        }
+        // (a subtitle file in that language, the variant chosen first, else in the list's order)
+        function bestFile(k, pref) {
+            var c = _subTracks.filter(function (t) { return langMatches(k, t.lang); });
+            return c.slice().sort(function (x, y) { return P.variantRank(pref, x) - P.variantRank(pref, y) || c.indexOf(x) - c.indexOf(y); })[0] || null;
         }
         if (w.file && w.file !== embFileKey()) { w = { lang: w.lang, lang2: w.lang2, auto: w.auto }; }   // (reopened with other tracks: its place means nothing there)
         if (w.index != null) {
             pick = tracks.find(function (t) { return t.index === w.index && (!key || langKey(textLang(t)) === key); }) || null;
         }
-        if (!pick && key) { pick = best(function (t) { return langMatches(key, textLang(t)); }); }
+        if (!pick && key) { pick = best(function (t) { return langMatches(key, textLang(t)); }, w.lang); }
         // (no language from the TV, the file's details still being read: picked once they're in,
         // subsMiIn, so your language built into the file isn't passed over)
         if (!pick && P.miPending && P.miPending() && tracks.length && tracks.every(function (t) { return P.langUnstated(trackLang(t)); })) { _embWant = w; return; }
         if (!pick && w.early) { return; }   // (only a built-in one, early: the rest once the files are in)
         // (your default language not built in: a subtitle file in it, in the list's order)
-        var file = !pick && key && w.auto ? _subTracks.find(function (t) { return langMatches(key, t.lang); }) : null;
+        var file = !pick && key && w.auto ? bestFile(key, w.lang) : null;
         if (file) { loadTrack(file); return; }
         if (!pick && w.nth != null && S.ctx && S.ctx._relayCc) { pick = tracks[w.nth] || null; }   // (a live channel's closed captions: in the order asked for)
         if (!pick && w.lang2) {   // nothing in the default language anywhere: the second choice, the same way
             var key2 = langKey(w.lang2);
-            pick = best(function (t) { return langMatches(key2, textLang(t)); });
-            var dl = pick ? null : _subTracks.find(function (t) { return langMatches(key2, t.lang); });
+            pick = best(function (t) { return langMatches(key2, textLang(t)); }, w.lang2);
+            var dl = pick ? null : bestFile(key2, w.lang2);
             if (dl) { loadTrack(dl); return; }
         }
         if (pick) { selectEmbeddedSub(pick); _embNudge = { index: pick.index, at: Date.now() + EMB_NUDGE_MS }; }

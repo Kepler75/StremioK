@@ -3,6 +3,23 @@
 What changed in each version of StremioK, newest first. How everything works is in the
 [user guide](docs/USER-GUIDE.md).
 
+## 2.4.14 — 2026-11-26
+New:
+- **Language variants** in Settings › Playback › Subtitles and Audio: *Spanish (Latin America)* /
+  *(Spain)*, *English (US)* / *(UK)*, *Portuguese (Brazil)* / *(Portugal)*, *French (Canada)* /
+  *(France)*, *Chinese (Simplified)* / *(Traditional)*. Your variant's tracks are picked first (by
+  their tag or name, such as "Latinoamérica"), then any of the language's.
+
+Fixed:
+- **Files with many subtitle tracks breaking up at the same moments every time** on 2017–2018 TVs,
+  even with subtitles off (#30). There, *Leave out other subtitle tracks* is now *More than 5*
+  unless you chose otherwise. Without your languages, a file keeps its first track; file names
+  with more after ".mkv" are recognized.
+- ***Leave out other subtitle tracks* stopping for a file** after its debrid host once sent a short
+  stand-in clip instead of it.
+- **A full TV storage:** each failed try to save Trakt's waiting changes is no longer logged over
+  and over.
+
 ## 2.4.13 — 2026-11-26
 New:
 - **Settings › Appearance › Menu:** *Look* is now Classic or Modern, and the new *Menu* is Top or

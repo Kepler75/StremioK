@@ -639,7 +639,8 @@ var Trakt = (function () {
     // TV: Player's watched marks); Trakt's copy is only what Trakt says.
     function outbox() { var b = U.store.get(OUTBOX_KEY, []); return Array.isArray(b) ? b : []; }
     // Kept on the TV; more than OUTBOX_MAX waiting, the oldest go, and a save the TV refuses
-    // (its storage full) means they'd be lost on closing: both said, once, and logged.
+    // (its storage full) means they'd be lost on closing: both said, once (the second until a save
+    // works again), and logged.
     var _toldFull = false, _toldUnsaved = false;
     function saveOutbox(b) {
         if (b.length > OUTBOX_MAX) {
@@ -648,9 +649,12 @@ var Trakt = (function () {
             b = b.slice(-OUTBOX_MAX);
         }
         if (U.store.set(OUTBOX_KEY, b) === false) {
-            U.log('trakt', 'The changes waiting for Trakt couldn’t be saved on the TV (its storage is full): they’re lost if StremioK closes');
-            if (!_toldUnsaved) { _toldUnsaved = true; U.toast(U.t('Trakt: the changes waiting couldn’t be saved on the TV (storage full)'), 6000); }
-        }
+            if (!_toldUnsaved) {   // (once, until a save works again: each try logged made the full storage worse)
+                _toldUnsaved = true;
+                U.log('trakt', 'The changes waiting for Trakt couldn’t be saved on the TV (its storage is full): they’re lost if StremioK closes');
+                U.toast(U.t('Trakt: the changes waiting couldn’t be saved on the TV (storage full)'), 6000);
+            }
+        } else { _toldUnsaved = false; }
     }
     function newId() { return Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36); }
     function overlaps(x, y) {

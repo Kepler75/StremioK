@@ -80,15 +80,19 @@ var U = (function () {
        area name ("network", "player", "storage"…). The last LASTLOG_MAX are also kept on the
        TV, so a launch after StremioK closed unexpectedly can show what came before (see
        sessionStart). */
-    var LOG_MAX = 200, _log = [];
+    var LOG_MAX = 200, LOG_SAME = 8, _log = [];
     function redactText(t) {
         return ('' + (t === undefined ? '' : t)).replace(/\b(?:https?|stremio):\/\/[^\s"'<>)]+/gi, function (u) { return redactUrl(u); });
     }
     function log(source, message) {
         try {
             var msg = redactText(message && message.message ? message.message : message).slice(0, 400);
-            var last = _log[_log.length - 1];
-            if (last && last.src === source && last.msg === msg) { last.n = (last.n || 1) + 1; last.t = Date.now(); return; }   // (repeats counted, not listed)
+            // (repeats counted, not listed: one of the last few said again moves to the end with
+            // its count, so two problems taking turns, each try, don't fill the log)
+            for (var i = _log.length - 1; i >= 0 && i >= _log.length - LOG_SAME; i--) {
+                var e = _log[i];
+                if (e.src === '' + source && e.msg === msg) { e.n = (e.n || 1) + 1; e.t = Date.now(); if (i !== _log.length - 1) { _log.splice(i, 1); _log.push(e); } return; }
+            }
             _log.push({ t: Date.now(), src: '' + source, msg: msg });
             if (_log.length > LOG_MAX) { _log.shift(); }
             keepLogSoon();
@@ -1056,6 +1060,7 @@ var U = (function () {
     // Regenerable caches, cleared first (in this order) when the storage is full.
     var CACHES = ['stremiok.homesnap', 'stremiok.homecache', 'stremiok.iptv.cache.', 'stremiok.showinfo', 'stremiok.manifests'];
     var _fullToldAt = null;   // (when you were last told the storage is full)
+    var _fullKeys = {};   // (what couldn't be saved, logged once each until a save of it works again)
     function isCacheKey(key) {
         for (var i = 0; i < CACHES.length; i++) { if (key === CACHES[i] || (CACHES[i].slice(-1) === '.' && key.indexOf(CACHES[i]) === 0)) { return true; } }
         return false;
@@ -1102,15 +1107,15 @@ var U = (function () {
             _writes++;
             var text;
             try { text = JSON.stringify(value); } catch (e0) { return false; }
-            if (tryWrite(key, text)) { if (keep) { _memo[key] = { missing: false, val: value }; } return true; }
+            if (tryWrite(key, text)) { delete _fullKeys[key]; if (keep) { _memo[key] = { missing: false, val: value }; } return true; }
             if (cache) { return false; }
             var freed = [];
             for (var i = 0; i < CACHES.length; i++) {
                 var gone = clearCache(phys(CACHES[i]));
                 if (gone) { freed.push(CACHES[i]); }
-                if (gone && tryWrite(key, text)) { log('storage', 'TV storage full: cleared ' + freed.join(', ') + ' to save ' + key); return true; }
+                if (gone && tryWrite(key, text)) { delete _fullKeys[key]; log('storage', 'TV storage full: cleared ' + freed.join(', ') + ' to save ' + key); return true; }
             }
-            log('storage', 'TV storage full: could not save ' + key);
+            if (!_fullKeys[key]) { _fullKeys[key] = true; log('storage', 'TV storage full: could not save ' + key); }   // (once, until it's saved again: not on every try)
             var now = Date.now();
             if (_fullToldAt === null || now - _fullToldAt > 60000) { _fullToldAt = now; try { toast(t('The TV’s storage is full: a change couldn’t be saved (Settings › Diagnostics).'), 4000); } catch (e2) {} }
             return false;

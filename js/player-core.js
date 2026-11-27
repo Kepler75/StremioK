@@ -531,7 +531,20 @@ var PlayerParts = {};
         if (ctx.formatInfo && ctx.formatInfo.container === 'hls') { return null; }
         if (typeof YTPlay === 'undefined' || !YTPlay.mediaInfo || YTPlay.installMode() === 'browser') { return null; }
         var lan = typeof Stremio !== 'undefined' && Stremio.getPrefs ? !!Stremio.getPrefs().allowLocal : false;
-        return { key: 'link:' + url.split(/[?#]/)[0] + ':' + (size || url), ask: function (c) { return YTPlay.mediaInfo(url, U.sanitizeHeaders(ctx._headers), lan, c); } };   // (the link without its query, and the file's size: a new token, the same file)
+        return { key: 'link:' + url.split(/[?#]/)[0] + ':' + (size || url), ask: function (c) { return YTPlay.mediaInfo(url, U.sanitizeHeaders(ctx._headers), lan, c).then(function (m) { return miReal(ctx, m, size); }); } };   // (the link without its query, and the file's size: a new token, the same file)
+    }
+    // What the host sent may not be the file: a debrid service that refuses a request (too many
+    // at once, say) can answer with a short stand-in clip instead (Real-Debrid: an 8 s, 0.4 MB
+    // 720p MP4). Its details, kept as the file's, made an MKV look like an MP4 with no tracks for
+    // the rest of the session (Leave out other subtitle tracks never applied). Not kept: a size
+    // other than the source says, or, without one, under 8 MB and under a minute.
+    var STANDIN_BYTES = 8 * 1048576, STANDIN_S = 60;
+    function miReal(ctx, m, size) {
+        if (!m || typeof m !== 'object' || !m.container || !(m.size > 0)) { return m; }
+        var off = size > 0 ? Math.abs(m.size - size) > size * 0.01 : m.size < STANDIN_BYTES && m.duration > 0 && m.duration < STANDIN_S;
+        if (!off) { return m; }
+        if (stillOn(ctx)) { U.log('player', 'The host sent something else than the file (' + (m.container + '').toUpperCase() + ', ' + Math.round(m.duration || 0) + ' s, ' + (m.size / 1048576).toFixed(1) + ' MB' + (size > 0 ? ' of ' + (size / 1048576).toFixed(0) + ' MB' : '') + '): its details not kept'); }
+        return null;
     }
     function startFileInfo(ctx) {
         if (_miLook) { _miLook.cancel(); _miLook = null; }
@@ -1438,26 +1451,39 @@ var PlayerParts = {};
     // So such a file plays through the service's file relay with its other subtitle tracks blanked
     // (the service's mkvBlanker: nothing moves, seeking stays the file's). When (Settings ›
     // Playback › Seeking & buffering › Leave out other subtitle tracks): Always, or with more than
-    // BLANK_MIN, from the start (its tracks read first, BLANK_ASK_MS at most); After a jump (the
+    // BLANK_MIN, from the start (its tracks read first, blankAskMs() at most); After a jump (the
     // default: more than BLANK_MIN, from the first jump, which reads them and reopens there);
     // Never. A file whose tracks are known plays through it from the start in the first three.
     // Kept: your subtitle languages' tracks (a choice made for the title first), BLANK_KEEP at
-    // most; with none to keep, the file plays with all of them. Not USB files, network folders, YouTube, DRM or live.
-    var BLANK_MIN = 5, BLANK_KEEP = 4, BLANK_ASK_MS = 6000, _blankAsk = null;
+    // most; with none to keep, its first track. Not USB files, network folders, YouTube, DRM or live.
+    var BLANK_MIN = 5, BLANK_KEEP = 4, BLANK_ASK_MS = 6000, BLANK_ASK_OLD_MS = 10000, _blankAsk = null;
+    // (a Tizen 3 / 4 TV: 10 s — there it's what keeps a file with many tracks from breaking up, and
+    // a slow host took 4.6 s for #30's 50-track file, close to 6)
+    function blankAskMs() { return P.oldPlayer && P.oldPlayer() ? BLANK_ASK_OLD_MS : BLANK_ASK_MS; }
     // (said while a start or a jump waits for those tracks: the file's header read, not buffering)
     var READING_HEADERS = U.t('Reading the file’s headers…');
     function blankKeep(ctx, mi) {
         var cfg = P.getSubCfg(), mine = P.recallSub ? P.recallSub(ctx.id) : null;
-        var keys = [mine && mine.lang, cfg.lang, cfg.lang2].filter(function (l) { return l && l !== 'off' && l !== 'none'; }).map(P.langKey);
+        var prefs = [mine && mine.lang, cfg.lang, cfg.lang2].filter(function (l) { return l && l !== 'off' && l !== 'none'; });
         // (in the order wanted: the service puts them first in that order, so the TV's first text
-        // track is yours. A language's: plain, then SDH, then forced, then pictures)
+        // track is yours. A language's: the variant chosen (Spanish (Latin America)…), then plain,
+        // SDH, forced, pictures)
         var keep = [], subs = mi.subs || [];
         var rank = function (t) { return t.text === false ? 3 : t.forced ? 2 : t.hi ? 1 : 0; };
-        keys.forEach(function (k) {
+        prefs.forEach(function (pref) {
+            var k = P.langKey(pref), vr = function (i) { return P.variantRank(pref, subs[i]); };
             subs.map(function (t, i) { return i; }).filter(function (i) { return keep.indexOf(i) === -1 && P.langMatches(k, subs[i].lang || ''); })
-                .sort(function (a, b) { return rank(subs[a]) - rank(subs[b]) || a - b; })
+                .sort(function (a, b) { return vr(a) - vr(b) || rank(subs[a]) - rank(subs[b]) || a - b; })
                 .forEach(function (i) { if (keep.length < BLANK_KEEP) { keep.push(i); } });
         });
+        // (none of your languages in it, or none set: its first track stays — a plain text one if it
+        // has one — so a file with dozens still plays clean (#30: 50) and one built-in subtitle is
+        // still there to pick)
+        if (!keep.length && subs.length) {
+            var first = 0;
+            for (var j = 0; j < subs.length; j++) { if (rank(subs[j]) === 0) { first = j; break; } }
+            keep.push(first);
+        }
         return keep;
     }
     function blankFits(ctx, mi) {
@@ -1467,17 +1493,20 @@ var PlayerParts = {};
         var url = ctx.url || '';
         if (!/^https?:\/\//i.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)[:\/]/i.test(url)) { return false; }
         var kept = blankKeep(ctx, mi).length;
-        if (!kept || kept >= mi.subs.length) { return false; }   // (none of your languages' in it, or none set: every track stays, never all left out; every one kept: nothing to leave out)
+        if (!kept || kept >= mi.subs.length) { return false; }   // (every one kept: nothing to leave out; never all left out — none of yours: the first stays, blankKeep)
         return typeof YTPlay !== 'undefined' && !!YTPlay.fileOpen && YTPlay.installMode() !== 'browser';
     }
     // The audio tracks in the order wanted (a choice made for the title, your language, your second
     // choice; commentaries last): the service puts them so, the first is the one the TV starts on.
     function audioOrder(ctx, mi) {
         var cfg = P.getAudioCfg ? P.getAudioCfg() : {}, mine = P.recallAudio ? P.recallAudio(ctx.id) : null, aud = mi.audio || [];
-        var keys = [mine && mine.lang, cfg.lang, cfg.lang2].filter(function (l) { return l && l !== 'default' && l !== 'none'; }).map(P.langKey);
+        var prefs = [mine && mine.lang, cfg.lang, cfg.lang2].filter(function (l) { return l && l !== 'default' && l !== 'none'; });
         var out = [];
-        keys.forEach(function (k) {
-            aud.forEach(function (t, i) { if (out.indexOf(i) === -1 && !t.commentary && P.langMatches(k, t.lang || '')) { out.push(i); } });
+        prefs.forEach(function (pref) {   // (a language's: the variant chosen first, English (UK)…)
+            var k = P.langKey(pref);
+            aud.map(function (t, i) { return i; }).filter(function (i) { return out.indexOf(i) === -1 && !aud[i].commentary && P.langMatches(k, aud[i].lang || ''); })
+                .sort(function (a, b) { return P.variantRank(pref, aud[a]) - P.variantRank(pref, aud[b]) || a - b; })
+                .forEach(function (i) { out.push(i); });
         });
         return out;
     }
@@ -1497,11 +1526,12 @@ var PlayerParts = {};
             if (S.ctx === ctx && S.active && !ctx._gaveUp) { if (!S.behind) { spinner(true, U.t('Opening stream…')); } then(); }
         }
         job.ask(look).then(on, function (e) { if (!done && stillOn(ctx)) { U.log('player', 'The file\'s tracks couldn\'t be read: ' + whyRead(ctx, e)); } on(null); });
-        setTimeout(function () { if (!done && stillOn(ctx)) { U.log('player', 'The file\'s tracks couldn\'t be read: ' + whyRead(ctx, { message: 'timed out' }) + ' (' + (BLANK_ASK_MS / 1000) + ' s)'); } look.cancel(); on(null); }, BLANK_ASK_MS);
+        setTimeout(function () { if (!done && stillOn(ctx)) { U.log('player', 'The file\'s tracks couldn\'t be read: ' + whyRead(ctx, { message: 'timed out' }) + ' (' + (blankAskMs() / 1000) + ' s)'); } look.cancel(); on(null); }, blankAskMs());
     }
+    // (an addon's file name may carry more after it: "…4kHdHub.Com.mkv|^|1080pMKVWEB-DL…", #30's)
     function maybeMkv(ctx) {
         var bh = (ctx.stream && ctx.stream.behaviorHints) || {};
-        return /\.mkv(?:[?#]|$)/i.test(ctx.url || '') || /\.mkv$/i.test(bh.filename || '') || !!(ctx.formatInfo && /mkv/i.test(ctx.formatInfo.container || '')) || !!(S.mi && S.mi.container === 'mkv');
+        return /\.mkv(?:[?#]|$)/i.test(ctx.url || '') || /\.mkv\b/i.test(bh.filename || '') || !!(ctx.formatInfo && /mkv/i.test(ctx.formatInfo.container || '')) || !!(S.mi && S.mi.container === 'mkv');
     }
     // A jump: true when it's taken care of here (reopened through the relay, or once its tracks
     // are read); false: seek as usual. Asked once a playback.
@@ -1523,7 +1553,7 @@ var PlayerParts = {};
         job.ask(look).then(function (m) {
             if (m && typeof m === 'object' && m.container) { _miSeen.set(job.key, m); if (!S.mi && S.ctx === ctx) { fileInfoIn(ctx, m); } finish(m); } else { finish(null); }
         }, function () { finish(null); });
-        setTimeout(function () { look.cancel(); finish(null); }, BLANK_ASK_MS);
+        setTimeout(function () { look.cancel(); finish(null); }, blankAskMs());
         return true;
     }
     function reopenBlank(ctx, mi, target) {

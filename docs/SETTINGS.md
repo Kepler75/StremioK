@@ -171,17 +171,19 @@ Addons (in order), playlists, portals, API keys, settings and, if ticked, your h
 |---------|---------|--------------|
 | *Preferred language* | **Default (first track)**, a language | The audio track picked when there's one in it. |
 | *Second choice* | **none**, a language | Picked when there's none in the preferred language. |
-| *Switching to it* | **Quick (no wait)**, Safe: waits 3, 6 or 10 seconds | Quick: before the video starts; Safe: once playing, reloading the audio 6 seconds back (if Quick's language isn't what plays). Live streams: always Safe. |
+| *Switching to it* | **Quick (no wait)**, Safe: waits 3, 6 or 10 seconds | Quick: before the video starts; Safe: once playing, reloading 6 seconds back. Live streams: always Safe. |
 
 ### Subtitles
 
 | Setting | Choices | What it does |
 |---------|---------|--------------|
 | *Default language* | **Off**, a language | Turns a subtitle on by itself. |
-| *Second choice* | **None**, a language | Used when nothing is in the default language (not when the default is Off). |
+| *Second choice* | **None**, a language | When nothing is in the default language (not with Off). |
 | *Second subtitle (at the top)* | **Off**, a language | A second language at the top of the screen at the same time. |
 | *Only my languages* | **Off**, On | The subtitle menu lists only the three languages above, and tracks that don't say their language. |
-| *Skip lines with* | **none**, your words, separated by commas | A line with one of them (or a bit of one, capitals or not) isn't shown. |
+| *Skip lines with* | **none**, your words, separated by commas | A line with one of them (or part of one, any case) isn't shown. |
+
+Variants (*Spanish (Latin America)*, *English (UK)*…), here and in Audio: theirs first, then any.
 
 **Appearance** (a page of its own, from Subtitles):
 
@@ -209,7 +211,7 @@ Addons (in order), playlists, portals, API keys, settings and, if ticked, your h
 | *Seek step* | 5, **10**, 15, 30 seconds | How far LEFT / RIGHT jump; FF / REW three steps; holding speeds up. |
 | *Buffer* | **Normal (the TV's own)**, More, Most | Loaded before starting and after running dry (More: 8 and 10 s; Most: 15 and 20): slower to start, dry less often. |
 | *Read the file's details* | **USB drives only**, All files, Off | Codec, HDR, tracks: Stream info. Links, network folders: more requests. |
-| *Leave out other subtitle tracks* | Always, More than 5, **After a jump**, Never | MKVs with many can stutter after jumps: through the service, your languages' only (none: all stay). |
+| *Leave out other subtitle tracks* | Always, More than 5 (**2017–18 TVs**), **After a jump**, Never | MKVs with many can stutter: through the service, your languages' only (none: the first). |
 | *HLS through StremioK's service* | Off, **Sources that need headers**, All HLS sources | The service sends headers the player can't. Hold OK on a source: once. |
 
 ### Player screen

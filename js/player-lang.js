@@ -127,11 +127,47 @@
         wel: ['wel', 'cym', 'cy', 'welsh']
     };
     function langMatches(pref, lang) {
-        var names = LANG_ALIASES[pref] || [pref];
+        var names = LANG_ALIASES[pref] || LANG_ALIASES[VARIANTS[pref] ? VARIANTS[pref].base : ''] || [pref];   // (a variant, "spa-419": any of its language's)
         // "es-419" -> ["es"], "Spanish (Latin America)" -> ["spanish", "latin", "america"]
         var words = ('' + (lang || '')).toLowerCase().split(/[^a-zà-ÿ]+/);
         for (var i = 0; i < words.length; i++) { if (words[i] && names.indexOf(words[i]) !== -1) { return true; } }
         return false;
+    }
+
+    // A language's regional variants (Settings › Subtitles / Audio: "Spanish (Latin America)"…): the
+    // one chosen is taken first, then a track that doesn't say which, then the others. A track's
+    // variant from its BCP 47 tag or language ("es-419", "pt-BR"), else its name's words
+    // ("Latinoamérica", "Castellano", "Brasil"); one that says another variant isn't this one.
+    var VARIANTS = {
+        'spa-419': { base: 'spa', tag: /^es[-_](?!es\b)[a-z0-9]{2,3}\b/i, words: ['latino', 'latinoamérica', 'latinoamerica', 'latinoamericano', 'latam', 'latin', 'méxico', 'mexico', 'mexicano', 'argentina', 'lat', 'la', 'spl', 'ea'] },
+        'spa-es': { base: 'spa', tag: /^es[-_]es\b/i, words: ['españa', 'espana', 'castellano', 'castilian', 'spain', 'european', 'europeo', 'eu', 'spn', 'sp'] },
+        'eng-us': { base: 'eng', tag: /^en[-_]us\b/i, words: ['us', 'usa', 'american'] },
+        'eng-gb': { base: 'eng', tag: /^en[-_](gb|uk)\b/i, words: ['uk', 'gb', 'british', 'england'] },
+        'por-br': { base: 'por', tag: /^pt[-_]br\b/i, words: ['brasil', 'brazil', 'brazilian', 'brasileiro', 'br', 'pob', 'pb'] },
+        'por-pt': { base: 'por', tag: /^pt[-_]pt\b/i, words: ['portugal', 'europeu', 'european'] },
+        'fre-ca': { base: 'fre', tag: /^fr[-_]ca\b/i, words: ['canada', 'canadien', 'canadian', 'québec', 'quebec', 'québécois', 'quebecois', 'vfq'] },
+        'fre-fr': { base: 'fre', tag: /^fr[-_]fr\b/i, words: ['france', 'vff', 'vfi'] },
+        'chi-hans': { base: 'chi', tag: /^zh[-_](hans|cn|sg)\b/i, words: ['simplified', '简体', '简', 'chs', 'zhs', 'sc', 'gb'] },
+        'chi-hant': { base: 'chi', tag: /^zh[-_](hant|tw|hk|mo)\b/i, words: ['traditional', '繁體', '繁体', '繁', 'cht', 'zht', 'tc', 'big5'] }
+    };
+    // Which variant a track is (its text: language, BCP 47 tag, name, joined), of a language's.
+    function variantOf(base, text) {
+        var t = ('' + (text || '')).toLowerCase(), words = t.split(/[^a-zà-ÿ\u4e00-\u9fff0-9]+/), found = '';
+        for (var v in VARIANTS) {
+            if (!Object.prototype.hasOwnProperty.call(VARIANTS, v) || VARIANTS[v].base !== base) { continue; }
+            var tags = t.split(/[\s,;|()\[\]]+/).some(function (w) { return VARIANTS[v].tag.test(w); });
+            if (tags || VARIANTS[v].words.some(function (w) { return words.indexOf(w) !== -1 || (/[\u4e00-\u9fff]/.test(w) && t.indexOf(w) !== -1); })) { if (found) { return ''; } found = v; }   // (says two: too unsure)
+        }
+        return found;
+    }
+    // How well a track fits a choice: 0 the variant chosen (or no variant chosen), 1 a track that
+    // doesn't say which, 2 another variant. track: a language string, or { lang, bcp, name }.
+    function variantRank(pref, track) {
+        var v = VARIANTS[pref];
+        if (!v) { return 0; }
+        var text = track && typeof track === 'object' ? [track.bcp, track.lang, track.name, track.title, track.label].filter(Boolean).join(' | ') : track;
+        var got = variantOf(v.base, text);
+        return got === pref ? 0 : got ? 2 : 1;
     }
 
     // Display names for language codes (the aliases above, plus other common ones).
@@ -164,8 +200,8 @@
     }
     // Order for language groups: current choice, then the preferred languages, then by name.
     function langRank(k, prefs) {
-        var i = prefs.indexOf(k);
-        return i === -1 ? prefs.length : i;
+        for (var i = 0; i < prefs.length; i++) { if (prefs[i] === k || langKey(prefs[i]) === k) { return i; } }   // (a variant chosen: its language's)
+        return prefs.length;
     }
 
     // A track language in comparable form: the language code when a known spelling
@@ -243,10 +279,11 @@
 
     // ----- for the other parts (and js/player.js) -----
     P.trackInfo = trackInfo; P.infoLang = infoLang; P.trackLang = trackLang; P.langMatches = langMatches;
-    P.langName = langName; P.langRank = langRank; P.langKey = langKey;
+    P.langName = langName; P.langRank = langRank; P.langKey = langKey; P.variantRank = variantRank; P.variantOf = variantOf;
+    P.VARIANT_CODES = Object.keys(VARIANTS);
     // A track that doesn't say its language (by its key): none, "und", "unknown"…, or no letters.
     // (A language StremioK has no name for is still a language.)
     P.langUnstated = function (k) { k = ('' + (k || '')).trim(); return !/[a-zà-ÿ]/i.test(k) || /^(und|unk|unknown|unknown language|mul|zxx|n\/a|none)$/i.test(k); };
     // A language code's two-letter form (ISO 639-1: "spa" -> "es"), or '' (TMDB asks by it).
-    P.lang2 = function (key) { var a = LANG_ALIASES[key] || []; for (var i = 0; i < a.length; i++) { if (/^[a-z]{2}$/.test(a[i])) { return a[i]; } } return ''; };
+    P.lang2 = function (key) { var a = LANG_ALIASES[key] || LANG_ALIASES[VARIANTS[key] ? VARIANTS[key].base : ''] || []; for (var i = 0; i < a.length; i++) { if (/^[a-z]{2}$/.test(a[i])) { return a[i]; } } return ''; };
 })(PlayerParts);

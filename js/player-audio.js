@@ -155,15 +155,15 @@
             var playing = -1, own = P.fileTracks ? P.fileTracks('audio', tracks) : null;
             var talk = function (i) { return !!(own && own[i] && own[i].commentary); };
             for (var k = 0; k < tracks.length; k++) { if (tracks[k].index === _audioIdx) { playing = k; break; } }
+            // (a variant chosen, English (UK): its tracks first, by the TV's language or the file's tag / name)
+            var vr = function (pref, i) { var f = (own && own[i]) || {}; return P.variantRank(pref, { lang: infoLang(trackInfo(tracks[i])), bcp: f.bcp, name: f.name }); };
             for (var p = 0; p < prefs.length && pos < 0; p++) {
-                if (playing >= 0 && !talk(playing) && langMatches(prefs[p], infoLang(trackInfo(tracks[playing])))) { pos = playing; break; }
-                var first = -1;
-                for (var i = 0; i < tracks.length; i++) {
-                    if (!langMatches(prefs[p], infoLang(trackInfo(tracks[i])))) { continue; }
-                    if (first < 0) { first = i; }
-                    if (!talk(i)) { pos = i; break; }
-                }
-                if (pos < 0 && first >= 0) { pos = first; }
+                var cand = [];
+                for (var i = 0; i < tracks.length; i++) { if (langMatches(prefs[p], infoLang(trackInfo(tracks[i])))) { cand.push(i); } }
+                if (!cand.length) { continue; }
+                var score = function (i) { return (talk(i) ? 10 : 0) + vr(prefs[p], i); };
+                var top = cand.slice().sort(function (a, b) { return score(a) - score(b) || a - b; })[0];
+                pos = playing >= 0 && cand.indexOf(playing) !== -1 && score(playing) === score(top) ? playing : top;
             }
         }
         return pos;

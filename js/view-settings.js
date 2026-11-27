@@ -102,13 +102,15 @@
 
     // ================= SUBTITLE CONFIG =================
     // Every language player-lang recognizes on a track (its LANG_ALIASES), by name.
+    // (a language's variants after it: that variant first, else any of the language's — see
+    // player-lang's VARIANTS)
     var SUB_LANGS = [['off', U.t('Off')], ['afr', U.t('Afrikaans')], ['alb', U.t('Albanian')], ['ara', U.t('Arabic')],
         ['arg', U.t('Aragonese')], ['arm', U.t('Armenian')], ['ast', U.t('Asturian')], ['aze', U.t('Azerbaijani')],
         ['baq', U.t('Basque')], ['bel', U.t('Belarusian')], ['ben', U.t('Bengali')], ['bos', U.t('Bosnian')],
         ['bre', U.t('Breton')], ['bul', U.t('Bulgarian')], ['bur', U.t('Burmese')], ['cat', U.t('Catalan')],
-        ['chi', U.t('Chinese')], ['hrv', U.t('Croatian')], ['cze', U.t('Czech')], ['dan', U.t('Danish')], ['prs', U.t('Dari')],
-        ['dut', U.t('Dutch')], ['eng', 'English'], ['epo', U.t('Esperanto')], ['est', U.t('Estonian')],
-        ['ext', U.t('Extremaduran')], ['fil', U.t('Filipino')], ['fin', U.t('Finnish')], ['fre', U.t('French')],
+        ['chi', U.t('Chinese')], ['chi-hans', U.t('Chinese (Simplified)')], ['chi-hant', U.t('Chinese (Traditional)')], ['hrv', U.t('Croatian')], ['cze', U.t('Czech')], ['dan', U.t('Danish')], ['prs', U.t('Dari')],
+        ['dut', U.t('Dutch')], ['eng', 'English'], ['eng-gb', U.t('English (UK)')], ['eng-us', U.t('English (US)')], ['epo', U.t('Esperanto')], ['est', U.t('Estonian')],
+        ['ext', U.t('Extremaduran')], ['fil', U.t('Filipino')], ['fin', U.t('Finnish')], ['fre', U.t('French')], ['fre-ca', U.t('French (Canada)')], ['fre-fr', U.t('French (France)')],
         ['glg', U.t('Galician')], ['geo', U.t('Georgian')], ['ger', U.t('German')], ['gre', U.t('Greek')],
         ['heb', U.t('Hebrew')], ['hin', U.t('Hindi')], ['hun', U.t('Hungarian')], ['ice', U.t('Icelandic')],
         ['ibo', U.t('Igbo')], ['ind', U.t('Indonesian')], ['ina', U.t('Interlingua')], ['gle', U.t('Irish')],
@@ -118,10 +120,10 @@
         ['mal', U.t('Malayalam')], ['mni', U.t('Manipuri')], ['mar', U.t('Marathi')], ['mon', U.t('Mongolian')],
         ['mne', U.t('Montenegrin')], ['nav', U.t('Navajo')], ['nep', U.t('Nepali')], ['sme', U.t('Northern Sami')],
         ['nor', U.t('Norwegian')], ['oci', U.t('Occitan')], ['ori', U.t('Odia')], ['pus', U.t('Pashto')],
-        ['per', U.t('Persian')], ['pol', U.t('Polish')], ['por', U.t('Portuguese')], ['pan', U.t('Punjabi')],
+        ['per', U.t('Persian')], ['pol', U.t('Polish')], ['por', U.t('Portuguese')], ['por-br', U.t('Portuguese (Brazil)')], ['por-pt', U.t('Portuguese (Portugal)')], ['pan', U.t('Punjabi')],
         ['rum', U.t('Romanian')], ['rus', U.t('Russian')], ['sat', U.t('Santali')], ['gla', U.t('Scottish Gaelic')],
         ['srp', U.t('Serbian')], ['snd', U.t('Sindhi')], ['sin', U.t('Sinhala')], ['slo', U.t('Slovak')],
-        ['slv', U.t('Slovenian')], ['som', U.t('Somali')], ['spa', U.t('Spanish')], ['swa', U.t('Swahili')],
+        ['slv', U.t('Slovenian')], ['som', U.t('Somali')], ['spa', U.t('Spanish')], ['spa-419', U.t('Spanish (Latin America)')], ['spa-es', U.t('Spanish (Spain)')], ['swa', U.t('Swahili')],
         ['swe', U.t('Swedish')], ['syr', U.t('Syriac')], ['tam', U.t('Tamil')], ['tat', U.t('Tatar')], ['tel', U.t('Telugu')],
         ['tha', U.t('Thai')], ['tok', U.t('Toki Pona')], ['tur', U.t('Turkish')], ['tuk', U.t('Turkmen')],
         ['ukr', U.t('Ukrainian')], ['urd', U.t('Urdu')], ['uzb', U.t('Uzbek')], ['vie', U.t('Vietnamese')],

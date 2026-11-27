@@ -260,6 +260,11 @@
     // reconnect: a live channel that drops, 'off' | 'few' | 'always' (see player-core's liveDropped)
     // (Settings › Playback › Seeking & buffering)
     var SEEK_STEPS = [5, 10, 15, 30];
+    // A Tizen 3 or 4 TV (2017–2018): its player chokes on an MKV's many subtitle tracks even
+    // played straight through (#30: 50 SRT tracks, the picture breaking up at the same busy
+    // minutes every time, subtitles on or not), so Leave out other subtitle tracks is More than 5
+    // there unless chosen, and its tracks get more time to be read (player-core's blankAskMs).
+    function oldPlayer() { var m = /\bTizen (\d+)/.exec('' + ((typeof navigator !== 'undefined' && navigator.userAgent) || '')); return !!m && +m[1] <= 4; }
     function playerCfg() {
         var d = U.store.get(PLAYERCFG_KEY, {}) || {};
         return { aspect: d.aspect || 'fit', seek: SEEK_STEPS.indexOf(+d.seek) !== -1 ? +d.seek : 10,
@@ -272,7 +277,7 @@
             // as it starts, so only when chosen)
             fileInfo: d.fileInfo === 'all' || d.fileInfo === 'off' ? d.fileInfo : 'usb',
             // (an MKV's other subtitle tracks left out through the service: player-core's blankFits)
-            blank: d.blank === 'always' || d.blank === 'many' || d.blank === 'never' ? d.blank : 'jump',
+            blank: d.blank === 'always' || d.blank === 'many' || d.blank === 'never' || d.blank === 'jump' ? d.blank : oldPlayer() ? 'many' : 'jump',
             // (Settings › Playback › Player screen: BACK leaves at once, or asks first ('twice');
             // the time on the bar: the length and "Ends", or what's left (−mm:ss), or both)
             back: d.back === 'twice' || d.back === 'osd' ? d.back : 'once',   // (Player screen › BACK while a video plays: at once, press twice, or the bar first)
@@ -316,7 +321,7 @@
     P.writeProgress = writeProgress; P.addToContinue = addToContinue; P.progressFor = progressFor;
     P.getResume = getResume; P.removeProgress = removeProgress; P.continueList = continueList;
     P.rememberSub = rememberSub; P.recallSub = recallSub; P.rememberAudio = rememberAudio;
-    P.recallAudio = recallAudio; P.playerCfg = playerCfg; P.setPlayerCfg = setPlayerCfg;
+    P.recallAudio = recallAudio; P.playerCfg = playerCfg; P.setPlayerCfg = setPlayerCfg; P.oldPlayer = oldPlayer;
     P.aspectDef = aspectDef; P.aspectNow = aspectNow; P.setAspectNow = setAspectNow; P.SUB_FONTS = SUB_FONTS; P.SUB_COLORS = SUB_COLORS; P.SUB_BGS = SUB_BGS;
     P.SUB_EDGES = SUB_EDGES; P.SUB_POSITIONS = SUB_POSITIONS; P.ASPECTS = ASPECTS;
     P.isPrivate = isPrivate; P.setPrivate = setPrivate; P.privateNow = privateNow; P.subCfgVersion = subCfgVersion;
